@@ -1,0 +1,36 @@
+{% extends "base.html" %}{% block title %}{{ inv.number }}{% endblock %}
+{% block content %}
+<div class="bg-white rounded shadow p-6">
+  <div class="flex justify-between items-start mb-4">
+    <div>
+      <h1 class="text-2xl font-bold">{{ inv.number }}</h1>
+      <p class="text-slate-600">Permit {{ inv.application.reference }}</p>
+    </div>
+    <span class="bg-slate-200 rounded px-3 py-1 text-sm">{{ inv.get_status_display }}</span>
+  </div>
+  <table class="w-full text-sm mb-4">
+    <thead class="bg-slate-100 text-left">
+      <tr><th class="p-2">Province</th><th class="p-2">Description</th><th class="p-2 text-right">Fee</th></tr>
+    </thead>
+    <tbody>
+      {% for line in inv.application.lines.all %}
+      <tr class="border-t">
+        <td class="p-2">{{ line.province.code }}</td>
+        <td class="p-2">Abnormal load permit - {{ line.province.name }}</td>
+        <td class="p-2 text-right">R{{ line.fee }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot class="font-bold">
+      <tr class="border-t"><td class="p-2" colspan="2">Subtotal</td><td class="p-2 text-right">R{{ inv.subtotal }}</td></tr>
+      <tr><td class="p-2" colspan="2">VAT (15%)</td><td class="p-2 text-right">R{{ inv.vat_amount }}</td></tr>
+      <tr class="border-t-2"><td class="p-2" colspan="2">Total</td><td class="p-2 text-right">R{{ inv.total }}</td></tr>
+    </tfoot>
+  </table>
+  <a href="/billing/{{ inv.pk }}/pdf/" target="_blank" class="bg-slate-900 text-white px-4 py-2 rounded">Download PDF</a>
+  {% if inv.status == "unpaid" %}
+    <a href="/billing/{{ inv.pk }}/pay/" class="bg-emerald-600 text-white px-4 py-2 rounded ml-2">Pay with PayFast</a>
+    <a href="/billing/{{ inv.pk }}/simulate-paid/" class="bg-amber-500 text-white px-3 py-2 rounded ml-2 text-sm" title="Dev-only shortcut">Simulate paid (dev)</a>
+  {% endif %}
+</div>
+{% endblock %}

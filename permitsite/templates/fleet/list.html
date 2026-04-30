@@ -1,0 +1,32 @@
+{% extends "base.html" %}{% block title %}Fleet{% endblock %}
+{% block content %}
+<div class="flex justify-between items-center mb-4">
+  <h1 class="text-2xl font-bold">Fleet</h1>
+  <a href="/fleet/new/" class="bg-emerald-600 text-white px-4 py-2 rounded">Add vehicle</a>
+</div>
+<table class="w-full bg-white rounded shadow text-sm">
+  <thead class="bg-slate-100 text-left">
+    <tr>
+      <th class="p-2">Fleet #</th><th class="p-2">Registration</th>
+      <th class="p-2">Config</th><th class="p-2">Tare</th><th class="p-2">GCM</th><th class="p-2"></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for v in vehicles %}
+    <tr class="border-t">
+      <td class="p-2 font-medium">{{ v.fleet_number }}</td>
+      <td class="p-2">{{ v.registration }}</td>
+      <td class="p-2">{{ v.config.code }} - {{ v.config.description }}</td>
+      <td class="p-2">{{ v.effective_tare|floatformat:0 }} kg</td>
+      <td class="p-2">{{ v.config.gcm_kg|floatformat:0 }} kg</td>
+      <td class="p-2 text-right">
+        <a class="underline mr-2" href="/fleet/{{ v.pk }}/edit/">Edit</a>
+        <a class="text-red-600 underline" href="/fleet/{{ v.pk }}/delete/">Delete</a>
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="6" class="p-4 text-center text-slate-500">No vehicles yet. <a class="underline" href="/fleet/new/">Add your first.</a></td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

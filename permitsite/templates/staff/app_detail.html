@@ -1,0 +1,61 @@
+{% extends "base.html" %}{% block title %}{{ app.reference }}{% endblock %}
+{% block content %}
+<div class="bg-white rounded shadow p-6">
+  <div class="flex justify-between items-start mb-4">
+    <div>
+      <h1 class="text-2xl font-bold">{{ app.reference }}</h1>
+      <p class="text-slate-600">Applicant: {{ app.applicant.client_profile.company_name|default:app.applicant.username }}
+         ({{ app.applicant.email }})</p>
+      <p class="text-slate-600">Route: {{ app.origin }} to {{ app.destination }} on {{ app.travel_date }}</p>
+    </div>
+    <span class="bg-slate-200 rounded px-3 py-1 text-sm">{{ app.get_status_display }}</span>
+  </div>
+
+  <h3 class="font-bold mt-4">Printable permits</h3>
+  <ul class="list-disc ml-6 text-sm">
+    {% for line in app.lines.all %}
+      <li>
+        <a class="underline" target="_blank" href="/staff/app/{{ app.pk }}/permit-pdf/{{ line.province.code }}/">
+          {{ line.province.code }} - {{ line.province.name }}: R{{ line.fee }} (open PDF)
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+
+  <h3 class="font-bold mt-4">Client courier address</h3>
+  <p class="text-sm bg-slate-50 border p-2 rounded">{{ app.applicant.client_profile.courier_address|default:"- not captured -" }}</p>
+
+  <hr class="my-4">
+
+  {% if app.status == "approved" %}
+    <form method="post" action="/staff/app/{{ app.pk }}/mark-printed/">{% csrf_token %}
+      <button class="bg-emerald-600 text-white px-4 py-2 rounded">Mark all permits printed</button>
+    </form>
+  {% endif %}
+
+  {% if app.status == "printed" %}
+    <form method="post" action="/staff/app/{{ app.pk }}/mark-couriered/" class="space-y-2">{% csrf_token %}
+      <h3 class="font-bold">Mark as couriered</h3>
+      <input name="courier_company" placeholder="Courier name (e.g. Courier Guy)" required class="w-full border rounded px-2 py-1">
+      <input name="tracking_number" placeholder="Tracking number / waybill" required class="w-full border rounded px-2 py-1">
+      <button class="bg-emerald-600 text-white px-4 py-2 rounded">Record dispatch</button>
+    </form>
+  {% endif %}
+
+  {% if app.status == "couriered" %}
+    <div class="text-sm bg-sky-50 border border-sky-200 rounded p-3 mb-3">
+      Dispatched via <strong>{{ app.courier_company }}</strong>, tracking <strong>{{ app.tracking_number }}</strong>
+      on {{ app.couriered_at|date:"Y-m-d H:i" }}.
+    </div>
+    <form method="post" action="/staff/app/{{ app.pk }}/mark-delivered/">{% csrf_token %}
+      <button class="bg-emerald-600 text-white px-4 py-2 rounded">Confirm delivery</button>
+    </form>
+  {% endif %}
+
+  {% if app.status == "delivered" %}
+    <div class="text-sm bg-emerald-50 border border-emerald-200 rounded p-3">Delivered.</div>
+  {% endif %}
+
+  <p class="mt-6"><a href="/staff/" class="underline text-sm">Back to dashboard</a></p>
+</div>
+{% endblock %}

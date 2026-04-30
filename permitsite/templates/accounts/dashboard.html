@@ -1,0 +1,41 @@
+{% extends "base.html" %}{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Welcome, {{ user.client_profile.company_name|default:user.username }}</h1>
+<div class="grid md:grid-cols-3 gap-4 mb-6">
+  <a href="/fleet/" class="bg-white rounded shadow p-4 hover:shadow-lg">
+    <div class="text-3xl font-bold">{{ vehicle_count }}</div>
+    <div class="text-slate-600">Vehicles on file</div>
+  </a>
+  <a href="/permits/" class="bg-white rounded shadow p-4 hover:shadow-lg">
+    <div class="text-3xl font-bold">{{ applications|length }}</div>
+    <div class="text-slate-600">Recent applications</div>
+  </a>
+  <a href="/billing/" class="bg-white rounded shadow p-4 hover:shadow-lg">
+    <div class="text-3xl font-bold">{{ unpaid_invoices|length }}</div>
+    <div class="text-slate-600">Unpaid invoices</div>
+  </a>
+</div>
+<div class="bg-white rounded shadow p-4">
+  <h2 class="font-bold mb-3">Quick actions</h2>
+  <a href="/permits/new/" class="inline-block bg-emerald-600 text-white px-4 py-2 rounded mr-2">Apply for a new permit</a>
+  <a href="/fleet/new/" class="inline-block bg-slate-200 px-4 py-2 rounded">Add a vehicle</a>
+</div>
+{% if applications %}
+<h2 class="font-bold mt-6 mb-2">Recent applications</h2>
+<table class="w-full bg-white rounded shadow text-sm">
+  <thead class="bg-slate-100 text-left">
+    <tr><th class="p-2">Ref</th><th class="p-2">Route</th><th class="p-2">Status</th><th class="p-2">Total</th></tr>
+  </thead>
+  <tbody>
+    {% for a in applications %}
+    <tr class="border-t">
+      <td class="p-2"><a class="underline" href="/permits/{{ a.id }}/">{{ a.reference }}</a></td>
+      <td class="p-2">{{ a.origin }} to {{ a.destination }}</td>
+      <td class="p-2">{{ a.get_status_display }}</td>
+      <td class="p-2">R{{ a.total_fee }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

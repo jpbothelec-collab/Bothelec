@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="container py-4" style="max-width:860px">
+  <h2 class="mb-4">{{ title }}</h2>
+  <form method="post" id="permit-form">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <div class="card mb-3">
+      <div class="card-header fw-semibold">Vehicle &amp; Route</div>
+      <div class="card-body row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Vehicle</label>
+          <select name="vehicle" class="form-select form-select-sm">
+            {% for v in form.vehicle.field.queryset %}
+              <option value="{{ v.pk }}" {% if form.vehicle.value == v.pk|stringformat:"s" %}selected{% endif %}>{{ v }}</option>
+            {% endfor %}
+          </select>
+          {% if form.vehicle.errors %}<div class="text-danger small">{{ form.vehicle.errors }}</div>{% endif %}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Travel date</label>
+          <input type="date" name="travel_date" class="form-control form-control-sm" value="{{ form.travel_date.value|default:'' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Load description</label>
+          <input type="text" name="load_description" class="form-control form-control-sm" value="{{ form.load_description.value|default:'' }}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Origin</label>
+          <input type="text" name="origin" class="form-control form-control-sm" id="origin-input" value="{{ form.origin.value|default:'' }}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Destination</label>
+          <input type="text" name="destination" class="form-control form-control-sm" id="dest-input" value="{{ form.destination.value|default:'' }}">
+        </div>
+        <div class="col-12 text-end">
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="detect-btn">Auto-detect provinces from route</button>
+          <span id="detect-note" class="text-muted small ms-2"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header fw-semibold">Load dimensions &amp; mass</div>
+      <div class="card-body row g-3">
+        <div class="col-md-3">
+          <label class="form-label">Length (m) <span class="text-muted" style="font-size:.8em">overall combination</span></label>
+          <input type="number" step="0.01" name="load_length_m" class="form-control form-control-sm dim-input" id="in-length" value="{{ form.load_length_m.value|default:'' }}">
+          {% if form.load_length_m.errors %}<div class="text-danger small">{{ form.load_length_m.errors }}</div>{% endif %}
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Width (m)</label>
+          <input type="number" step="0.01" name="load_width_m" class="form-control form-control-sm dim-input" id="in-width" value="{{ form.load_width_m.value|default:'' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Height (m)</label>
+          <input type="number" step="0.01" name="load_height_m" class="form-control form-control-sm dim-input" id="in-height" value="{{ form.load_height_m.value|default:'' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Load mass (kg)</label>
+          <input type="number" name="load_mass_kg" class="form-control form-control-sm dim-input" id="in-mass" value="{{ form.load_mass_kg.value|default:'' }}">
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header fw-semibold">Provinces &amp; distances</div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          Tick each province the route passes through and enter kilometres in that province.
+          Fees = <strong>mass rate (c/km) × km</strong> + basic fee, matching the Excel tariff tables.
+        </p>
+        <table class="table table-bordered align-middle" id="province-table">
+          <thead class="table-light">
+            <tr>
+              <th style="width:40px"></th>
+              <th>Province</th>
+              <th style="width:160px">km in province</th>
+              <th style="width:110px">Mass (R/km)</th>
+              <th style="width:100px">Basic fee</th>
+              <th style="width:120px">Est. fee</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for province in provinces %}
+            <tr data-code="{{ province.code }}">
+              <td class="text-center">
+                <input class="form-check-input province-check" type="checkbox"
+                       name="provinces" value="{{ province.pk }}"
+                       id="prov_{{ province.code }}">
+              </td>
+              <td><label class="fw-semibold mb-0" for="prov_{{ province.code }}">{{ province.name }}</label></td>
+              <td>
+                <input type="number" class="form-control form-control-sm dist-input"
+                       name="dist_{{ province.code }}" min="0" placeholder="km"
+                       id="dist_{{ province.code }}">
+              </td>
+              <td class="text-muted small">{{ province.mass_cpk }}</td>
+              <td class="text-muted small">R{{ province.basic_fee }}</td>
+              <td class="est-fee text-end fw-semibold text-success">—</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="table-light">
+              <td colspan="5" class="text-end fw-bold">Total (excl. VAT):</td>
+              <td class="text-end fw-bold text-success" id="total-fee">—</td>
+            </tr>
+          </tfoot>
+        </table>
+        {% if form.provinces.errors %}<div class="text-danger small">{{ form.provinces.errors }}</div>{% endif %}
+
+        <div id="escort-box" class="alert alert-info mt-3 d-none">
+          <strong>Escort:</strong> <span id="escort-label"></span> &nbsp;|&nbsp;
+          <strong>Height:</strong> <span id="height-label"></span> &nbsp;|&nbsp;
+          <strong>RUF:</strong> <span id="ruf-val"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header fw-semibold">Notes</div>
+      <div class="card-body">
+        <textarea name="notes" class="form-control form-control-sm" rows="3">{{ form.notes.value|default:'' }}</textarea>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2">
+      <button type="submit" class="btn btn-primary">Save draft</button>
+      <a href="{% url 'permits_list' %}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<script>
+function getParams() {
+  const vid  = document.querySelector('[name=vehicle]')?.value;
+  const mass = document.getElementById('in-mass')?.value;
+  const len  = document.getElementById('in-length')?.value;
+  const wid  = document.getElementById('in-width')?.value;
+  const hgt  = document.getElementById('in-height')?.value || 0;
+  return { vid, mass, len, wid, hgt };
+}
+
+function refreshFees() {
+  const { vid, mass, len, wid, hgt } = getParams();
+  if (!vid || !mass || !len || !wid) return;
+
+  const checked = [...document.querySelectorAll('.province-check:checked')];
+  document.querySelectorAll('#province-table tbody tr .est-fee, #province-table tbody tr .est-total').forEach(c => { if (!checked.find(cb => cb.closest('tr') === c.closest('tr'))) c.textContent = '—'; });
+  document.getElementById('total-fee').textContent = '—';
+  if (!checked.length) { document.getElementById('escort-box').classList.add('d-none'); return; }
+
+  let qs = `vehicle_id=${vid}&mass_kg=${mass}&length_m=${len}&width_m=${wid}&height_m=${hgt}`;
+  checked.forEach(cb => {
+    const code = cb.closest('tr').dataset.code;
+    qs += `&provinces=${code}&dist_${code}=${document.getElementById('dist_'+code)?.value||0}`;
+  });
+
+  fetch(`/permits/fee-preview/?${qs}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) return;
+      document.querySelectorAll('#province-table tbody tr').forEach(row => {
+        const line = data.lines?.find(l => l.province === row.dataset.code);
+        row.querySelector('.est-fee').textContent = line ? `R ${parseFloat(line.fee).toFixed(2)}` : '—';
+        row.querySelector('.est-total').textContent = line ? `R ${parseFloat(line.total_inc_agent).toFixed(2)}` : '—';
+      });
+      document.getElementById('total-fee').textContent = data.total ? `R ${parseFloat(data.total).toFixed(2)}` : '—';
+      const totalAgent = data.lines ? data.lines.reduce((s, l) => s + parseFloat(l.total_inc_agent), 0) : 0;
+      document.getElementById('total-inc-agent').textContent = totalAgent ? `R ${totalAgent.toFixed(2)}` : '—';
+      if (data.ruf) {
+        document.getElementById('escort-label').textContent = data.escort;
+        document.getElementById('height-label').textContent = data.height_warning;
+        document.getElementById('ruf-val').textContent = data.ruf;
+        document.getElementById('escort-box').classList.remove('d-none');
+      }
+    }).catch(() => {});
+}
+
+document.querySelectorAll('.dim-input, [name=vehicle]').forEach(el => el.addEventListener('change', refreshFees));
+document.querySelectorAll('.province-check, .dist-input').forEach(el => {
+  el.addEventListener('change', refreshFees);
+  el.addEventListener('input', refreshFees);
+});
+
+document.getElementById('detect-btn')?.addEventListener('click', () => {
+  const o = document.getElementById('origin-input')?.value;
+  const d = document.getElementById('dest-input')?.value;
+  if (!o || !d) { document.getElementById('detect-note').textContent = 'Enter origin & destination first.'; return; }
+  fetch(`/permits/detect-route/?origin=${encodeURIComponent(o)}&destination=${encodeURIComponent(d)}`)
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('detect-note').textContent = data.note || '';
+      if (!data.confident) return;
+      document.querySelectorAll('.province-check').forEach(cb => {
+        cb.checked = data.proto_codes.includes(cb.closest('tr').dataset.code);
+      });
+      refreshFees();
+    });
+});
+</script>
+{% endblock %}

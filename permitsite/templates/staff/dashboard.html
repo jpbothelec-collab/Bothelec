@@ -1,0 +1,49 @@
+{% extends "base.html" %}{% block title %}Staff dashboard{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Staff fulfilment dashboard</h1>
+<div class="grid md:grid-cols-2 gap-4">
+
+  <div class="bg-white rounded shadow p-4">
+    <h2 class="font-bold mb-2">Awaiting payment ({{ awaiting_payment|length }})</h2>
+    {% for a in awaiting_payment %}
+      <div class="border-t py-2 text-sm">
+        <a class="underline" href="/staff/app/{{ a.pk }}/">{{ a.reference }}</a> -
+        {{ a.applicant.client_profile.company_name|default:a.applicant.username }} -
+        R{{ a.total_fee }}
+      </div>
+    {% empty %}<p class="text-sm text-slate-500">Nothing waiting.</p>{% endfor %}
+  </div>
+
+  <div class="bg-white rounded shadow p-4">
+    <h2 class="font-bold mb-2">Paid - print these ({{ awaiting_print|length }})</h2>
+    {% for a in awaiting_print %}
+      <div class="border-t py-2 text-sm">
+        <a class="underline" href="/staff/app/{{ a.pk }}/">{{ a.reference }}</a> -
+        {{ a.applicant.client_profile.company_name|default:a.applicant.username }} -
+        {{ a.origin }} to {{ a.destination }}
+      </div>
+    {% empty %}<p class="text-sm text-slate-500">None.</p>{% endfor %}
+  </div>
+
+  <div class="bg-white rounded shadow p-4">
+    <h2 class="font-bold mb-2">Printed - courier these ({{ awaiting_courier|length }})</h2>
+    {% for a in awaiting_courier %}
+      <div class="border-t py-2 text-sm">
+        <a class="underline" href="/staff/app/{{ a.pk }}/">{{ a.reference }}</a> -
+        {{ a.applicant.client_profile.company_name|default:a.applicant.username }}
+      </div>
+    {% empty %}<p class="text-sm text-slate-500">None.</p>{% endfor %}
+  </div>
+
+  <div class="bg-white rounded shadow p-4">
+    <h2 class="font-bold mb-2">In transit ({{ in_transit|length }})</h2>
+    {% for a in in_transit %}
+      <div class="border-t py-2 text-sm">
+        <a class="underline" href="/staff/app/{{ a.pk }}/">{{ a.reference }}</a> -
+        {{ a.courier_company }} - {{ a.tracking_number }}
+      </div>
+    {% empty %}<p class="text-sm text-slate-500">None.</p>{% endfor %}
+  </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% block title %}Redirecting to PayFast{% endblock %}
+{% block content %}
+<div class="max-w-lg mx-auto bg-white rounded shadow p-6">
+  <h1 class="text-xl font-bold mb-3">Redirecting to PayFast sandbox...</h1>
+  <p class="text-sm text-slate-600 mb-4">
+    You'll be securely redirected to PayFast to complete payment of
+    <strong>R{{ inv.total }}</strong> for invoice {{ inv.number }}.
+  </p>
+  <form id="pf" method="post" action="{{ endpoint }}">
+    {% for k, v in fields.items %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    <button class="bg-emerald-600 text-white px-5 py-2 rounded">Continue to PayFast</button>
+    <a href="/billing/{{ inv.pk }}/" class="underline ml-3 text-sm">Cancel</a>
+  </form>
+  <script>setTimeout(()=>document.getElementById("pf").submit(), 800);</script>
+</div>
+{% endblock %}

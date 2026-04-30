@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="max-w-xl bg-white rounded shadow p-6">
+  <h1 class="text-2xl font-bold mb-4">{{ title }}</h1>
+  <form method="post" class="space-y-3">{% csrf_token %}
+    {% for field in form %}
+      <div>
+        <label class="block text-sm font-medium">{{ field.label }}</label>
+        {{ field }}
+        {% if field.errors %}<p class="text-red-600 text-xs">{{ field.errors|join:", " }}</p>{% endif %}
+        {% if field.help_text %}<p class="text-xs text-slate-500">{{ field.help_text|safe }}</p>{% endif %}
+      </div>
+    {% endfor %}
+    <div>
+      <button class="bg-slate-900 text-white px-4 py-2 rounded">Save</button>
+      <a href="/fleet/" class="underline ml-2">Cancel</a>
+    </div>
+  </form>
+</div>
+<style>input,textarea,select{border:1px solid #cbd5e1;border-radius:4px;padding:6px 8px;width:100%}</style>
+{% endblock %}

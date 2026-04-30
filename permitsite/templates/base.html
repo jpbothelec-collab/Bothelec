@@ -1,0 +1,43 @@
+{% load static %}
+<\!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Abnormal Load Permits{% endblock %}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>body{font-family:Arial,Helvetica,sans-serif}</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+<nav class="bg-slate-900 text-white">
+  <div class="max-w-6xl mx-auto flex items-center justify-between p-4">
+    <a href="/dashboard/" class="font-bold text-lg">Abnormal Load Permits</a>
+    <div class="space-x-4 text-sm">
+      {% if user.is_authenticated %}
+        <a href="/dashboard/" class="hover:underline">Dashboard</a>
+        <a href="/fleet/" class="hover:underline">Fleet</a>
+        <a href="/permits/" class="hover:underline">Permits</a>
+        <a href="/billing/" class="hover:underline">Invoices</a>
+        {% if user.is_staff %}<a href="/staff/" class="hover:underline text-amber-300">Staff</a>{% endif %}
+        <span class="opacity-75">{{ user.get_full_name|default:user.username }}</span>
+        <form method="post" action="{% url 'logout' %}" class="inline">{% csrf_token %}
+          <button class="underline">Log out</button>
+        </form>
+      {% else %}
+        <a href="{% url 'login' %}" class="hover:underline">Log in</a>
+        <a href="/accounts/signup/" class="hover:underline">Sign up</a>
+      {% endif %}
+    </div>
+  </div>
+</nav>
+<main class="max-w-6xl mx-auto p-6">
+  {% if messages %}
+    {% for m in messages %}<div class="rounded bg-emerald-100 text-emerald-900 px-4 py-2 mb-3">{{ m }}</div>{% endfor %}
+  {% endif %}
+  {% block content %}{% endblock %}
+</main>
+<footer class="max-w-6xl mx-auto px-6 py-8 text-xs text-slate-500">
+  Prototype - issued permits are couriered after payment. POPIA: we store your details only for permit processing.
+</footer>
+</body>
+</html>

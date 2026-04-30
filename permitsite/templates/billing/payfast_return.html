@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% block content %}
+<div class="max-w-lg mx-auto bg-white rounded shadow p-6">
+  <h1 class="text-xl font-bold text-emerald-700 mb-3">Payment received - thank you</h1>
+  <p>Your invoice <strong>{{ inv.number }}</strong> is being confirmed.
+  You'll get an email once your printed permits are dispatched.</p>
+  <a href="/billing/{{ inv.pk }}/" class="inline-block mt-4 bg-slate-900 text-white px-4 py-2 rounded">View invoice</a>
+</div>
+{% endblock %}

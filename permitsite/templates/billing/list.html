@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% block title %}Invoices{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Invoices</h1>
+<table class="w-full bg-white rounded shadow text-sm">
+  <thead class="bg-slate-100 text-left">
+    <tr><th class="p-2">Number</th><th class="p-2">Permit</th><th class="p-2">Issued</th><th class="p-2">Status</th><th class="p-2 text-right">Total</th></tr>
+  </thead>
+  <tbody>
+    {% for inv in invoices %}
+    <tr class="border-t">
+      <td class="p-2"><a class="underline" href="/billing/{{ inv.pk }}/">{{ inv.number }}</a></td>
+      <td class="p-2">{{ inv.application.reference }}</td>
+      <td class="p-2">{{ inv.issued_at|date:"Y-m-d" }}</td>
+      <td class="p-2">{{ inv.get_status_display }}</td>
+      <td class="p-2 text-right">R{{ inv.total }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="5" class="p-4 text-center text-slate-500">No invoices yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

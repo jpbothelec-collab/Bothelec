@@ -1,0 +1,7 @@
+{% extends "base.html" %}{% block content %}
+<div class="max-w-lg mx-auto bg-white rounded shadow p-6">
+  <h1 class="text-xl font-bold mb-3">Payment cancelled</h1>
+  <p>Your invoice <strong>{{ inv.number }}</strong> is still unpaid. You can try again anytime.</p>
+  <a href="/billing/{{ inv.pk }}/" class="inline-block mt-4 bg-slate-900 text-white px-4 py-2 rounded">Back to invoice</a>
+</div>
+{% endblock %}

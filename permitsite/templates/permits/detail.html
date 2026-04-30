@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}{{ app.reference }}{% endblock %}
+{% block content %}
+<div class="container py-4" style="max-width:860px">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0">{{ app.reference }}</h2>
+    <span class="badge fs-6
+      {% if app.status == 'draft' %}bg-secondary
+      {% elif app.status == 'submitted' %}bg-warning text-dark
+      {% elif app.status == 'approved' %}bg-success
+      {% elif app.status == 'printed' %}bg-info text-dark
+      {% elif app.status == 'couriered' %}bg-primary
+      {% elif app.status == 'delivered' %}bg-success
+      {% else %}bg-danger{% endif %}">
+      {{ app.get_status_display }}
+    </span>
+  </div>
+
+  {% if warnings %}
+  <div class="alert alert-warning">
+    <strong>Limit warnings:</strong>
+    <ul class="mb-0 mt-1">{% for w in warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  {% if escort_info %}
+  <div class="alert alert-info">
+    <strong>Escort requirement:</strong> {{ escort_info.escort }}<br>
+    <strong>Height check:</strong> {{ escort_info.height_warning }}<br>
+    <strong>RUF:</strong> {{ escort_info.ruf }}
+  </div>
+  {% endif %}
+
+  <div class="card mb-3">
+    <div class="card-header fw-semibold">Application details</div>
+    <div class="card-body">
+      <table class="table table-sm mb-0">
+        <tr><th style="width:220px">Applicant</th><td>{{ app.applicant.get_full_name|default:app.applicant.username }} ({{ app.applicant.email }})</td></tr>
+        <tr><th>Vehicle</th><td>{{ app.vehicle }} — {{ app.vehicle.config.description }}</td></tr>
+        <tr><th>Route</th><td>{{ app.origin }} → {{ app.destination }}</td></tr>
+        <tr><th>Travel date</th><td>{{ app.travel_date }}</td></tr>
+        <tr><th>Load description</th><td>{{ app.load_description }}</td></tr>
+        <tr><th>Dimensions (L × W × H)</th><td>{{ app.load_length_m }} m × {{ app.load_width_m }} m × {{ app.load_height_m }} m</td></tr>
+        <tr><th>Load mass</th><td>{{ app.load_mass_kg|floatformat:"0" }} kg</td></tr>
+        {% if app.notes %}<tr><th>Notes</th><td>{{ app.notes }}</td></tr>{% endif %}
+      </table>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header fw-semibold">Permit lines</div>
+    <div class="card-body p-0">
+      <table class="table table-bordered mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Province</th>
+            <th>Distance (km)</th>
+            <th>Permit fee</th>
+            <th>Agent fee</th>
+            <th>Total inc. agent</th>
+            <th>Embargo</th>
+            <th>Breakdown</th>
+            <th>PDF</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in app.lines.all %}
+          <tr {% if line.is_embargo %}class="table-danger"{% endif %}>
+            <td class="fw-semibold">{{ line.province.name }}</td>
+            <td>{{ line.distance_km }}</td>
+            <td class="text-success fw-bold">R {{ line.fee }}</td>
+            <td class="text-muted">R {{ line.agent_fee }}</td>
+            <td class="fw-bold">R {% widthratio line.fee 1 1 %}</td>
+            <td>
+              {% if line.is_embargo %}
+                <span class="badge bg-danger">⚠ EMBARGO</span>
+              {% else %}
+                <span class="text-success small">Clear</span>
+              {% endif %}
+            </td>
+            <td>
+              <button class="btn btn-link btn-sm p-0" type="button"
+                      data-bs-toggle="collapse" data-bs-target="#bd-{{ line.pk }}">
+                View
+              </button>
+              <div class="collapse" id="bd-{{ line.pk }}">
+                <pre class="small mt-2 mb-0">{{ line.breakdown }}</pre>
+              </div>
+            </td>
+            <td>
+              {% if app.status != 'draft' %}
+              <a href="{% url 'permit_pdf' app.pk line.province.code %}" class="btn btn-outline-secondary btn-sm" target="_blank">PDF</a>
+              {% else %}—{% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="8" class="text-muted">No permit lines yet.</td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light">
+          <tr>
+            <td colspan="2" class="text-end fw-bold">Permit fees total (excl. VAT):</td>
+            <td class="fw-bold text-success">R {{ app.total_fee }}</td>
+            <td colspan="5"></td>
+          </tr>
+          <tr>
+            <td colspan="2" class="text-end fw-bold">VAT (15%):</td>
+            <td class="fw-bold">R {% widthratio app.total_fee 100 15 %}</td>
+            <td colspan="5" class="text-muted small">Calculated on invoice</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  {% if app.status == 'couriered' or app.status == 'delivered' %}
+  <div class="card mb-3">
+    <div class="card-header fw-semibold">Delivery</div>
+    <div class="card-body">
+      <table class="table table-sm mb-0">
+        <tr><th>Courier</th><td>{{ app.courier_company }}</td></tr>
+        <tr><th>Tracking</th><td>{{ app.tracking_number }}</td></tr>
+        {% if app.couriered_at %}<tr><th>Dispatched</th><td>{{ app.couriered_at }}</td></tr>{% endif %}
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="d-flex gap-2 mt-3">
+    {% if app.status == 'draft' %}
+      <form method="post" action="{% url 'permits_submit' app.pk %}">
+        {% csrf_token %}
+        <button class="btn btn-success">Submit &amp; generate invoice</button>
+      </form>
+    {% endif %}
+    {% if app.status != 'draft' %}
+      {% if app.invoice %}
+        <a href="{% url 'billing_detail' app.invoice.pk %}" class="btn btn-outline-primary">View invoice</a>
+      {% endif %}
+    {% endif %}
+    <a href="{% url 'permits_list' %}" class="btn btn-outline-secondary">Back to list</a>
+  </div>
+</div>
+{% endblock %}

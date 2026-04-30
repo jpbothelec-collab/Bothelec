@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block content %}
+<div class="max-w-md bg-white rounded shadow p-6">
+  <h1 class="text-xl font-bold mb-3">Delete {{ vehicle.fleet_number }}?</h1>
+  <form method="post">{% csrf_token %}
+    <button class="bg-red-600 text-white px-4 py-2 rounded">Delete</button>
+    <a href="/fleet/" class="underline ml-2">Cancel</a>
+  </form>
+</div>
+{% endblock %}

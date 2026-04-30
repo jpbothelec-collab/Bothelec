@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}My permit applications{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0">My permit applications</h2>
+    <a href="{% url 'permits_create' %}" class="btn btn-primary">+ New application</a>
+  </div>
+
+  {% if applications %}
+  <table class="table table-hover">
+    <thead class="table-light">
+      <tr>
+        <th>Reference</th>
+        <th>Route</th>
+        <th>Travel date</th>
+        <th>Provinces</th>
+        <th>Total fee</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for app in applications %}
+      <tr>
+        <td class="fw-semibold">{{ app.reference }}</td>
+        <td>{{ app.origin }} → {{ app.destination }}</td>
+        <td>{{ app.travel_date }}</td>
+        <td>{% for line in app.lines.all %}{{ line.province.code }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+        <td class="text-success fw-semibold">R {{ app.total_fee }}</td>
+        <td>
+          <span class="badge
+            {% if app.status == 'draft' %}bg-secondary
+            {% elif app.status == 'submitted' %}bg-warning text-dark
+            {% elif app.status == 'approved' %}bg-success
+            {% elif app.status == 'printed' %}bg-info text-dark
+            {% elif app.status == 'couriered' or app.status == 'delivered' %}bg-primary
+            {% else %}bg-danger{% endif %}">
+            {{ app.get_status_display }}
+          </span>
+        </td>
+        <td><a href="{% url 'permits_detail' app.pk %}" class="btn btn-sm btn-outline-secondary">View</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="alert alert-info">No applications yet. <a href="{% url 'permits_create' %}">Create your first one.</a></div>
+  {% endif %}
+</div>
+{% endblock %}
