@@ -88,6 +88,12 @@ CREATE TABLE identity_documents (
     reviewed_at            TIMESTAMPTZ,
     rejection_reason      TEXT,
 
+    -- POPIA special-PI consent, captured per submission (separate from the
+    -- ToS/Privacy acceptance on the users row). Records when consent was
+    -- given and which version of the consent notice was shown.
+    consent_given_at      TIMESTAMPTZ,
+    consent_version        TEXT,
+
     created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

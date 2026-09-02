@@ -22,6 +22,7 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.dependencies.auth import get_current_user, require_role
 from app.models.schemas import (
+    IdConsentNoticeResponse,
     IdentityDocumentSubmitResponse,
     IdentityDocumentType,
     IdentityReviewDecision,
@@ -31,10 +32,25 @@ from app.models.schemas import (
 )
 from app.repositories import identity_documents as docs_repo
 from app.repositories import users as users_repo
-from app.services import storage
+from app.services import id_consent, storage
 from app.services.age_verification import AgeVerificationError, enforce_minimum_age
 
 router = APIRouter(prefix="/verification", tags=["verification"])
+
+
+@router.get("/id-consent-notice", response_model=IdConsentNoticeResponse)
+async def id_consent_notice():
+    """
+    The current POPIA ID-processing consent notice and its version.
+
+    The document-upload UI reads this to show the user exactly what they are
+    consenting to before they submit an ID document. Submission itself must
+    then set consent_to_id_processing=true (see POST /verification/documents).
+    """
+    return IdConsentNoticeResponse(
+        version=id_consent.current_version(),
+        notice=id_consent.CONSENT_NOTICE,
+    )
 
 
 @router.post("/documents", response_model=IdentityDocumentSubmitResponse,
@@ -42,11 +58,21 @@ router = APIRouter(prefix="/verification", tags=["verification"])
 async def submit_identity_document(
     document_type: IdentityDocumentType,
     file: UploadFile,
+    # POPIA special-PI consent — required, and separate from ToS/Privacy
+    # acceptance. The client must show the notice from GET
+    # /verification/id-consent-notice and pass true here. Enforced server-side.
+    consent_to_id_processing: bool,
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     if current_user.verification_status == VerificationStatus.verified:
         raise HTTPException(status_code=400, detail="This account is already verified.")
+
+    # Gate BEFORE any storage/processing of the document — no consent, no upload.
+    try:
+        consent_version = id_consent.require_consent(consent_to_id_processing)
+    except id_consent.ConsentNotProvidedError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
     # Store encrypted in S3-compatible storage; never keep raw ID scans in the DB.
     storage_path = await storage.store_encrypted(
@@ -58,10 +84,12 @@ async def submit_identity_document(
         user_id=current_user.id,
         document_type=document_type,
         storage_path=storage_path,
+        consent_version=consent_version,
     )
     await users_repo.set_verification_status(db, current_user.id, VerificationStatus.pending_review)
 
-    return IdentityDocumentSubmitResponse(id=doc.id, review_status=doc.review_status)
+    return IdentityDocumentSubmitResponse(id=doc.id, review_status=doc.review_status,
+                                           consent_version=doc.consent_version)
 
 
 @router.post("/documents/{document_id}/review", response_model=IdentityReviewResult)

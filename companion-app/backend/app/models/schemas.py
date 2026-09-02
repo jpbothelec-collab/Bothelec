@@ -101,9 +101,17 @@ class IdentityDocumentType(str, Enum):
     passport = "passport"
 
 
+class IdConsentNoticeResponse(BaseModel):
+    """The current POPIA ID-processing consent notice, for the upload UI to display."""
+    version: str
+    notice: str
+
+
 class IdentityDocumentSubmitResponse(BaseModel):
     id: UUID
     review_status: VerificationStatus
+    # Version of the processing-consent notice recorded against this submission.
+    consent_version: str
     message: str = "Document received and queued for review."
 
 

@@ -23,13 +23,24 @@ async def list_pending(db: AsyncSession) -> list[IdentityDocument]:
 
 
 async def create(
-    db: AsyncSession, *, user_id: UUID, document_type, storage_path: str
+    db: AsyncSession, *, user_id: UUID, document_type, storage_path: str, consent_version: str
 ) -> IdentityDocument:
+    """
+    Persist a submitted ID document.
+
+    `consent_version` is the version of the POPIA processing-consent notice
+    the user agreed to (from app/services/id_consent.require_consent). It is
+    stamped with an acceptance timestamp so each submission carries its own
+    provable consent record. The caller must have already validated that
+    consent was given.
+    """
     doc = IdentityDocument(
         user_id=user_id,
         document_type=document_type.value,
         storage_path=storage_path,
         review_status="pending_review",
+        consent_given_at=datetime.now(timezone.utc),
+        consent_version=consent_version,
     )
     db.add(doc)
     await db.commit()

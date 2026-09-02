@@ -38,6 +38,13 @@ class Settings(BaseSettings):
     TOS_VERSION: str = "2026-09-01"
     PRIVACY_POLICY_VERSION: str = "2026-09-01"
 
+    # Version of the ID-document processing consent notice. An identity
+    # document is *special personal information* under POPIA and requires its
+    # own informed, specific consent, separate from general ToS/Privacy
+    # acceptance. This version is recorded against each submission (see
+    # app/services/id_consent.py). Bump it whenever the notice text changes.
+    ID_PROCESSING_CONSENT_VERSION: str = "2026-09-01"
+
     # --- Age policy ---
     # Platform-enforced minimum age. Intentionally set above the local legal
     # adult age (18) as a risk-management buffer. Do NOT lower this without

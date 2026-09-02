@@ -65,6 +65,11 @@ class IdentityDocument(Base):
     reviewed_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     rejection_reason: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    # POPIA special-PI consent captured at submission time.
+    consent_given_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True),
+                                                               nullable=True)
+    consent_version: Mapped[str | None] = mapped_column(String, nullable=True)
+
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True),
                                                   server_default=func.now())
 
