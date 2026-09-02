@@ -26,14 +26,36 @@ async def get_by_id(db: AsyncSession, user_id: str | UUID) -> User | None:
 
 
 async def create_user(
-    db: AsyncSession, *, email: str, phone: str | None, password_hash: str, role: UserRole
+    db: AsyncSession,
+    *,
+    email: str,
+    phone: str | None,
+    password_hash: str,
+    role: UserRole,
+    tos_version: str,
+    privacy_version: str,
 ) -> User:
+    """
+    Create a new account.
+
+    Callers must pass the legal document versions the user accepted
+    (`tos_version`, `privacy_version`). These come from server-side config
+    (settings.TOS_VERSION / PRIVACY_POLICY_VERSION), never from the client,
+    and are stamped alongside an acceptance timestamp so the agreement is
+    provable per-user. The signup route only reaches this function once
+    acceptance has been validated (see schemas.SignupRequest).
+    """
+    now = datetime.now(timezone.utc)
     user = User(
         email=email,
         phone=phone,
         password_hash=password_hash,
         role=role.value,
         verification_status=VerificationStatus.unverified.value,
+        tos_accepted_at=now,
+        tos_version=tos_version,
+        privacy_accepted_at=now,
+        privacy_version=privacy_version,
     )
     db.add(user)
     await db.commit()

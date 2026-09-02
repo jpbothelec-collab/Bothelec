@@ -50,6 +50,15 @@ CREATE TABLE users (
     verification_status  verification_status NOT NULL DEFAULT 'unverified',
     verified_at           TIMESTAMPTZ,
 
+    -- Legal acceptance capture (POPIA / consent audit). Every account must
+    -- have accepted the Terms of Service and Privacy Policy at signup; we
+    -- record when they accepted and which version, so the agreement is
+    -- provable per-user and a re-acceptance flow can detect stale versions.
+    tos_accepted_at        TIMESTAMPTZ,
+    tos_version            TEXT,
+    privacy_accepted_at    TIMESTAMPTZ,
+    privacy_version        TEXT,
+
     is_active            BOOLEAN NOT NULL DEFAULT TRUE,
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()

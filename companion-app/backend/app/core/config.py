@@ -27,6 +27,17 @@ class Settings(BaseSettings):
     # Where Paystack redirects the browser after checkout completes.
     BILLING_CALLBACK_URL: str = "https://example.com/billing/callback"
 
+    # --- Legal document versions (ToS / Privacy Policy acceptance) ---
+    # The currently-published version of each legal document. These are the
+    # values recorded against a user when they accept at signup, so the
+    # platform has a durable, per-user record of *which* version each person
+    # agreed to (a POPIA / consent-audit requirement). Bump the relevant
+    # version string whenever the corresponding document in legal/ changes
+    # materially — existing users keep the version they accepted, and a
+    # re-acceptance flow can compare their stored version against these.
+    TOS_VERSION: str = "2026-09-01"
+    PRIVACY_POLICY_VERSION: str = "2026-09-01"
+
     # --- Age policy ---
     # Platform-enforced minimum age. Intentionally set above the local legal
     # adult age (18) as a risk-management buffer. Do NOT lower this without

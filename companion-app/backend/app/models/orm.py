@@ -30,6 +30,13 @@ class User(Base):
                                                        default="unverified")
     verified_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Legal acceptance capture — recorded at signup, see repositories/users.create_user.
+    tos_accepted_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    tos_version: Mapped[str | None] = mapped_column(String, nullable=True)
+    privacy_accepted_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True),
+                                                                  nullable=True)
+    privacy_version: Mapped[str | None] = mapped_column(String, nullable=True)
+
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True),
                                                   server_default=func.now())
