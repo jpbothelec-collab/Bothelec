@@ -1,0 +1,135 @@
+"""
+Identity verification routes.
+
+Flow:
+1. User uploads an ID document (POST /verification/documents) -> stored
+   encrypted, status = 'pending_review'. No age claim is trusted yet.
+2. Admin reviews it (POST /verification/documents/{id}/review) and either:
+   - approves with an extracted_dob -> enforce_minimum_age() runs here.
+     If the applicant is under 21, verification is REJECTED automatically
+     regardless of what the admin clicked, and the reason is recorded.
+   - rejects with a reason (bad doc, mismatch, etc.)
+3. Only once verification_status='verified' can a companion profile be
+   published or a client place a booking (enforced in those routers too —
+   this is defense in depth, not the only check).
+"""
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
+from app.db.session import get_db
+from app.dependencies.auth import get_current_user, require_role
+from app.models.schemas import (
+    IdentityDocumentSubmitResponse,
+    IdentityDocumentType,
+    IdentityReviewDecision,
+    IdentityReviewResult,
+    UserRole,
+    VerificationStatus,
+)
+from app.repositories import identity_documents as docs_repo
+from app.repositories import users as users_repo
+from app.services import storage
+from app.services.age_verification import AgeVerificationError, enforce_minimum_age
+
+router = APIRouter(prefix="/verification", tags=["verification"])
+
+
+@router.post("/documents", response_model=IdentityDocumentSubmitResponse,
+             status_code=status.HTTP_201_CREATED)
+async def submit_identity_document(
+    document_type: IdentityDocumentType,
+    file: UploadFile,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.verification_status == VerificationStatus.verified:
+        raise HTTPException(status_code=400, detail="This account is already verified.")
+
+    # Store encrypted in S3-compatible storage; never keep raw ID scans in the DB.
+    storage_path = await storage.store_encrypted(
+        file, prefix=f"identity-docs/{current_user.id}"
+    )
+
+    doc = await docs_repo.create(
+        db,
+        user_id=current_user.id,
+        document_type=document_type,
+        storage_path=storage_path,
+    )
+    await users_repo.set_verification_status(db, current_user.id, VerificationStatus.pending_review)
+
+    return IdentityDocumentSubmitResponse(id=doc.id, review_status=doc.review_status)
+
+
+@router.post("/documents/{document_id}/review", response_model=IdentityReviewResult)
+async def review_identity_document(
+    document_id: UUID,
+    decision: IdentityReviewDecision,
+    admin=Depends(require_role(UserRole.admin)),
+    db: AsyncSession = Depends(get_db),
+):
+    doc = await docs_repo.get(db, document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    if decision.approve:
+        if decision.extracted_dob is None:
+            raise HTTPException(
+                status_code=422, detail="extracted_dob is required to approve a document."
+            )
+
+        try:
+            enforce_minimum_age(decision.extracted_dob)
+        except AgeVerificationError as e:
+            # Hard stop: even an admin approval can't override the age floor.
+            # The document is rejected and the account stays unverified.
+            await docs_repo.mark_reviewed(
+                db, document_id, admin_id=admin.id, approved=False,
+                extracted_dob=decision.extracted_dob,
+                rejection_reason=f"Applicant age {e.computed_age} is below platform minimum "
+                                  f"of {e.minimum_age}.",
+            )
+            await users_repo.set_verification_status(
+                db, doc.user_id, VerificationStatus.rejected
+            )
+            return IdentityReviewResult(
+                user_id=doc.user_id,
+                verification_status=VerificationStatus.rejected,
+                reviewed_at=doc.reviewed_at,
+                detail=str(e),
+            )
+
+        await docs_repo.mark_reviewed(
+            db, document_id, admin_id=admin.id, approved=True,
+            extracted_dob=decision.extracted_dob,
+            extracted_full_name=decision.extracted_full_name,
+        )
+        await users_repo.set_verified(
+            db, doc.user_id, date_of_birth=decision.extracted_dob
+        )
+        return IdentityReviewResult(
+            user_id=doc.user_id,
+            verification_status=VerificationStatus.verified,
+            reviewed_at=doc.reviewed_at,
+            detail="Identity verified.",
+        )
+
+    # Explicit rejection path (bad document, name mismatch, suspected fraud, etc.)
+    if not decision.rejection_reason:
+        raise HTTPException(
+            status_code=422, detail="rejection_reason is required when approve=False."
+        )
+    await docs_repo.mark_reviewed(
+        db, document_id, admin_id=admin.id, approved=False,
+        rejection_reason=decision.rejection_reason,
+    )
+    await users_repo.set_verification_status(db, doc.user_id, VerificationStatus.rejected)
+    return IdentityReviewResult(
+        user_id=doc.user_id,
+        verification_status=VerificationStatus.rejected,
+        reviewed_at=doc.reviewed_at,
+        detail=decision.rejection_reason,
+    )
