@@ -63,6 +63,23 @@ class Settings(BaseSettings):
     # MAX_PORTFOLIO_IMAGES (i.e. everything published).
     CLIENT_FREE_VIEW_LIMIT: int = 5
 
+    # --- Scheduled maintenance jobs (APScheduler) ---
+    # When True, the app starts an in-process AsyncIOScheduler on startup that
+    # runs the retention-purge and lapsed-listing-unpublish jobs daily.
+    # IMPORTANT: in a multi-worker/multi-replica deployment, only ONE process
+    # should run the scheduler, or the jobs will fire once per worker. Either
+    # run a single dedicated scheduler process with this True and the web
+    # workers with it False, or keep the jobs idempotent (they are) and accept
+    # the duplication. The jobs can also always be run standalone via
+    # `python -m app.jobs.<name>` regardless of this setting.
+    SCHEDULER_ENABLED: bool = True
+    # IANA timezone the daily job times below are interpreted in.
+    SCHEDULER_TIMEZONE: str = "Africa/Johannesburg"
+    # Hour (0-23, in SCHEDULER_TIMEZONE) each daily job runs. Staggered so
+    # they don't contend. Minute is fixed at 0.
+    PURGE_JOB_HOUR: int = 2
+    UNPUBLISH_JOB_HOUR: int = 3
+
     # --- File storage (S3-compatible) ---
     S3_BUCKET: str = "companion-platform-uploads"
     S3_REGION: str = "af-south-1"

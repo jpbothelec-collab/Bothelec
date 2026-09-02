@@ -1,8 +1,23 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
+from app import scheduler
 from app.routes import admin, auth, billing, bookings, messaging, profiles, reports, reviews, verification
 
-app = FastAPI(title="Companion Platform API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Start the maintenance-job scheduler (retention purge + lapsed-listing
+    # unpublish) on the app's event loop. Controlled by SCHEDULER_ENABLED.
+    scheduler.start()
+    try:
+        yield
+    finally:
+        scheduler.shutdown()
+
+
+app = FastAPI(title="Companion Platform API", lifespan=lifespan)
 
 app.include_router(auth.router)
 app.include_router(verification.router)
