@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     # Where Paystack redirects the browser after checkout completes.
     BILLING_CALLBACK_URL: str = "https://example.com/billing/callback"
 
+    # Version of the subscription refund/cancellation policy notice (see
+    # app/services/cancellation_policy.py). Recorded/displayed like the other
+    # legal document versions; bump it whenever the policy text changes.
+    # NOTE: the policy text is a DRAFT pending South African CPA/attorney
+    # review — see the module and the Pre-Launch Compliance Checklist.
+    CANCELLATION_POLICY_VERSION: str = "2026-09-01"
+
     # --- Legal document versions (ToS / Privacy Policy acceptance) ---
     # The currently-published version of each legal document. These are the
     # values recorded against a user when they accept at signup, so the

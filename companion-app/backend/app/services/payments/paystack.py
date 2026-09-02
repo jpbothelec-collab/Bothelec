@@ -97,6 +97,28 @@ async def verify_transaction(reference: str) -> dict:
     return await _request("GET", f"/transaction/verify/{reference}")
 
 
+async def fetch_subscription(code: str) -> dict:
+    """
+    Fetch a subscription by its Paystack code (SUB_...). The response
+    includes `email_token`, which is required to disable the subscription —
+    we fetch it on demand rather than persisting it, so there's no long-lived
+    cancellation token stored in our DB.
+    """
+    return await _request("GET", f"/subscription/{code}")
+
+
+async def disable_subscription(*, code: str, token: str) -> dict:
+    """
+    Disable (stop auto-renewal of) a subscription. Paystack requires both the
+    subscription `code` and its `email_token`. This stops future invoices;
+    Paystack then emits a subscription.disable/not_renew webhook, which is
+    where our own subscription row's status is actually updated (never here).
+    """
+    return await _request(
+        "POST", "/subscription/disable", json={"code": code, "token": token}
+    )
+
+
 def verify_webhook_signature(raw_body: bytes, signature_header: str | None) -> bool:
     """
     Paystack signs webhook payloads with HMAC-SHA512 using your secret key,

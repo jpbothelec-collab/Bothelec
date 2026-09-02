@@ -61,6 +61,30 @@ async def has_active_premium_view_subscription(db: AsyncSession, user_id: UUID) 
     return any(_not_expired(s) for s in subs)
 
 
+async def get_active_listing_subscription(db: AsyncSession, profile_id: UUID) -> Subscription | None:
+    """The current non-ended listing subscription row for a profile, if any (for cancellation)."""
+    result = await db.execute(
+        select(Subscription).where(
+            Subscription.profile_id == profile_id,
+            Subscription.plan_code.in_(LISTING_PLAN_CODES),
+            Subscription.status.in_(("active", "trialing", "past_due")),
+        )
+    )
+    return next((s for s in result.scalars().all() if _not_expired(s)), None)
+
+
+async def get_active_premium_subscription(db: AsyncSession, user_id: UUID) -> Subscription | None:
+    """The current non-ended client-premium subscription row for a user, if any (for cancellation)."""
+    result = await db.execute(
+        select(Subscription).where(
+            Subscription.user_id == user_id,
+            Subscription.plan_code.in_(CLIENT_PREMIUM_PLAN_CODES),
+            Subscription.status.in_(("active", "past_due")),
+        )
+    )
+    return next((s for s in result.scalars().all() if _not_expired(s)), None)
+
+
 async def get_by_provider_ref(db: AsyncSession, *, provider: str, provider_subscription_id: str) -> Subscription | None:
     result = await db.execute(
         select(Subscription).where(

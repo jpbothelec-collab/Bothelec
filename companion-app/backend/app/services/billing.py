@@ -26,6 +26,45 @@ class BillingConfigError(Exception):
     """Raised when required billing configuration (e.g. a plan code) is missing."""
 
 
+class SubscriptionNotCancelableError(Exception):
+    """Raised when a subscription can't be cancelled via the provider (e.g. it
+    isn't a real recurring subscription yet, so there's no provider code)."""
+
+
+# Paystack subscription codes look like "SUB_xxxx"; a plan-linked charge that
+# hasn't produced a subscription yet leaves us holding only a transaction
+# reference, which can't be disabled.
+_PAYSTACK_SUBSCRIPTION_PREFIX = "SUB_"
+
+
+async def cancel_subscription(sub) -> None:
+    """
+    Stop auto-renewal of a subscription with the payment provider.
+
+    Deliberately does NOT write to our subscriptions table: subscription
+    status is only ever changed by the verified webhook handler (see
+    routes/billing.py). This asks Paystack to disable the subscription; the
+    resulting subscription.disable/not_renew webhook is what flips our row to
+    'canceled'. The email_token required to disable is fetched on demand
+    rather than stored.
+    """
+    code = sub.provider_subscription_id
+    if not code or not code.startswith(_PAYSTACK_SUBSCRIPTION_PREFIX):
+        raise SubscriptionNotCancelableError(
+            "This subscription has no active recurring billing to cancel. If you "
+            "just subscribed, wait a few minutes for it to activate and try again."
+        )
+
+    remote = await paystack.fetch_subscription(code)
+    email_token = remote.get("email_token")
+    if not email_token:
+        raise SubscriptionNotCancelableError(
+            "Could not retrieve the cancellation token for this subscription."
+        )
+
+    await paystack.disable_subscription(code=code, token=email_token)
+
+
 async def ensure_listing_plan(db, profile: CompanionProfile) -> str:
     """
     Returns a Paystack plan_code whose amount matches

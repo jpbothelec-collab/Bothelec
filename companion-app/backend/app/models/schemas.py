@@ -402,3 +402,17 @@ class CheckoutResponse(BaseModel):
     authorization_url: str
     access_code: str
     reference: str
+
+
+class CancellationPolicyResponse(BaseModel):
+    """The current subscription refund/cancellation policy, for display at checkout/account."""
+    version: str
+    policy: str
+
+
+class SubscriptionCancellationResponse(BaseModel):
+    detail: str = (
+        "Cancellation requested. Your subscription will not renew again; you "
+        "will not be charged for future periods. It may take a moment for the "
+        "cancellation to be confirmed by the payment provider."
+    )
