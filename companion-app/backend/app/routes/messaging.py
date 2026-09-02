@@ -14,7 +14,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies.auth import require_role
+from app.dependencies.auth import require_admin_permission, require_role
+from app.services.admin_access import AdminPermission
 from app.models.schemas import (
     ConversationCreate,
     ConversationResponse,
@@ -126,7 +127,7 @@ async def list_messages(
 
 @router.get("/messages/flagged", response_model=list[FlaggedMessageResponse])
 async def list_flagged_messages(
-    admin=Depends(require_role(UserRole.admin)),
+    admin=Depends(require_admin_permission(AdminPermission.MODERATE_CONTENT)),
     db: AsyncSession = Depends(get_db),
 ):
     """Admin review queue: messages the content filter flagged that haven't been reviewed yet."""
@@ -146,7 +147,7 @@ async def list_flagged_messages(
 async def review_flagged_message(
     message_id: UUID,
     decision: MessageReviewDecision,
-    admin=Depends(require_role(UserRole.admin)),
+    admin=Depends(require_admin_permission(AdminPermission.MODERATE_CONTENT)),
     db: AsyncSession = Depends(get_db),
 ):
     """

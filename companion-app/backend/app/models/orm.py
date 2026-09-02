@@ -30,6 +30,10 @@ class User(Base):
                                                        default="unverified")
     verified_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Admin access tier; only meaningful when role='admin'. NULL == full
+    # access (legacy/bootstrap). See app/services/admin_access.py.
+    admin_level: Mapped[str | None] = mapped_column(String, nullable=True)
+
     # Legal acceptance capture — recorded at signup, see repositories/users.create_user.
     tos_accepted_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     tos_version: Mapped[str | None] = mapped_column(String, nullable=True)

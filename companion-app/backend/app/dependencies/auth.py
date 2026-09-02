@@ -62,6 +62,29 @@ def require_role(*allowed_roles: UserRole):
     return checker
 
 
+def require_admin_permission(permission):
+    """
+    Guard for a specific admin capability (app.services.admin_access.AdminPermission).
+
+    Replaces blanket require_role(UserRole.admin) on admin endpoints so that,
+    e.g., a content moderator cannot ban accounts. The mapping of admin tier
+    to capabilities lives in app/services/admin_access.py.
+    """
+    # Imported here to avoid a circular import (admin_access imports schemas,
+    # this module is imported widely).
+    from app.services import admin_access
+
+    async def checker(current_user=Depends(get_current_user)):
+        if not admin_access.has_permission(current_user, permission):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Requires admin permission: {permission.value}",
+            )
+        return current_user
+
+    return checker
+
+
 def require_verified(current_user=Depends(get_current_user)):
     """Guard for actions that require a completed, passed identity/age check
     (publishing a profile, placing a booking, etc.)."""

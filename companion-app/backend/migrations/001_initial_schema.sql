@@ -50,6 +50,12 @@ CREATE TABLE users (
     verification_status  verification_status NOT NULL DEFAULT 'unverified',
     verified_at           TIMESTAMPTZ,
 
+    -- Admin access tier, only meaningful when role='admin'. NULL is treated
+    -- as full (superadmin) access for backward compatibility with pre-tiering
+    -- bootstrap admins; assign an explicit tier to narrow access. See
+    -- app/services/admin_access.py.
+    admin_level          TEXT,
+
     -- Legal acceptance capture (POPIA / consent audit). Every account must
     -- have accepted the Terms of Service and Privacy Policy at signup; we
     -- record when they accepted and which version, so the agreement is

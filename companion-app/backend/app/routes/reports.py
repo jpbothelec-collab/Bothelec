@@ -12,8 +12,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies.auth import get_current_user, require_role
-from app.models.schemas import ReportCreate, ReportResolution, ReportResponse, UserRole, VerificationStatus
+from app.dependencies.auth import get_current_user, require_admin_permission
+from app.services.admin_access import AdminPermission
+from app.models.schemas import ReportCreate, ReportResolution, ReportResponse, VerificationStatus
 from app.repositories import audit_log as audit_repo
 from app.repositories import reports as reports_repo
 from app.repositories import users as users_repo
@@ -51,7 +52,7 @@ async def create_report(
 
 @router.get("", response_model=list[ReportResponse])
 async def list_pending_reports(
-    admin=Depends(require_role(UserRole.admin)),
+    admin=Depends(require_admin_permission(AdminPermission.MODERATE_CONTENT)),
     db: AsyncSession = Depends(get_db),
 ):
     reports = await reports_repo.list_pending(db)
@@ -62,7 +63,7 @@ async def list_pending_reports(
 async def resolve_report(
     report_id: UUID,
     decision: ReportResolution,
-    admin=Depends(require_role(UserRole.admin)),
+    admin=Depends(require_admin_permission(AdminPermission.MODERATE_CONTENT)),
     db: AsyncSession = Depends(get_db),
 ):
     report = await reports_repo.get_by_id(db, report_id)

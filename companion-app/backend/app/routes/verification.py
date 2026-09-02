@@ -20,14 +20,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.session import get_db
-from app.dependencies.auth import get_current_user, require_role
+from app.dependencies.auth import get_current_user, require_admin_permission
+from app.services.admin_access import AdminPermission
 from app.models.schemas import (
     IdConsentNoticeResponse,
     IdentityDocumentSubmitResponse,
     IdentityDocumentType,
     IdentityReviewDecision,
     IdentityReviewResult,
-    UserRole,
     VerificationStatus,
 )
 from app.repositories import identity_documents as docs_repo
@@ -96,7 +96,7 @@ async def submit_identity_document(
 async def review_identity_document(
     document_id: UUID,
     decision: IdentityReviewDecision,
-    admin=Depends(require_role(UserRole.admin)),
+    admin=Depends(require_admin_permission(AdminPermission.REVIEW_VERIFICATION)),
     db: AsyncSession = Depends(get_db),
 ):
     doc = await docs_repo.get(db, document_id)

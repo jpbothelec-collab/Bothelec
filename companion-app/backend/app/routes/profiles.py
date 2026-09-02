@@ -24,7 +24,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies.auth import get_optional_user, require_role
+from app.dependencies.auth import get_optional_user, require_admin_permission, require_role
+from app.services.admin_access import AdminPermission
 from app.models.schemas import (
     CompanionProfileCreate,
     CompanionProfileResponse,
@@ -377,7 +378,7 @@ async def get_public_profile(
 async def moderate_portfolio_image(
     media_id: UUID,
     decision: MediaModerationDecision,
-    admin=Depends(require_role(UserRole.admin)),
+    admin=Depends(require_admin_permission(AdminPermission.MODERATE_CONTENT)),
     db: AsyncSession = Depends(get_db),
 ):
     """

@@ -79,6 +79,13 @@ async def set_verified(db: AsyncSession, user_id: UUID, *, date_of_birth: date) 
     await db.commit()
 
 
+async def set_admin_level(db: AsyncSession, user_id: UUID, *, admin_level: str) -> None:
+    """Set the admin access tier for a user. Caller must ensure the user is an admin."""
+    user = await get_by_id(db, user_id)
+    user.admin_level = admin_level
+    await db.commit()
+
+
 async def set_active(db: AsyncSession, user_id: UUID, *, is_active: bool) -> None:
     """
     Hard ban/unban toggle — distinct from verification_status='suspended'.

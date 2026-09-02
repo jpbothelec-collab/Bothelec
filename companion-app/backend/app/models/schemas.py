@@ -15,6 +15,18 @@ class UserRole(str, Enum):
     admin = "admin"
 
 
+class AdminLevel(str, Enum):
+    """
+    Access tier for a user whose role is 'admin'. Subdivides the previously
+    all-or-nothing admin access. Each tier maps to a set of capabilities in
+    app/services/admin_access.py — that module is the source of truth for
+    what each tier can do.
+    """
+    moderator = "moderator"      # trust & safety: verification review + content moderation
+    manager = "manager"          # moderator + soft user suspension
+    superadmin = "superadmin"    # full access: also hard bans and managing admin tiers
+
+
 class VerificationStatus(str, Enum):
     unverified = "unverified"
     pending_review = "pending_review"
@@ -365,6 +377,17 @@ class PendingVerificationDocument(BaseModel):
 
 class AdminUserActionResult(BaseModel):
     user_id: UUID
+    detail: str
+
+
+class SetAdminLevelRequest(BaseModel):
+    level: AdminLevel
+
+
+class AdminLevelResponse(BaseModel):
+    user_id: UUID
+    admin_level: AdminLevel
+    permissions: list[str]
     detail: str
 
 
