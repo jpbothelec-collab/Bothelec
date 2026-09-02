@@ -7,12 +7,35 @@ those phases get built out.
 import uuid
 
 from sqlalchemy import Date, DateTime, ForeignKey, Integer, JSON, String, Boolean, func
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, ENUM as PGEnum, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
     pass
+
+
+# These columns are backed by native PostgreSQL ENUM types created in
+# migrations/001_initial_schema.sql. They must be mapped to the matching
+# PG enum (not a plain String) or asyncpg rejects inserts with
+# "column is of type <enum> but expression is of type character varying"
+# (it will not implicitly cast varchar -> enum). create_type=False because
+# the SQL migration already creates the types; SQLAlchemy must not re-emit
+# CREATE TYPE. Values are passed as plain strings, matching how the rest of
+# the code (and the Pydantic enums' .value) reads/writes them.
+_user_role = PGEnum("client", "companion", "agent", "admin",
+                    name="user_role", create_type=False)
+_verification_status = PGEnum("unverified", "pending_review", "verified", "rejected", "suspended",
+                              name="verification_status", create_type=False)
+_subscription_status = PGEnum("trialing", "active", "past_due", "canceled", "expired",
+                              name="subscription_status", create_type=False)
+_booking_status = PGEnum("requested", "accepted", "declined", "canceled", "completed", "no_show",
+                         name="booking_status", create_type=False)
+_companionship_category = PGEnum("dinner_date", "event_plus_one", "travel_companion",
+                                 "social_outing", "other",
+                                 name="companionship_category", create_type=False)
+_report_status = PGEnum("pending", "resolved", "dismissed",
+                        name="report_status", create_type=False)
 
 
 class User(Base):
@@ -23,10 +46,10 @@ class User(Base):
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     phone: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
-    role: Mapped[str] = mapped_column(String, nullable=False)
+    role: Mapped[str] = mapped_column(_user_role, nullable=False)
 
     date_of_birth: Mapped[Date | None] = mapped_column(Date, nullable=True)
-    verification_status: Mapped[str] = mapped_column(String, nullable=False,
+    verification_status: Mapped[str] = mapped_column(_verification_status, nullable=False,
                                                        default="unverified")
     verified_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -63,7 +86,7 @@ class IdentityDocument(Base):
     extracted_dob: Mapped[Date | None] = mapped_column(Date, nullable=True)
     extracted_full_name: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    review_status: Mapped[str] = mapped_column(String, nullable=False, default="pending_review")
+    review_status: Mapped[str] = mapped_column(_verification_status, nullable=False, default="pending_review")
     reviewed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True),
                                                            ForeignKey("users.id"), nullable=True)
     reviewed_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -92,7 +115,7 @@ class CompanionProfile(Base):
     display_name: Mapped[str] = mapped_column(String, nullable=False)
     bio: Mapped[str | None] = mapped_column(String, nullable=True)
     city: Mapped[str | None] = mapped_column(String, nullable=True)
-    categories: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, default=list)
+    categories: Mapped[list[str]] = mapped_column(ARRAY(_companionship_category), nullable=False, default=list)
     indicative_rate_note: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Monthly platform listing fee for THIS profile, in ZAR cents. Set by
@@ -146,7 +169,7 @@ class Subscription(Base):
     provider_plan_code: Mapped[str | None] = mapped_column(String, nullable=True)
     provider_customer_code: Mapped[str | None] = mapped_column(String, nullable=True)
     plan_code: Mapped[str] = mapped_column(String, nullable=False)
-    status: Mapped[str] = mapped_column(String, nullable=False, default="trialing")
+    status: Mapped[str] = mapped_column(_subscription_status, nullable=False, default="trialing")
 
     current_period_start: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True),
                                                                     nullable=True)
@@ -169,12 +192,12 @@ class Booking(Base):
     profile_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True),
                                                    ForeignKey("companion_profiles.id"))
 
-    category: Mapped[str] = mapped_column(String, nullable=False)
+    category: Mapped[str] = mapped_column(_companionship_category, nullable=False)
     requested_start: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False)
     requested_end: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     location_note: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    status: Mapped[str] = mapped_column(String, nullable=False, default="requested")
+    status: Mapped[str] = mapped_column(_booking_status, nullable=False, default="requested")
     agreed_fee_note: Mapped[str | None] = mapped_column(String, nullable=True)
 
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True),
@@ -249,7 +272,7 @@ class UserReport(Base):
         UUID(as_uuid=True), ForeignKey("bookings.id"), nullable=True
     )
 
-    status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
+    status: Mapped[str] = mapped_column(_report_status, nullable=False, default="pending")
     resolution_note: Mapped[str | None] = mapped_column(String, nullable=True)
     reviewed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True),
                                                            ForeignKey("users.id"), nullable=True)
