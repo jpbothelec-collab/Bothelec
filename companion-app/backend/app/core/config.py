@@ -27,6 +27,16 @@ class Settings(BaseSettings):
     # Where Paystack redirects the browser after checkout completes.
     BILLING_CALLBACK_URL: str = "https://example.com/billing/callback"
 
+    # Browser origins allowed to call the API (the Next.js frontend). Comma-
+    # separated in the env var; the web UI can't call the API cross-origin
+    # without its origin listed here. Set to the deployed frontend URL(s) in
+    # production.
+    CORS_ORIGINS: str = "http://localhost:3000"
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
     # Version of the subscription refund/cancellation policy notice (see
     # app/services/cancellation_policy.py). Recorded/displayed like the other
     # legal document versions; bump it whenever the policy text changes.
