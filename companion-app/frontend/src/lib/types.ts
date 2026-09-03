@@ -187,3 +187,18 @@ export const ADMIN_LEVEL_LABELS: Record<AdminLevel, string> = {
   manager: "Manager",
   superadmin: "Super admin",
 };
+
+export type ReportReason =
+  | "harassment"
+  | "solicitation"
+  | "fraud"
+  | "safety_concern"
+  | "other";
+
+export const REPORT_REASON_LABELS: Record<ReportReason, string> = {
+  harassment: "Harassment or abuse",
+  solicitation: "Solicitation of unlawful services",
+  fraud: "Fraud or scam",
+  safety_concern: "Safety concern",
+  other: "Something else",
+};

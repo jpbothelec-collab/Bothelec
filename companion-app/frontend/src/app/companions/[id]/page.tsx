@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { useApi, useAction } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth";
 import { Alert, Badge, Button, Card, Field, Input, Loading, Select, Stars, Textarea } from "@/components/ui";
+import { ReportDialog } from "@/components/report-dialog";
 import { CATEGORY_LABELS, type CompanionProfile, type CompanionshipCategory } from "@/lib/types";
 
 export default function CompanionPage({ params }: { params: { id: string } }) {
@@ -44,6 +45,9 @@ export default function CompanionPage({ params }: { params: { id: string } }) {
               ))}
             </div>
           )}
+          <div className="mt-3">
+            <ReportDialog reportedUserId={p.user_id} reportedName={p.display_name} />
+          </div>
         </header>
 
         <Gallery profile={p} />

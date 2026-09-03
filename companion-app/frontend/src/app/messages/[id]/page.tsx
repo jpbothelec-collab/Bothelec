@@ -6,6 +6,7 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { RequireAuth } from "@/components/guard";
 import { Alert, Button, Loading } from "@/components/ui";
+import { ReportDialog } from "@/components/report-dialog";
 import type { Message } from "@/lib/types";
 
 export default function ThreadPage({ params }: { params: { id: string } }) {
@@ -24,6 +25,8 @@ function Thread({ conversationId }: { conversationId: string }) {
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  // The other participant, derived from a message they sent.
+  const counterpartId = messages?.find((m) => m.sender_id !== user?.id)?.sender_id;
 
   async function load() {
     try {
@@ -69,9 +72,12 @@ function Thread({ conversationId }: { conversationId: string }) {
       <Link href="/messages" className="text-sm text-muted hover:text-ink">
         ← All messages
       </Link>
-      <h1 className="mt-2 font-display text-2xl font-semibold tracking-tight text-ink">
-        Conversation
-      </h1>
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Conversation</h1>
+        {counterpartId && (
+          <ReportDialog reportedUserId={counterpartId} relatedBookingId={undefined} />
+        )}
+      </div>
 
       <div className="mt-4 flex-1">
         {messages === null && <Loading />}

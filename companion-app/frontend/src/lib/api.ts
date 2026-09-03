@@ -14,6 +14,7 @@ import type {
   Message,
   PendingVerificationDocument,
   ProfileSearch,
+  ReportReason,
   ReportResponse,
   Review,
   SignupResponse,
@@ -224,6 +225,14 @@ export const api = {
     request<Review[]>(`/profiles/${profileId}/reviews`, { auth: false }),
   createReview: (bookingId: string, b: { rating: number; comment?: string }) =>
     request<Review>(`/bookings/${bookingId}/review`, { method: "POST", body: b }),
+
+  // --- reports (trust & safety) ---
+  createReport: (b: {
+    reported_user_id: string;
+    reason: ReportReason;
+    details?: string;
+    related_booking_id?: string;
+  }) => request<ReportResponse>("/reports", { method: "POST", body: b }),
 
   // --- billing ---
   cancellationPolicy: () =>
