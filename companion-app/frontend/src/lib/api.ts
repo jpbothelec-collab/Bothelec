@@ -15,6 +15,7 @@ import type {
   PendingVerificationDocument,
   ProfileSearch,
   ReportResponse,
+  Review,
   SignupResponse,
   TokenResponse,
   UserRole,
@@ -217,6 +218,12 @@ export const api = {
   myBookings: () => request<Booking[]>("/bookings/me"),
   setBookingStatus: (id: string, status: BookingStatus) =>
     request<Booking>(`/bookings/${id}/status`, { method: "POST", body: { status } }),
+
+  // --- reviews ---
+  profileReviews: (profileId: string) =>
+    request<Review[]>(`/profiles/${profileId}/reviews`, { auth: false }),
+  createReview: (bookingId: string, b: { rating: number; comment?: string }) =>
+    request<Review>(`/bookings/${bookingId}/review`, { method: "POST", body: b }),
 
   // --- billing ---
   cancellationPolicy: () =>

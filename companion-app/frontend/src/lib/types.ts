@@ -109,6 +109,16 @@ export interface Message {
   created_at: string;
 }
 
+export interface Review {
+  id: string;
+  booking_id: string;
+  author_id: string;
+  profile_id: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+}
+
 export interface Booking {
   id: string;
   profile_id: string;

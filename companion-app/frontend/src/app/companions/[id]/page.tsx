@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useApi, useAction } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth";
-import { Alert, Badge, Button, Card, Field, Input, Loading, Select, Textarea } from "@/components/ui";
+import { Alert, Badge, Button, Card, Field, Input, Loading, Select, Stars, Textarea } from "@/components/ui";
 import { CATEGORY_LABELS, type CompanionProfile, type CompanionshipCategory } from "@/lib/types";
 
 export default function CompanionPage({ params }: { params: { id: string } }) {
@@ -26,14 +26,15 @@ export default function CompanionPage({ params }: { params: { id: string } }) {
             </h1>
             {p.city && <span className="text-sm text-muted">{p.city}</span>}
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-muted">
-            {p.average_rating != null && (
-              <span className="text-ink">
-                ★ {p.average_rating.toFixed(1)}{" "}
-                <span className="text-faint">({p.review_count})</span>
+          {p.average_rating != null && (
+            <div className="mt-2 flex items-center gap-2 text-sm text-muted">
+              <Stars value={p.average_rating} />
+              <span className="text-ink">{p.average_rating.toFixed(1)}</span>
+              <span className="text-faint">
+                ({p.review_count} review{p.review_count === 1 ? "" : "s"})
               </span>
-            )}
-          </div>
+            </div>
+          )}
           {p.categories.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-1.5">
               {p.categories.map((c) => (
@@ -74,12 +75,40 @@ export default function CompanionPage({ params }: { params: { id: string } }) {
             </p>
           </Card>
         )}
+
+        <Reviews profileId={p.id} count={p.review_count} />
       </div>
 
       <aside className="lg:sticky lg:top-24 lg:self-start">
         <BookingPanel profile={p} />
       </aside>
     </div>
+  );
+}
+
+function Reviews({ profileId, count }: { profileId: string; count: number }) {
+  const { data, loading } = useApi(() => api.profileReviews(profileId), [profileId]);
+  if (count === 0 && (!data || data.length === 0)) return null;
+  return (
+    <section>
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Reviews</h2>
+      {loading && <Loading />}
+      <div className="mt-3 flex flex-col gap-3">
+        {data?.map((r) => (
+          <Card key={r.id} className="p-4">
+            <div className="flex items-center justify-between">
+              <Stars value={r.rating} />
+              <span className="text-xs text-faint">
+                {new Date(r.created_at).toLocaleDateString()}
+              </span>
+            </div>
+            {r.comment && (
+              <p className="mt-2 whitespace-pre-wrap text-sm text-ink">{r.comment}</p>
+            )}
+          </Card>
+        ))}
+      </div>
+    </section>
   );
 }
 
