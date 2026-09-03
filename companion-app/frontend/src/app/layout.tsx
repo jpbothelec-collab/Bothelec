@@ -26,6 +26,10 @@ const fraunces = Fraunces({
 export const metadata: Metadata = {
   title: "Amicora",
   description: "South African companionship listing platform.",
+  // RTA ("Restricted to Adults") label — a standard, machine-readable marker
+  // that parental-control and content-filtering software detects to block
+  // this site on children's devices. See https://www.rtalabel.org
+  other: { rating: "RTA-5042-1996-1400-1577-RTA" },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

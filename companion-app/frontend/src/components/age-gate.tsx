@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useEffect } from "react";
 
 const KEY = "amicora_age_ok";
 
@@ -37,15 +38,31 @@ export function AgeGate() {
   // While checking, and whenever the gate/block is shown, cover the page so
   // no content flashes before the visitor confirms.
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ground p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-ground p-4">
       {status === "gate" && (
-        <div className="w-full max-w-md rounded-xl2 border border-hair bg-surface p-7 text-center shadow-card">
-          <span className="font-display text-2xl font-semibold tracking-tight text-ink">Amicora</span>
-          <h1 className="mt-4 font-display text-xl font-semibold text-ink">Are you 18 or older?</h1>
-          <p className="mt-2 text-sm leading-relaxed text-muted">
-            Amicora contains content intended for adults. Please confirm your age to continue. Listed
-            companions are separately age- and identity-verified (21+).
-          </p>
+        <div className="my-auto w-full max-w-lg rounded-xl2 border border-hair bg-surface p-7 shadow-card">
+          <div className="text-center">
+            <span className="font-display text-2xl font-semibold tracking-tight text-ink">
+              Amicora
+            </span>
+            <h1 className="mt-4 font-display text-xl font-semibold text-ink">
+              Are you 18 or older?
+            </h1>
+            <p className="mt-2 text-sm leading-relaxed text-muted">
+              Amicora contains content intended for adults. Please confirm your age to continue.
+              Listed companions are separately age- and identity-verified (21+).
+            </p>
+          </div>
+
+          {/* Legal statement on underage access */}
+          <div className="mt-5 rounded-lg bg-block-soft px-4 py-3 text-sm leading-relaxed text-block">
+            <span className="font-semibold">Access by anyone under 18 is strictly prohibited.</span>{" "}
+            Amicora is intended solely for consenting adults. If you are under 18 — or if viewing
+            adult material is unlawful where you are — you must leave now. Providing false
+            confirmation of your age, or knowingly allowing a minor to access this site, is a
+            violation of our Terms and may be unlawful.
+          </div>
+
           <div className="mt-6 flex flex-col gap-2">
             <button
               type="button"
@@ -59,12 +76,43 @@ export function AgeGate() {
               onClick={() => setStatus("blocked")}
               className="rounded-lg px-4 py-2.5 text-sm font-medium text-muted hover:text-ink"
             >
-              I am under 18
+              I am under 18 — leave
             </button>
           </div>
-          <p className="mt-4 text-xs text-faint">
-            By entering you confirm you are at least 18 years old.
+          <p className="mt-3 text-center text-xs text-faint">
+            By entering you confirm you are at least 18 years old and agree to our Terms.
           </p>
+
+          {/* Guidance for parents/guardians */}
+          <details className="mt-5 border-t border-hair pt-4 text-sm">
+            <summary className="cursor-pointer font-medium text-accent-ink">
+              Parents &amp; guardians: how to block this site for children
+            </summary>
+            <div className="mt-3 flex flex-col gap-3 text-muted">
+              <p>
+                This website is labelled{" "}
+                <abbr title="Restricted to Adults" className="font-medium text-ink no-underline">
+                  RTA (&ldquo;Restricted to Adults&rdquo;)
+                </abbr>
+                , a standard label that parental-control and content-filtering software recognises
+                automatically. You can also restrict access yourself:
+              </p>
+              <ul className="flex flex-col gap-2">
+                {GUIDELINES.map((g) => (
+                  <li key={g.title} className="flex gap-2.5">
+                    <span className="mt-2 h-1.5 w-1.5 flex-none rounded-full bg-accent" />
+                    <span>
+                      <span className="font-medium text-ink">{g.title}.</span> {g.body}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-faint">
+                No filter is perfect — combining device, network and account controls with an open
+                conversation about online safety works best.
+              </p>
+            </div>
+          </details>
         </div>
       )}
 
@@ -72,10 +120,31 @@ export function AgeGate() {
         <div className="max-w-md text-center">
           <h1 className="font-display text-xl font-semibold text-ink">You must be 18 or older</h1>
           <p className="mt-2 text-sm text-muted">
-            We&apos;re sorry, but you can&apos;t access Amicora. You may close this page.
+            We&apos;re sorry, but you can&apos;t access Amicora. Please close this page. If you are a
+            parent or guardian, see the guidance on the previous screen for blocking adult sites on
+            your child&apos;s devices.
           </p>
         </div>
       )}
     </div>
   );
 }
+
+const GUIDELINES = [
+  {
+    title: "Built-in device controls",
+    body: "Apple Screen Time (Content & Privacy Restrictions), Google Family Link, and Microsoft Family Safety can block adult and unrated websites on phones, tablets and computers.",
+  },
+  {
+    title: "Content-filtering apps",
+    body: "Dedicated tools such as Net Nanny, Qustodio, Bark or Canopy filter adult content across devices and let you set per-child rules.",
+  },
+  {
+    title: "Home network & router",
+    body: "Many routers include family/parental filters; DNS services like Cloudflare for Families (1.1.1.3), OpenDNS FamilyShield or CleanBrowsing block adult sites for every device on your Wi-Fi.",
+  },
+  {
+    title: "Browser & search settings",
+    body: "Turn on SafeSearch (Google, Bing) and your browser's built-in content restrictions, and keep devices in shared family spaces.",
+  },
+];
