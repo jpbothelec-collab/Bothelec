@@ -117,6 +117,8 @@ class CompanionProfile(Base):
     city: Mapped[str | None] = mapped_column(String, nullable=True)
     categories: Mapped[list[str]] = mapped_column(ARRAY(_companionship_category), nullable=False, default=list)
     indicative_rate_note: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Free-text contact details the lister chooses to publish (WhatsApp, email, …).
+    contact_details: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Monthly platform listing fee for THIS profile, in ZAR cents. Set by
     # the companion (self-managed) or by the managing agent — agents can

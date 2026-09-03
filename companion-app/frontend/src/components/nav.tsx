@@ -26,6 +26,8 @@ export function SiteHeader() {
   const { user, ready, logout } = useAuth();
   const isAdmin = user?.role === "admin";
   const isProvider = user?.role === "companion" || user?.role === "agent";
+  const canMessage =
+    user?.role === "client" || user?.role === "companion" || user?.role === "agent";
 
   return (
     <header className="sticky top-0 z-20 border-b border-hair bg-ground/85 backdrop-blur">
@@ -36,6 +38,7 @@ export function SiteHeader() {
         <nav className="flex items-center gap-0.5">
           <NavLink href="/browse">Browse</NavLink>
           {user && <NavLink href="/bookings">Bookings</NavLink>}
+          {canMessage && <NavLink href="/messages">Messages</NavLink>}
           {isProvider && <NavLink href="/profile">My profile</NavLink>}
           {user && <NavLink href="/account">Account</NavLink>}
           {isAdmin && <NavLink href="/admin">Admin</NavLink>}

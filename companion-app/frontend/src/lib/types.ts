@@ -52,26 +52,60 @@ export interface CancellationPolicy {
   policy: string;
 }
 
-export interface PublicProfile {
+export interface PortfolioMedia {
   id: string;
-  display_name: string;
-  bio: string | null;
-  city: string | null;
-  categories: CompanionshipCategory[];
-  indicative_rate_note: string | null;
-  image_urls: string[];
-  images_locked: number; // how many additional images are premium-locked
+  media_type: string;
+  display_order: number;
+  moderation_status: string;
+  created_at: string;
 }
 
-export interface MyProfile {
+// Matches the backend's CompanionProfileResponse (app/models/schemas.py).
+// Used for both the public (viewer-gated) and owner views — image counts and
+// images_locked reflect what the current viewer may see.
+export interface CompanionProfile {
   id: string;
+  user_id: string;
+  agent_id: string | null;
   display_name: string;
   bio: string | null;
   city: string | null;
   categories: CompanionshipCategory[];
   indicative_rate_note: string | null;
-  monthly_listing_fee_cents: number;
+  contact_details: string | null;
   is_published: boolean;
+  published_at: string | null;
+  monthly_listing_fee_zar: number;
+  average_rating: number | null;
+  review_count: number;
+  total_image_count: number;
+  visible_image_count: number;
+  images_locked: boolean;
+  media: PortfolioMedia[];
+}
+
+export interface ProfileSearch {
+  items: CompanionProfile[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface Conversation {
+  id: string;
+  booking_id: string | null;
+  client_id: string;
+  companion_id: string;
+  created_at: string;
+}
+
+export interface Message {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  body: string;
+  created_at: string;
 }
 
 export interface Booking {

@@ -55,10 +55,10 @@ export default function BrowsePage() {
       <div className="mt-8">
         {loading && <Loading />}
         {error && <Alert>{error}</Alert>}
-        {data && data.length === 0 && <Empty>No companions match those filters yet.</Empty>}
-        {data && data.length > 0 && (
+        {data && data.items.length === 0 && <Empty>No companions match those filters yet.</Empty>}
+        {data && data.items.length > 0 && (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            {data.map((p) => (
+            {data.items.map((p) => (
               <ProfileCard key={p.id} p={p} />
             ))}
           </div>

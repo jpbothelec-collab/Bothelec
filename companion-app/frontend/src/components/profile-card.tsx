@@ -1,22 +1,21 @@
 import Link from "next/link";
 import { Badge } from "./ui";
-import { CATEGORY_LABELS, type PublicProfile } from "@/lib/types";
+import { CATEGORY_LABELS, type CompanionProfile } from "@/lib/types";
 
-export function ProfileCard({ p }: { p: PublicProfile }) {
-  const cover = p.image_urls[0];
+export function ProfileCard({ p }: { p: CompanionProfile }) {
   return (
     <Link
       href={`/companions/${p.id}`}
       className="group flex flex-col overflow-hidden rounded-xl2 border border-hair bg-surface shadow-card transition-transform hover:-translate-y-0.5"
     >
-      <div className="relative aspect-[4/5] overflow-hidden bg-surface-2">
-        {cover ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={cover} alt={p.display_name} className="h-full w-full object-cover" />
-        ) : (
-          <div className="flex h-full items-center justify-center font-display text-4xl text-hair-strong">
-            {p.display_name.slice(0, 1)}
-          </div>
+      <div className="relative flex aspect-[4/5] items-center justify-center bg-accent-soft">
+        <span className="font-display text-5xl font-semibold text-accent-ink/70">
+          {p.display_name.slice(0, 1).toUpperCase()}
+        </span>
+        {p.total_image_count > 0 && (
+          <span className="absolute bottom-2 right-2 rounded-full bg-black/55 px-2 py-0.5 text-xs font-medium text-white">
+            {p.total_image_count} photo{p.total_image_count > 1 ? "s" : ""}
+          </span>
         )}
       </div>
       <div className="flex flex-col gap-2 p-4">

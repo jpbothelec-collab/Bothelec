@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import { useApi, useAction } from "@/lib/useApi";
 import { RequireAuth } from "@/components/guard";
 import { Alert, Badge, Button, Card, Field, Input, Loading, Textarea } from "@/components/ui";
-import { CATEGORY_LABELS, type CompanionshipCategory, type MyProfile } from "@/lib/types";
+import { CATEGORY_LABELS, type CompanionProfile, type CompanionshipCategory } from "@/lib/types";
 
 export default function ProfilePage() {
   return (
@@ -56,17 +56,18 @@ function CreateProfile({ onCreated }: { onCreated: () => void }) {
   );
 }
 
-function ProfileEditor({ profile, onSaved }: { profile: MyProfile; onSaved: () => void }) {
+function ProfileEditor({ profile, onSaved }: { profile: CompanionProfile; onSaved: () => void }) {
   const [displayName, setDisplayName] = useState(profile.display_name);
   const [bio, setBio] = useState(profile.bio ?? "");
   const [city, setCity] = useState(profile.city ?? "");
   const [rate, setRate] = useState(profile.indicative_rate_note ?? "");
+  const [contact, setContact] = useState(profile.contact_details ?? "");
   const [cats, setCats] = useState<CompanionshipCategory[]>(profile.categories);
-  const [feeRands, setFeeRands] = useState(String(profile.monthly_listing_fee_cents / 100));
+  const [feeRands, setFeeRands] = useState(String(profile.monthly_listing_fee_zar));
   const { loading, error, run } = useAction();
   const [ok, setOk] = useState<string | null>(null);
 
-  useEffect(() => setOk(null), [displayName, bio, city, rate, cats]);
+  useEffect(() => setOk(null), [displayName, bio, city, rate, contact, cats]);
 
   function toggleCat(c: CompanionshipCategory) {
     setCats((cur) => (cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c]));
@@ -80,11 +81,12 @@ function ProfileEditor({ profile, onSaved }: { profile: MyProfile; onSaved: () =
         bio,
         city,
         indicative_rate_note: rate,
+        contact_details: contact,
         categories: cats,
       });
-      const cents = Math.round(parseFloat(feeRands || "0") * 100);
-      if (cents !== profile.monthly_listing_fee_cents) {
-        await api.setListingFee(profile.id, cents);
+      const zar = parseFloat(feeRands || "0");
+      if (zar !== profile.monthly_listing_fee_zar) {
+        await api.setListingFee(profile.id, zar);
       }
       setOk("Profile saved.");
       onSaved();
@@ -134,6 +136,17 @@ function ProfileEditor({ profile, onSaved }: { profile: MyProfile; onSaved: () =
             </Field>
             <Field label="Indicative rate note" hint="Informational only — settled off-platform.">
               <Input value={rate} onChange={(e) => setRate(e.target.value)} placeholder="e.g. From R1500 / evening" />
+            </Field>
+            <Field
+              label="Contact details"
+              hint="Optional — how clients can reach you (e.g. WhatsApp, email). Shown on your public profile."
+            >
+              <Textarea
+                value={contact}
+                onChange={(e) => setContact(e.target.value)}
+                placeholder="WhatsApp +27 …  ·  you@example.com"
+                className="min-h-16"
+              />
             </Field>
             <div>
               <span className="text-sm font-medium text-ink">Categories</span>

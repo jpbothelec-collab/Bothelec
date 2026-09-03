@@ -5,13 +5,15 @@ import type {
   Booking,
   BookingStatus,
   CancellationPolicy,
+  CompanionProfile,
   CompanionshipCategory,
+  Conversation,
   FlaggedMessage,
   IdConsentNotice,
   LegalVersions,
-  MyProfile,
+  Message,
   PendingVerificationDocument,
-  PublicProfile,
+  ProfileSearch,
   ReportResponse,
   SignupResponse,
   TokenResponse,
@@ -142,26 +144,54 @@ export const api = {
 
   // --- profiles ---
   searchProfiles: (q?: { city?: string; category?: CompanionshipCategory; page?: number }) =>
-    request<PublicProfile[]>("/profiles", { auth: false, query: q }),
+    request<ProfileSearch>("/profiles", { auth: false, query: q }),
   publicProfile: (id: string) =>
-    request<PublicProfile>(`/profiles/${id}`, { auth: false }),
-  myProfile: () => request<MyProfile>("/profiles/me"),
+    request<CompanionProfile>(`/profiles/${id}`, { auth: false }),
+  myProfile: () => request<CompanionProfile>("/profiles/me"),
   createProfile: (b: {
     display_name: string;
     bio?: string;
     city?: string;
     categories?: CompanionshipCategory[];
     indicative_rate_note?: string;
-  }) => request<MyProfile>("/profiles", { method: "POST", body: b }),
-  updateMyProfile: (b: Partial<MyProfile>) =>
-    request<MyProfile>("/profiles/me", { method: "PATCH", body: b }),
-  setListingFee: (profileId: string, cents: number) =>
-    request<MyProfile>(`/profiles/${profileId}/listing-fee`, {
+    contact_details?: string;
+  }) => request<CompanionProfile>("/profiles", { method: "POST", body: b }),
+  updateMyProfile: (b: {
+    display_name?: string;
+    bio?: string;
+    city?: string;
+    categories?: CompanionshipCategory[];
+    indicative_rate_note?: string;
+    contact_details?: string;
+  }) => request<CompanionProfile>("/profiles/me", { method: "PATCH", body: b }),
+  setListingFee: (profileId: string, monthlyFeeZar: number) =>
+    request<CompanionProfile>(`/profiles/${profileId}/listing-fee`, {
       method: "PATCH",
-      body: { monthly_listing_fee_cents: cents },
+      body: { monthly_fee_zar: monthlyFeeZar },
     }),
-  publishMyProfile: () => request<MyProfile>("/profiles/me/publish", { method: "POST" }),
-  unpublishMyProfile: () => request<MyProfile>("/profiles/me/unpublish", { method: "POST" }),
+  publishMyProfile: () => request<{ id: string; is_published: boolean; detail: string }>(
+    "/profiles/me/publish",
+    { method: "POST" },
+  ),
+  unpublishMyProfile: () => request<{ id: string; is_published: boolean; detail: string }>(
+    "/profiles/me/unpublish",
+    { method: "POST" },
+  ),
+
+  // --- messaging ---
+  startConversation: (profileId: string, bookingId?: string) =>
+    request<Conversation>("/conversations", {
+      method: "POST",
+      body: { profile_id: profileId, booking_id: bookingId },
+    }),
+  myConversations: () => request<Conversation[]>("/conversations/me"),
+  conversationMessages: (conversationId: string) =>
+    request<Message[]>(`/conversations/${conversationId}/messages`),
+  sendMessage: (conversationId: string, body: string) =>
+    request<Message>(`/conversations/${conversationId}/messages`, {
+      method: "POST",
+      body: { body },
+    }),
 
   // --- bookings ---
   createBooking: (b: {

@@ -158,6 +158,7 @@ class CompanionProfileCreate(BaseModel):
     city: str | None = None
     categories: list[CompanionshipCategory] = Field(default_factory=list)
     indicative_rate_note: str | None = Field(default=None, max_length=500)
+    contact_details: str | None = Field(default=None, max_length=500)
 
 
 class CompanionProfileUpdate(BaseModel):
@@ -166,6 +167,7 @@ class CompanionProfileUpdate(BaseModel):
     city: str | None = None
     categories: list[CompanionshipCategory] | None = None
     indicative_rate_note: str | None = Field(default=None, max_length=500)
+    contact_details: str | None = Field(default=None, max_length=500)
 
 
 class ListingFeeUpdate(BaseModel):
@@ -195,6 +197,7 @@ class CompanionProfileResponse(BaseModel):
     city: str | None
     categories: list[CompanionshipCategory]
     indicative_rate_note: str | None
+    contact_details: str | None
     is_published: bool
     published_at: datetime | None
     monthly_listing_fee_zar: float

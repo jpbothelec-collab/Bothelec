@@ -127,6 +127,12 @@ CREATE TABLE companion_profiles (
     -- settled directly between client and companion/agent, off-platform.
     indicative_rate_note  TEXT,
 
+    -- Free-text contact details the companion/agent chooses to publish on
+    -- the profile (e.g. WhatsApp, email). Optional. Since the companionship
+    -- arrangement is settled off-platform, listers may share how to reach
+    -- them here.
+    contact_details       TEXT,
+
     -- Monthly platform LISTING fee for this specific profile. Set by the
     -- companion (self-managed) or by the managing agent. Agents can set a
     -- different fee per companion they manage — this is NOT the booking

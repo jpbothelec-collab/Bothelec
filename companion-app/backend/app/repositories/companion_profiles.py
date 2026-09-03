@@ -68,6 +68,7 @@ async def create(db: AsyncSession, *, user_id: UUID, data) -> CompanionProfile:
         city=data.city,
         categories=[c.value for c in data.categories],
         indicative_rate_note=data.indicative_rate_note,
+        contact_details=data.contact_details,
     )
     db.add(profile)
     await db.commit()
