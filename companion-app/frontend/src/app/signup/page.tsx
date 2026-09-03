@@ -11,8 +11,8 @@ import type { UserRole } from "@/lib/types";
 
 const ROLE_OPTIONS: { value: UserRole; label: string; hint: string }[] = [
   { value: "client", label: "Client", hint: "Browse and book companions" },
-  { value: "companion", label: "Companion", hint: "List your own profile" },
-  { value: "agent", label: "Agent", hint: "Manage profiles on behalf of companions" },
+  { value: "companion", label: "Companion", hint: "List your own profile (independent or with an agency)" },
+  { value: "agent", label: "Agency", hint: "Manage a roster of companions" },
 ];
 
 export default function SignupPage() {

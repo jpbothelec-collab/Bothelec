@@ -56,6 +56,12 @@ CREATE TABLE users (
     -- app/services/admin_access.py.
     admin_level          TEXT,
 
+    -- Agency identity (only meaningful for role='agent'). agency_code is a
+    -- shareable join code companions enter to link their profile to this
+    -- agency; see companion_profiles.agent_id.
+    agency_name          TEXT,
+    agency_code          TEXT UNIQUE,
+
     -- Legal acceptance capture (POPIA / consent audit). Every account must
     -- have accepted the Terms of Service and Privacy Policy at signup; we
     -- record when they accepted and which version, so the agreement is
@@ -146,6 +152,13 @@ CREATE TABLE companion_profiles (
     provider_plan_synced_fee_cents INTEGER,
 
     is_published          BOOLEAN NOT NULL DEFAULT FALSE,  -- can only flip TRUE if user.verification_status = 'verified'
+
+    -- "Available now" toggle. availability_bumped_at drives search ranking:
+    -- available profiles sort to the top, most-recently-bumped first, and a
+    -- scheduled rotation job periodically re-bumps them so each available
+    -- lister takes a turn at the top.
+    is_available          BOOLEAN NOT NULL DEFAULT FALSE,
+    availability_bumped_at TIMESTAMPTZ,
     published_at            TIMESTAMPTZ,
 
     created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),

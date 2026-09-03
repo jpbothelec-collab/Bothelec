@@ -20,9 +20,11 @@ import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.config import settings
 from app.jobs.purge_identity_documents import purge_expired_documents
+from app.jobs.rotate_available_listings import rotate_available_listings
 from app.jobs.unpublish_expired_listings import unpublish_expired_listings
 
 logger = logging.getLogger(__name__)
@@ -40,6 +42,12 @@ async def _run_unpublish_expired_listings() -> None:
     logger.info(
         "unpublish_expired_listings: auto-unpublished %d profile(s) with lapsed listings.", count
     )
+
+
+async def _run_rotate_available_listings() -> None:
+    count = await rotate_available_listings()
+    if count:
+        logger.info("rotate_available_listings: rotated %d available listing(s) to the top.", count)
 
 
 def create_scheduler() -> AsyncIOScheduler:
@@ -67,6 +75,16 @@ def create_scheduler() -> AsyncIOScheduler:
         coalesce=True,
         max_instances=1,
         misfire_grace_time=3600,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _run_rotate_available_listings,
+        trigger=IntervalTrigger(minutes=settings.AVAILABILITY_ROTATE_MINUTES),
+        id="rotate_available_listings",
+        name="Rotate 'available now' listings to the top",
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=300,
         replace_existing=True,
     )
     return scheduler

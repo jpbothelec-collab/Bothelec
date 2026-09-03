@@ -22,11 +22,19 @@ export default function CompanionPage({ params }: { params: { id: string } }) {
       <div className="flex flex-col gap-6">
         <header>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">
-              {p.display_name}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">
+                {p.display_name}
+              </h1>
+              {p.is_available && <Badge tone="ok">Available now</Badge>}
+            </div>
             {p.city && <span className="text-sm text-muted">{p.city}</span>}
           </div>
+          {p.agency_name && (
+            <p className="mt-1 text-sm text-muted">
+              Managed by <span className="text-ink">{p.agency_name}</span>
+            </p>
+          )}
           {p.average_rating != null && (
             <div className="mt-2 flex items-center gap-2 text-sm text-muted">
               <Stars value={p.average_rating} />

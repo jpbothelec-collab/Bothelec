@@ -28,6 +28,9 @@ from app.db.session import get_db
 from app.dependencies.auth import get_optional_user, require_admin_permission, require_role
 from app.services.admin_access import AdminPermission
 from app.models.schemas import (
+    AgencyActionResult,
+    AgencyLinkRequest,
+    AvailabilityUpdate,
     CompanionProfileCreate,
     CompanionProfileResponse,
     CompanionProfileUpdate,
@@ -43,6 +46,7 @@ from app.models.schemas import (
 from app.repositories import companion_profiles as profiles_repo
 from app.repositories import reviews as reviews_repo
 from app.repositories import subscriptions as subs_repo
+from app.repositories import users as users_repo
 from app.services import storage
 from app.services.image_limits import (
     ImageLimitExceeded,
@@ -86,6 +90,14 @@ async def _media_payload(media_items) -> list[dict]:
     ]
 
 
+async def _agency_name(db: AsyncSession, profile) -> str | None:
+    """Resolve the managing agency's name for a profile, if it's linked to one."""
+    if not profile.agent_id:
+        return None
+    agent = await users_repo.get_by_id(db, profile.agent_id)
+    return agent.agency_name if agent else None
+
+
 async def _owner_response(db: AsyncSession, profile) -> CompanionProfileResponse:
     """Full response for the profile owner (or agent managing it) — never gated."""
     media = await profiles_repo.list_media(db, profile.id)
@@ -100,6 +112,8 @@ async def _owner_response(db: AsyncSession, profile) -> CompanionProfileResponse
         categories=profile.categories,
         indicative_rate_note=profile.indicative_rate_note,
         contact_details=profile.contact_details,
+        is_available=profile.is_available,
+        agency_name=await _agency_name(db, profile),
         is_published=profile.is_published,
         published_at=profile.published_at,
         monthly_listing_fee_zar=profile.monthly_listing_fee_cents / 100,
@@ -143,6 +157,8 @@ async def _public_response(
         categories=profile.categories,
         indicative_rate_note=profile.indicative_rate_note,
         contact_details=profile.contact_details,
+        is_available=profile.is_available,
+        agency_name=await _agency_name(db, profile),
         is_published=profile.is_published,
         published_at=profile.published_at,
         monthly_listing_fee_zar=profile.monthly_listing_fee_cents / 100,
@@ -205,7 +221,23 @@ async def create_profile(
         raise HTTPException(status_code=409, detail="A profile already exists for this account.")
 
     profile = await profiles_repo.create(db, user_id=current_user.id, data=payload)
+
+    # Optionally link to an agency by its share code at creation ("sign up
+    # under an agency"). An invalid code is a hard error so the applicant
+    # knows it didn't take, rather than silently creating an unlinked profile.
+    if payload.agency_code:
+        agent = await _resolve_agency(db, payload.agency_code)
+        await profiles_repo.set_agency(db, profile, agent_id=agent.id)
+
     return await _owner_response(db, profile)
+
+
+async def _resolve_agency(db: AsyncSession, code: str):
+    """Look up an agent (agency) by join code, or 404 if it doesn't match one."""
+    agent = await users_repo.get_by_agency_code(db, code.strip())
+    if not agent or agent.role != UserRole.agent.value:
+        raise HTTPException(status_code=404, detail="No agency found for that code.")
+    return agent
 
 
 @router.get("/me", response_model=CompanionProfileResponse)
@@ -314,6 +346,57 @@ async def unpublish_my_profile(
         raise HTTPException(status_code=404, detail="No profile found for this account.")
     await profiles_repo.set_published(db, profile, published=False)
     return PublishResult(id=profile.id, is_published=False, detail="Profile unpublished.")
+
+
+@router.post("/me/availability", response_model=CompanionProfileResponse)
+async def set_my_availability(
+    payload: AvailabilityUpdate,
+    current_user=Depends(require_role(*_COMPANION_ROLES)),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Toggle 'available now'. Turning it on bumps this profile to the top of
+    the availability ranking; a scheduled job then rotates the top slot
+    through all available listers over time.
+    """
+    profile = await profiles_repo.get_by_user_id(db, current_user.id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="No profile found for this account.")
+    await profiles_repo.set_availability(db, profile, available=payload.available)
+    return await _owner_response(db, profile)
+
+
+@router.post("/me/agency", response_model=AgencyActionResult)
+async def join_agency(
+    payload: AgencyLinkRequest,
+    current_user=Depends(require_role(*_COMPANION_ROLES)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Link the caller's profile to an agency using the agency's share code."""
+    profile = await profiles_repo.get_by_user_id(db, current_user.id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Create a profile before joining an agency.")
+    agent = await _resolve_agency(db, payload.agency_code)
+    if agent.id == current_user.id:
+        raise HTTPException(status_code=400, detail="You can't link a profile to your own agency account.")
+    await profiles_repo.set_agency(db, profile, agent_id=agent.id)
+    return AgencyActionResult(
+        profile_id=profile.id, agency_name=agent.agency_name,
+        detail=f"Linked to {agent.agency_name or 'the agency'}.",
+    )
+
+
+@router.delete("/me/agency", response_model=AgencyActionResult)
+async def leave_agency(
+    current_user=Depends(require_role(*_COMPANION_ROLES)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Unlink the caller's profile from its managing agency."""
+    profile = await profiles_repo.get_by_user_id(db, current_user.id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="No profile found for this account.")
+    await profiles_repo.set_agency(db, profile, agent_id=None)
+    return AgencyActionResult(profile_id=profile.id, agency_name=None, detail="Left the agency.")
 
 
 @router.post("/me/media", response_model=PortfolioMediaUploadResponse,

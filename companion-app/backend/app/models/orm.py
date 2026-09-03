@@ -57,6 +57,10 @@ class User(Base):
     # access (legacy/bootstrap). See app/services/admin_access.py.
     admin_level: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    # Agency identity (only meaningful for role='agent').
+    agency_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    agency_code: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
+
     # Legal acceptance capture — recorded at signup, see repositories/users.create_user.
     tos_accepted_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     tos_version: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -129,6 +133,11 @@ class CompanionProfile(Base):
 
     is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     published_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # "Available now" toggle + rotation timestamp (see search ordering / rotation job).
+    is_available: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    availability_bumped_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True),
+                                                                    nullable=True)
 
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True),
                                                   server_default=func.now())

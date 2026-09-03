@@ -40,6 +40,7 @@ export function SiteHeader() {
           {user && <NavLink href="/bookings">Bookings</NavLink>}
           {canMessage && <NavLink href="/messages">Messages</NavLink>}
           {isProvider && <NavLink href="/profile">My profile</NavLink>}
+          {user?.role === "agent" && <NavLink href="/agency">Agency</NavLink>}
           {user && <NavLink href="/account">Account</NavLink>}
           {isAdmin && <NavLink href="/admin">Admin</NavLink>}
         </nav>

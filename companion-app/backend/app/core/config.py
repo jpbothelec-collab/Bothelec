@@ -102,6 +102,9 @@ class Settings(BaseSettings):
     # they don't contend. Minute is fixed at 0.
     PURGE_JOB_HOUR: int = 2
     UNPUBLISH_JOB_HOUR: int = 3
+    # How often the "available now" listings rotate so each available lister
+    # takes a turn at the top of search results.
+    AVAILABILITY_ROTATE_MINUTES: int = 30
 
     # --- File storage (S3-compatible) ---
     S3_BUCKET: str = "companion-platform-uploads"

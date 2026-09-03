@@ -43,8 +43,17 @@ async def search_published(
     )
     total = count_result.scalar_one()
 
+    # Ranking: "available now" profiles float to the top, most-recently
+    # bumped first (a scheduled rotation job re-bumps them in turn so each
+    # available lister cycles through the top). Then newest-published.
     result = await db.execute(
-        base_query.order_by(CompanionProfile.published_at.desc()).limit(limit).offset(offset)
+        base_query.order_by(
+            CompanionProfile.is_available.desc(),
+            CompanionProfile.availability_bumped_at.desc().nullslast(),
+            CompanionProfile.published_at.desc(),
+        )
+        .limit(limit)
+        .offset(offset)
     )
     items = list(result.scalars().all())
     return items, total
@@ -99,6 +108,48 @@ async def set_listing_fee(db: AsyncSession, profile: CompanionProfile, *, fee_ce
     profile.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(profile)
+
+
+async def set_availability(db: AsyncSession, profile: CompanionProfile, *, available: bool) -> None:
+    """Toggle the 'available now' flag. Turning it on bumps the profile to the
+    top of the availability ranking (availability_bumped_at = now)."""
+    profile.is_available = available
+    if available:
+        profile.availability_bumped_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(profile)
+
+
+async def set_agency(db: AsyncSession, profile: CompanionProfile, *, agent_id: UUID | None) -> None:
+    """Link (or unlink, with agent_id=None) a profile to a managing agency."""
+    profile.agent_id = agent_id
+    profile.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(profile)
+
+
+async def rotate_oldest_available(db: AsyncSession) -> int:
+    """
+    Re-bump the single least-recently-bumped available+published profile to
+    the top of the availability ranking. Called on a schedule so the top slot
+    rotates fairly through all available listers over time. Returns the number
+    of profiles bumped (0 or 1).
+    """
+    result = await db.execute(
+        select(CompanionProfile)
+        .where(
+            CompanionProfile.is_available.is_(True),
+            CompanionProfile.is_published.is_(True),
+        )
+        .order_by(CompanionProfile.availability_bumped_at.asc().nullsfirst())
+        .limit(1)
+    )
+    profile = result.scalar_one_or_none()
+    if profile is None:
+        return 0
+    profile.availability_bumped_at = datetime.now(timezone.utc)
+    await db.commit()
+    return 1
 
 
 def can_manage(profile: CompanionProfile, user) -> bool:

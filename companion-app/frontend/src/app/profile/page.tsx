@@ -29,22 +29,37 @@ function ProfileInner() {
 function CreateProfile({ onCreated }: { onCreated: () => void }) {
   const { loading, error, run } = useAction();
   const [name, setName] = useState("");
+  const [agencyCode, setAgencyCode] = useState("");
   return (
     <div className="mx-auto max-w-lg py-6">
       <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">Create your profile</h1>
+      <p className="mt-2 text-sm text-muted">
+        List as an individual, or join an agency by entering its code below.
+      </p>
       <Card className="mt-6 p-6">
         <form
           className="flex flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();
             run(async () => {
-              await api.createProfile({ display_name: name });
+              await api.createProfile({
+                display_name: name,
+                agency_code: agencyCode.trim() || undefined,
+              });
               onCreated();
             });
           }}
         >
           <Field label="Display name" hint="This is how you'll appear to clients.">
             <Input required value={name} onChange={(e) => setName(e.target.value)} />
+          </Field>
+          <Field label="Agency code" hint="Optional — only if you're joining an agency.">
+            <Input
+              value={agencyCode}
+              onChange={(e) => setAgencyCode(e.target.value.toUpperCase())}
+              placeholder="AG-XXXXXX"
+              className="font-mono"
+            />
           </Field>
           {error && <Alert>{error}</Alert>}
           <Button type="submit" loading={loading} disabled={!name}>
@@ -186,6 +201,8 @@ function ProfileEditor({ profile, onSaved }: { profile: CompanionProfile; onSave
         </Card>
 
         <div className="flex flex-col gap-6">
+          <AvailabilityCard profile={profile} onChanged={onSaved} />
+
           <Card className="p-5">
             <h2 className="font-medium text-ink">Publication</h2>
             <p className="mt-1 text-sm text-muted">
@@ -214,11 +231,110 @@ function ProfileEditor({ profile, onSaved }: { profile: CompanionProfile; onSave
               </Button>
             </div>
           </Card>
+
+          <AgencyCard profile={profile} onChanged={onSaved} />
         </div>
       </div>
 
       <PhotoManager profile={profile} onChanged={onSaved} />
     </div>
+  );
+}
+
+function AvailabilityCard({ profile, onChanged }: { profile: CompanionProfile; onChanged: () => void }) {
+  const { loading, run } = useAction();
+  function toggle() {
+    run(async () => {
+      await api.setAvailability(!profile.is_available);
+      onChanged();
+    });
+  }
+  return (
+    <Card className="p-5">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="font-medium text-ink">Availability</h2>
+          <p className="mt-1 text-sm text-muted">
+            {profile.is_available
+              ? "You're marked available now — you rotate near the top of search."
+              : "Turn on when you're free to be booked now."}
+          </p>
+        </div>
+        <span
+          className={
+            "whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium " +
+            (profile.is_available ? "bg-ok-soft text-ok" : "bg-surface-2 text-muted")
+          }
+        >
+          {profile.is_available ? "Available now" : "Not available"}
+        </span>
+      </div>
+      <Button
+        variant={profile.is_available ? "secondary" : "primary"}
+        onClick={toggle}
+        loading={loading}
+        className="mt-4"
+      >
+        {profile.is_available ? "Set to not available" : "I'm available now"}
+      </Button>
+    </Card>
+  );
+}
+
+function AgencyCard({ profile, onChanged }: { profile: CompanionProfile; onChanged: () => void }) {
+  const { loading, error, run, setError } = useAction();
+  const [code, setCode] = useState("");
+
+  function join() {
+    if (!code.trim()) return setError("Enter your agency's code.");
+    run(async () => {
+      await api.joinAgency(code.trim());
+      onChanged();
+    });
+  }
+  function leave() {
+    run(async () => {
+      await api.leaveAgency();
+      onChanged();
+    });
+  }
+
+  return (
+    <Card className="p-5">
+      <h2 className="font-medium text-ink">Agency</h2>
+      {profile.agency_name ? (
+        <>
+          <p className="mt-1 text-sm text-muted">
+            Managed by <span className="font-medium text-ink">{profile.agency_name}</span>.
+          </p>
+          <Button variant="secondary" onClick={leave} loading={loading} className="mt-4">
+            Leave agency
+          </Button>
+        </>
+      ) : (
+        <>
+          <p className="mt-1 text-sm text-muted">
+            Independent. If you work with an agency, enter their code to link your profile.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <Input
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              placeholder="AG-XXXXXX"
+              className="font-mono"
+            />
+            <Button onClick={join} loading={loading}>
+              Join
+            </Button>
+          </div>
+        </>
+      )}
+      {error && (
+        <div className="mt-3">
+          <Alert>{error}</Alert>
+        </div>
+      )}
+    </Card>
   );
 }
 

@@ -159,6 +159,8 @@ class CompanionProfileCreate(BaseModel):
     categories: list[CompanionshipCategory] = Field(default_factory=list)
     indicative_rate_note: str | None = Field(default=None, max_length=500)
     contact_details: str | None = Field(default=None, max_length=500)
+    # Optional: join an agency at creation by supplying its share code.
+    agency_code: str | None = Field(default=None, max_length=32)
 
 
 class CompanionProfileUpdate(BaseModel):
@@ -201,6 +203,8 @@ class CompanionProfileResponse(BaseModel):
     categories: list[CompanionshipCategory]
     indicative_rate_note: str | None
     contact_details: str | None
+    is_available: bool
+    agency_name: str | None  # name of the managing agency, if any
     is_published: bool
     published_at: datetime | None
     monthly_listing_fee_zar: float
@@ -223,6 +227,32 @@ class PortfolioMediaUploadResponse(BaseModel):
 class PublishResult(BaseModel):
     id: UUID
     is_published: bool
+    detail: str
+
+
+class AvailabilityUpdate(BaseModel):
+    available: bool
+
+
+# --- Agencies ---
+
+class AgencyUpdate(BaseModel):
+    agency_name: str = Field(min_length=2, max_length=120)
+
+
+class AgencyResponse(BaseModel):
+    agency_name: str | None
+    agency_code: str
+    roster: list["CompanionProfileResponse"] = Field(default_factory=list)
+
+
+class AgencyLinkRequest(BaseModel):
+    agency_code: str = Field(min_length=4, max_length=32)
+
+
+class AgencyActionResult(BaseModel):
+    profile_id: UUID
+    agency_name: str | None
     detail: str
 
 

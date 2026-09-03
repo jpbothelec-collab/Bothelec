@@ -26,6 +26,12 @@ export function ProfileCard({ p }: { p: CompanionProfile }) {
             {p.total_image_count} photo{p.total_image_count > 1 ? "s" : ""}
           </span>
         )}
+        {p.is_available && (
+          <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-ok px-2 py-0.5 text-xs font-medium text-white">
+            <span className="h-1.5 w-1.5 rounded-full bg-white" />
+            Available now
+          </span>
+        )}
       </div>
       <div className="flex flex-col gap-2 p-4">
         <div className="flex items-baseline justify-between gap-2">

@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import scheduler
 from app.core.config import settings
-from app.routes import admin, auth, billing, bookings, messaging, profiles, reports, reviews, verification
+from app.routes import admin, agency, auth, billing, bookings, messaging, profiles, reports, reviews, verification
 
 
 @asynccontextmanager
@@ -32,6 +32,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(verification.router)
 app.include_router(profiles.router)
+app.include_router(agency.router)
 app.include_router(billing.router)
 app.include_router(bookings.router)
 app.include_router(messaging.router)

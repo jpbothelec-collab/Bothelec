@@ -79,6 +79,22 @@ async def set_verified(db: AsyncSession, user_id: UUID, *, date_of_birth: date) 
     await db.commit()
 
 
+async def get_by_agency_code(db: AsyncSession, code: str) -> User | None:
+    result = await db.execute(select(User).where(User.agency_code == code))
+    return result.scalar_one_or_none()
+
+
+async def set_agency(db: AsyncSession, user: User, *, name: str | None = None,
+                     code: str | None = None) -> None:
+    """Set an agent's agency name and/or generated join code."""
+    if name is not None:
+        user.agency_name = name
+    if code is not None:
+        user.agency_code = code
+    await db.commit()
+    await db.refresh(user)
+
+
 async def set_admin_level(db: AsyncSession, user_id: UUID, *, admin_level: str) -> None:
     """Set the admin access tier for a user. Caller must ensure the user is an admin."""
     user = await get_by_id(db, user_id)

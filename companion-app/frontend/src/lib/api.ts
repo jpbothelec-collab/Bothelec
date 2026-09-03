@@ -2,6 +2,7 @@
 import type {
   AdminLevel,
   AdminLevelResponse,
+  Agency,
   Booking,
   BookingStatus,
   CancellationPolicy,
@@ -157,7 +158,28 @@ export const api = {
     categories?: CompanionshipCategory[];
     indicative_rate_note?: string;
     contact_details?: string;
+    agency_code?: string;
   }) => request<CompanionProfile>("/profiles", { method: "POST", body: b }),
+  setAvailability: (available: boolean) =>
+    request<CompanionProfile>("/profiles/me/availability", {
+      method: "POST",
+      body: { available },
+    }),
+  joinAgency: (agencyCode: string) =>
+    request<{ profile_id: string; agency_name: string | null; detail: string }>(
+      "/profiles/me/agency",
+      { method: "POST", body: { agency_code: agencyCode } },
+    ),
+  leaveAgency: () =>
+    request<{ profile_id: string; agency_name: string | null; detail: string }>(
+      "/profiles/me/agency",
+      { method: "DELETE" },
+    ),
+
+  // --- agency (agent) ---
+  myAgency: () => request<Agency>("/agency/me"),
+  updateAgency: (agencyName: string) =>
+    request<Agency>("/agency/me", { method: "PATCH", body: { agency_name: agencyName } }),
   updateMyProfile: (b: {
     display_name?: string;
     bio?: string;

@@ -74,6 +74,8 @@ export interface CompanionProfile {
   categories: CompanionshipCategory[];
   indicative_rate_note: string | null;
   contact_details: string | null;
+  is_available: boolean;
+  agency_name: string | null;
   is_published: boolean;
   published_at: string | null;
   monthly_listing_fee_zar: number;
@@ -91,6 +93,12 @@ export interface ProfileSearch {
   page: number;
   page_size: number;
   total_pages: number;
+}
+
+export interface Agency {
+  agency_name: string | null;
+  agency_code: string;
+  roster: CompanionProfile[];
 }
 
 export interface Conversation {
