@@ -98,6 +98,16 @@ export interface ProfileSearch {
 export interface Agency {
   agency_name: string | null;
   agency_code: string;
+  background_url: string | null;
+  price_list_url: string | null;
+  roster: CompanionProfile[];
+}
+
+export interface PublicAgency {
+  id: string;
+  agency_name: string | null;
+  background_url: string | null;
+  price_list_url: string | null;
   roster: CompanionProfile[];
 }
 

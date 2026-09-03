@@ -15,6 +15,7 @@ import type {
   Message,
   PendingVerificationDocument,
   ProfileSearch,
+  PublicAgency,
   ReportReason,
   ReportResponse,
   Review,
@@ -180,6 +181,20 @@ export const api = {
   myAgency: () => request<Agency>("/agency/me"),
   updateAgency: (agencyName: string) =>
     request<Agency>("/agency/me", { method: "PATCH", body: { agency_name: agencyName } }),
+  uploadAgencyBackground: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<Agency>("/agency/me/background", { method: "POST", form });
+  },
+  deleteAgencyBackground: () => request<Agency>("/agency/me/background", { method: "DELETE" }),
+  uploadAgencyPriceList: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<Agency>("/agency/me/price-list", { method: "POST", form });
+  },
+  deleteAgencyPriceList: () => request<Agency>("/agency/me/price-list", { method: "DELETE" }),
+  publicAgency: (agentId: string) =>
+    request<PublicAgency>(`/agencies/${agentId}`, { auth: false }),
   updateMyProfile: (b: {
     display_name?: string;
     bio?: string;

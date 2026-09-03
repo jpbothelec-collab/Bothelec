@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useApi, useAction } from "@/lib/useApi";
+import { useAuth } from "@/lib/auth";
 import { RequireAuth } from "@/components/guard";
 import { Alert, Badge, Button, Card, Empty, Field, Input, Loading } from "@/components/ui";
 import type { Agency } from "@/lib/types";
@@ -23,7 +24,102 @@ function AgencyInner() {
   return <AgencyView agency={data} onChanged={reload} />;
 }
 
+function AgencyBranding({ agency, onChanged }: { agency: Agency; onChanged: () => void }) {
+  const { loading, error, run } = useAction();
+
+  function upload(kind: "background" | "price", file?: File) {
+    if (!file) return;
+    run(async () => {
+      if (kind === "background") await api.uploadAgencyBackground(file);
+      else await api.uploadAgencyPriceList(file);
+      onChanged();
+    });
+  }
+  function remove(kind: "background" | "price") {
+    run(async () => {
+      if (kind === "background") await api.deleteAgencyBackground();
+      else await api.deleteAgencyPriceList();
+      onChanged();
+    });
+  }
+
+  return (
+    <div className="mt-6 grid gap-6 lg:grid-cols-2">
+      <Card className="p-5">
+        <h2 className="font-medium text-ink">Page background</h2>
+        <p className="mt-1 text-sm text-muted">Shown behind your public agency page (jpg/png/webp).</p>
+        {agency.background_url && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={agency.background_url}
+            alt="Agency background"
+            className="mt-3 h-32 w-full rounded-lg object-cover"
+          />
+        )}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <label className="cursor-pointer rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+            {agency.background_url ? "Replace" : "Upload background"}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => upload("background", e.target.files?.[0])}
+              className="hidden"
+              disabled={loading}
+            />
+          </label>
+          {agency.background_url && (
+            <Button variant="secondary" onClick={() => remove("background")} loading={loading}>
+              Remove
+            </Button>
+          )}
+        </div>
+      </Card>
+
+      <Card className="p-5">
+        <h2 className="font-medium text-ink">Price list</h2>
+        <p className="mt-1 text-sm text-muted">
+          A PDF or image clients can view on your page. Rates are settled off-platform.
+        </p>
+        {agency.price_list_url && (
+          <a
+            href={agency.price_list_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 inline-block text-sm font-medium text-accent-ink hover:underline"
+          >
+            View current price list ↗
+          </a>
+        )}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <label className="cursor-pointer rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+            {agency.price_list_url ? "Replace" : "Upload price list"}
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              onChange={(e) => upload("price", e.target.files?.[0])}
+              className="hidden"
+              disabled={loading}
+            />
+          </label>
+          {agency.price_list_url && (
+            <Button variant="secondary" onClick={() => remove("price")} loading={loading}>
+              Remove
+            </Button>
+          )}
+        </div>
+      </Card>
+
+      {error && (
+        <div className="lg:col-span-2">
+          <Alert>{error}</Alert>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AgencyView({ agency, onChanged }: { agency: Agency; onChanged: () => void }) {
+  const { user } = useAuth();
   const [name, setName] = useState(agency.agency_name ?? "");
   const [copied, setCopied] = useState(false);
   const { loading, error, run } = useAction();
@@ -46,7 +142,17 @@ function AgencyView({ agency, onChanged }: { agency: Agency; onChanged: () => vo
 
   return (
     <div className="py-6">
-      <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">Agency</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">Agency</h1>
+        {user && (
+          <Link
+            href={`/agencies/${user.id}`}
+            className="rounded-lg border border-hair px-3 py-1.5 text-sm font-medium text-accent-ink hover:bg-surface-2"
+          >
+            View public page →
+          </Link>
+        )}
+      </div>
       <p className="mt-2 text-sm text-muted">
         Set your agency name and share your code with companions so they can link their profiles to
         you.
@@ -84,6 +190,8 @@ function AgencyView({ agency, onChanged }: { agency: Agency; onChanged: () => vo
           </div>
         </Card>
       </div>
+
+      <AgencyBranding agency={agency} onChanged={onChanged} />
 
       <div className="mt-8">
         <div className="flex items-center gap-2">

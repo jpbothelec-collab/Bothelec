@@ -61,6 +61,10 @@ CREATE TABLE users (
     -- agency; see companion_profiles.agent_id.
     agency_name          TEXT,
     agency_code          TEXT UNIQUE,
+    -- Storage keys for the agency's branded assets (background image, price
+    -- list document). Served to clients as short-lived signed URLs.
+    agency_background_path TEXT,
+    agency_price_list_path TEXT,
 
     -- Legal acceptance capture (POPIA / consent audit). Every account must
     -- have accepted the Terms of Service and Privacy Policy at signup; we

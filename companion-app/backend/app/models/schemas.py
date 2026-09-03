@@ -243,6 +243,17 @@ class AgencyUpdate(BaseModel):
 class AgencyResponse(BaseModel):
     agency_name: str | None
     agency_code: str
+    background_url: str | None = None
+    price_list_url: str | None = None
+    roster: list["CompanionProfileResponse"] = Field(default_factory=list)
+
+
+class PublicAgencyResponse(BaseModel):
+    """Client-facing agency page: branding + roster of published profiles."""
+    id: UUID
+    agency_name: str | None
+    background_url: str | None
+    price_list_url: str | None
     roster: list["CompanionProfileResponse"] = Field(default_factory=list)
 
 

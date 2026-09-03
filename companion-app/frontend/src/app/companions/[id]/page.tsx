@@ -32,7 +32,14 @@ export default function CompanionPage({ params }: { params: { id: string } }) {
           </div>
           {p.agency_name && (
             <p className="mt-1 text-sm text-muted">
-              Managed by <span className="text-ink">{p.agency_name}</span>
+              Managed by{" "}
+              {p.agent_id ? (
+                <Link href={`/agencies/${p.agent_id}`} className="font-medium text-accent-ink hover:underline">
+                  {p.agency_name}
+                </Link>
+              ) : (
+                <span className="text-ink">{p.agency_name}</span>
+              )}
             </p>
           )}
           {p.average_rating != null && (

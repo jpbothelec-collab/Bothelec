@@ -84,13 +84,25 @@ async def get_by_agency_code(db: AsyncSession, code: str) -> User | None:
     return result.scalar_one_or_none()
 
 
+_UNSET = object()
+
+
 async def set_agency(db: AsyncSession, user: User, *, name: str | None = None,
-                     code: str | None = None) -> None:
-    """Set an agent's agency name and/or generated join code."""
+                     code: str | None = None, background_path=_UNSET,
+                     price_list_path=_UNSET) -> None:
+    """
+    Set an agent's agency name, join code, and/or branded asset paths.
+    Asset paths use a sentinel default so passing None explicitly clears the
+    asset (on delete) while omitting the argument leaves it unchanged.
+    """
     if name is not None:
         user.agency_name = name
     if code is not None:
         user.agency_code = code
+    if background_path is not _UNSET:
+        user.agency_background_path = background_path
+    if price_list_path is not _UNSET:
+        user.agency_price_list_path = price_list_path
     await db.commit()
     await db.refresh(user)
 

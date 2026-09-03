@@ -60,6 +60,8 @@ class User(Base):
     # Agency identity (only meaningful for role='agent').
     agency_name: Mapped[str | None] = mapped_column(String, nullable=True)
     agency_code: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
+    agency_background_path: Mapped[str | None] = mapped_column(String, nullable=True)
+    agency_price_list_path: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Legal acceptance capture — recorded at signup, see repositories/users.create_user.
     tos_accepted_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
