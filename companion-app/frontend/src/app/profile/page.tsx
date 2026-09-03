@@ -216,6 +216,92 @@ function ProfileEditor({ profile, onSaved }: { profile: CompanionProfile; onSave
           </Card>
         </div>
       </div>
+
+      <PhotoManager profile={profile} onChanged={onSaved} />
     </div>
+  );
+}
+
+function PhotoManager({ profile, onChanged }: { profile: CompanionProfile; onChanged: () => void }) {
+  const { loading, error, run } = useAction();
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  function upload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file
+    if (!file) return;
+    run(async () => {
+      await api.uploadPortfolioImage(file);
+      onChanged();
+    });
+  }
+
+  function remove(id: string) {
+    setBusyId(id);
+    run(async () => {
+      await api.deletePortfolioImage(id);
+      onChanged();
+    }).finally(() => setBusyId(null));
+  }
+
+  const statusTone = (s: string) =>
+    s === "approved" ? "ok" : s === "rejected" ? "block" : "warn";
+
+  return (
+    <Card className="mt-6 p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="font-medium text-ink">Photos</h2>
+          <p className="mt-1 text-sm text-muted">
+            Up to 10. New photos are reviewed before they appear publicly. Clients see your first
+            few; premium clients see all.
+          </p>
+        </div>
+        <label className="cursor-pointer rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+          {loading ? "Uploading…" : "Add photo"}
+          <input type="file" accept="image/*" onChange={upload} className="hidden" disabled={loading} />
+        </label>
+      </div>
+
+      {error && (
+        <div className="mt-3">
+          <Alert>{error}</Alert>
+        </div>
+      )}
+
+      {profile.media.length === 0 ? (
+        <p className="mt-5 rounded-lg border border-dashed border-hair-strong px-4 py-8 text-center text-sm text-muted">
+          No photos yet. Add one to bring your profile to life.
+        </p>
+      ) : (
+        <div className="mt-5 grid grid-cols-3 gap-3 sm:grid-cols-4">
+          {profile.media.map((m) => (
+            <div key={m.id} className="group relative overflow-hidden rounded-lg bg-surface-2">
+              <div className="aspect-square">
+                {m.url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={m.url} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full items-center justify-center font-display text-2xl text-hair-strong">
+                    {profile.display_name.slice(0, 1)}
+                  </div>
+                )}
+              </div>
+              <div className="absolute left-1.5 top-1.5">
+                <Badge tone={statusTone(m.moderation_status)}>{m.moderation_status}</Badge>
+              </div>
+              <button
+                type="button"
+                onClick={() => remove(m.id)}
+                disabled={busyId === m.id}
+                className="absolute right-1.5 top-1.5 rounded-md bg-black/55 px-2 py-0.5 text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 disabled:opacity-50"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }

@@ -84,25 +84,31 @@ export default function CompanionPage({ params }: { params: { id: string } }) {
 }
 
 function Gallery({ profile }: { profile: CompanionProfile }) {
-  const { visible_image_count, total_image_count, images_locked } = profile;
+  const { media, visible_image_count, total_image_count, images_locked } = profile;
+  const initial = profile.display_name.slice(0, 1);
   return (
     <div className="flex flex-col gap-3">
       {visible_image_count > 0 ? (
         <div className="grid grid-cols-2 gap-3">
-          {Array.from({ length: visible_image_count }).map((_, i) => (
+          {media.map((m, i) => (
             <div
-              key={i}
-              className={`flex items-center justify-center rounded-xl2 bg-accent-soft text-accent-ink/50 ${
+              key={m.id}
+              className={`flex items-center justify-center overflow-hidden rounded-xl2 bg-accent-soft text-accent-ink/50 ${
                 i === 0 ? "col-span-2 aspect-[3/2]" : "aspect-square"
               }`}
             >
-              <span className="font-display text-3xl">{profile.display_name.slice(0, 1)}</span>
+              {m.url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={m.url} alt={`${profile.display_name} ${i + 1}`} className="h-full w-full object-cover" />
+              ) : (
+                <span className="font-display text-3xl">{initial}</span>
+              )}
             </div>
           ))}
         </div>
       ) : (
         <div className="flex aspect-[3/2] items-center justify-center rounded-xl2 bg-accent-soft font-display text-6xl text-accent-ink/50">
-          {profile.display_name.slice(0, 1)}
+          {initial}
         </div>
       )}
       {images_locked && (

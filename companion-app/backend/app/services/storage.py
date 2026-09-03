@@ -92,6 +92,29 @@ async def get_signed_url(storage_key: str, *, expires_in: int = 300) -> str:
     return await asyncio.to_thread(_presign_get_sync, storage_key, expires_in)
 
 
+def _presign_many_sync(keys: list[str], expires_in: int) -> list[str]:
+    client = get_s3_client()
+    return [
+        client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": settings.S3_BUCKET, "Key": k},
+            ExpiresIn=expires_in,
+        )
+        for k in keys
+    ]
+
+
+async def get_signed_urls(keys: list[str], *, expires_in: int = 3600) -> list[str]:
+    """
+    Batch variant of get_signed_url. Signing is a local (no-I/O) operation, so
+    all keys are signed in one worker-thread hop rather than one per key.
+    Used to attach viewable URLs to a profile's visible portfolio images.
+    """
+    if not keys:
+        return []
+    return await asyncio.to_thread(_presign_many_sync, keys, expires_in)
+
+
 async def delete_object(storage_key: str) -> None:
     """Permanently deletes a stored object. Used by the retention purge job."""
     await asyncio.to_thread(_delete_sync, storage_key)

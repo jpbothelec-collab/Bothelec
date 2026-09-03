@@ -58,6 +58,7 @@ export interface PortfolioMedia {
   display_order: number;
   moderation_status: string;
   created_at: string;
+  url: string | null; // short-lived signed URL for the image
 }
 
 // Matches the backend's CompanionProfileResponse (app/models/schemas.py).

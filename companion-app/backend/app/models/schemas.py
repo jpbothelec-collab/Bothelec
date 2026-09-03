@@ -186,6 +186,9 @@ class PortfolioMediaResponse(BaseModel):
     display_order: int
     moderation_status: str
     created_at: datetime
+    # Short-lived signed URL to view the image. Present for images the viewer
+    # is allowed to see; None if a URL couldn't be generated.
+    url: str | None = None
 
 
 class CompanionProfileResponse(BaseModel):

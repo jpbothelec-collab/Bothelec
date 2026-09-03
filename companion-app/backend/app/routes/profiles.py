@@ -23,6 +23,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.db.session import get_db
 from app.dependencies.auth import get_optional_user, require_admin_permission, require_role
 from app.services.admin_access import AdminPermission
@@ -55,6 +56,36 @@ router = APIRouter(prefix="/profiles", tags=["profiles"])
 _COMPANION_ROLES = (UserRole.companion, UserRole.agent)
 
 
+async def _media_payload(media_items) -> list[dict]:
+    """
+    Serialise portfolio media with short-lived signed view URLs. Only the
+    items passed in are signed — callers pass the viewer's *visible* subset,
+    so a free viewer never receives URLs for premium-locked images. If URL
+    signing fails (e.g. storage misconfigured), url is left None rather than
+    failing the whole profile response.
+    """
+    if not media_items:
+        return []
+    try:
+        urls = await storage.get_signed_urls(
+            [m.storage_path for m in media_items],
+            expires_in=settings.PORTFOLIO_URL_TTL_SECONDS,
+        )
+    except Exception:
+        urls = [None] * len(media_items)
+    return [
+        {
+            "id": m.id,
+            "media_type": m.media_type,
+            "display_order": m.display_order,
+            "moderation_status": m.moderation_status,
+            "created_at": m.created_at,
+            "url": url,
+        }
+        for m, url in zip(media_items, urls)
+    ]
+
+
 async def _owner_response(db: AsyncSession, profile) -> CompanionProfileResponse:
     """Full response for the profile owner (or agent managing it) — never gated."""
     media = await profiles_repo.list_media(db, profile.id)
@@ -77,16 +108,7 @@ async def _owner_response(db: AsyncSession, profile) -> CompanionProfileResponse
         total_image_count=len(media),
         visible_image_count=len(media),
         images_locked=False,
-        media=[
-            {
-                "id": m.id,
-                "media_type": m.media_type,
-                "display_order": m.display_order,
-                "moderation_status": m.moderation_status,
-                "created_at": m.created_at,
-            }
-            for m in media
-        ],
+        media=await _media_payload(media),
     )
 
 
@@ -129,16 +151,7 @@ async def _public_response(
         total_image_count=len(approved),
         visible_image_count=len(visible),
         images_locked=len(approved) > len(visible),
-        media=[
-            {
-                "id": m.id,
-                "media_type": m.media_type,
-                "display_order": m.display_order,
-                "moderation_status": m.moderation_status,
-                "created_at": m.created_at,
-            }
-            for m in visible
-        ],
+        media=await _media_payload(visible),
     )
 
 

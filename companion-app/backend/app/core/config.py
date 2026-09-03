@@ -80,6 +80,12 @@ class Settings(BaseSettings):
     # MAX_PORTFOLIO_IMAGES (i.e. everything published).
     CLIENT_FREE_VIEW_LIMIT: int = 5
 
+    # How long a signed portfolio-image URL stays valid (seconds). Portfolio
+    # images are stored privately; the profile response hands back short-lived
+    # signed URLs rather than public links. Kept modest so a leaked URL expires
+    # quickly, but long enough to view a profile comfortably.
+    PORTFOLIO_URL_TTL_SECONDS: int = 3600
+
     # --- Scheduled maintenance jobs (APScheduler) ---
     # When True, the app starts an in-process AsyncIOScheduler on startup that
     # runs the retention-purge and lapsed-listing-unpublish jobs daily.

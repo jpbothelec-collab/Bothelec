@@ -169,6 +169,19 @@ export const api = {
       method: "PATCH",
       body: { monthly_fee_zar: monthlyFeeZar },
     }),
+  uploadPortfolioImage: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<{
+      id: string;
+      moderation_status: string;
+      image_count: number;
+      upload_limit: number;
+      message: string;
+    }>("/profiles/me/media", { method: "POST", form });
+  },
+  deletePortfolioImage: (mediaId: string) =>
+    request<null>(`/profiles/me/media/${mediaId}`, { method: "DELETE" }),
   publishMyProfile: () => request<{ id: string; is_published: boolean; detail: string }>(
     "/profiles/me/publish",
     { method: "POST" },

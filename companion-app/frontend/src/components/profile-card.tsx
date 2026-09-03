@@ -8,10 +8,19 @@ export function ProfileCard({ p }: { p: CompanionProfile }) {
       href={`/companions/${p.id}`}
       className="group flex flex-col overflow-hidden rounded-xl2 border border-hair bg-surface shadow-card transition-transform hover:-translate-y-0.5"
     >
-      <div className="relative flex aspect-[4/5] items-center justify-center bg-accent-soft">
-        <span className="font-display text-5xl font-semibold text-accent-ink/70">
-          {p.display_name.slice(0, 1).toUpperCase()}
-        </span>
+      <div className="relative flex aspect-[4/5] items-center justify-center overflow-hidden bg-accent-soft">
+        {p.media[0]?.url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={p.media[0].url}
+            alt={p.display_name}
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+        ) : (
+          <span className="font-display text-5xl font-semibold text-accent-ink/70">
+            {p.display_name.slice(0, 1).toUpperCase()}
+          </span>
+        )}
         {p.total_image_count > 0 && (
           <span className="absolute bottom-2 right-2 rounded-full bg-black/55 px-2 py-0.5 text-xs font-medium text-white">
             {p.total_image_count} photo{p.total_image_count > 1 ? "s" : ""}
