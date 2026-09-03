@@ -39,8 +39,21 @@ function AccountInner() {
       </Card>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <IdVerification />
-        {user.role === "client" && <PremiumSubscription />}
+        {/* Only listers verify their identity/age (21+). Clients simply
+            self-attest 18+ in the browser age gate — no ID required. */}
+        {(user.role === "companion" || user.role === "agent") && <IdVerification />}
+        {user.role === "client" && (
+          <>
+            <Card className="p-5">
+              <h2 className="font-medium text-ink">Age</h2>
+              <p className="mt-1 text-sm text-muted">
+                You confirmed you&apos;re 18 or older to browse. Clients don&apos;t submit ID — only
+                listed companions are identity-verified.
+              </p>
+            </Card>
+            <PremiumSubscription />
+          </>
+        )}
         {(user.role === "companion" || user.role === "agent") && (
           <Card className="p-5">
             <h2 className="font-medium text-ink">Your listing</h2>

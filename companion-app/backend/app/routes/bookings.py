@@ -49,12 +49,11 @@ async def create_booking(
     current_user=Depends(require_role(UserRole.client)),
     db: AsyncSession = Depends(get_db),
 ):
-    if current_user.verification_status != "verified":
-        raise HTTPException(
-            status_code=403,
-            detail="Identity verification (21+) must be completed before requesting a booking.",
-        )
-
+    # Clients are NOT ID-verified: browsing/booking is gated only by an
+    # 18+ self-attestation captured in the browser (see the frontend age
+    # gate). Identity/age verification (21+) applies to listers, whose
+    # profiles the client is booking — not to the client. So there is no
+    # verification_status check here.
     profile = await profiles_repo.get_by_id(db, payload.profile_id)
     if not profile or not profile.is_published:
         raise HTTPException(status_code=404, detail="Profile not found or not currently published.")

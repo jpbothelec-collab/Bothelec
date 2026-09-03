@@ -54,7 +54,9 @@ export default function SignupPage() {
     <div className="mx-auto max-w-md py-6">
       <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">Create your account</h1>
       <p className="mt-2 text-sm text-muted">
-        You&apos;ll verify your age and identity (21+) before publishing a profile or booking.
+        {role === "client"
+          ? "As a client, you only confirm you're 18 or older — no ID verification needed."
+          : "You'll verify your age and identity (21+) with an ID document before publishing a profile."}
       </p>
 
       <Card className="mt-6 p-6">

@@ -7,7 +7,7 @@ export default function Home() {
       <section className="flex flex-col gap-5">
         <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-accent-ink">
           <span className="inline-block h-px w-6 bg-accent" />
-          South Africa · 21+
+          South Africa · 18+
         </span>
         <h1 className="max-w-2xl text-balance font-display text-4xl font-semibold leading-[1.05] tracking-tight text-ink sm:text-5xl">
           Companionship, arranged with care.
@@ -67,12 +67,12 @@ export default function Home() {
 
 const STEPS = [
   {
-    title: "Verify your age & identity",
-    body: "Every account submits an ID document for review. The platform minimum is 21 — never self-reported, always confirmed.",
+    title: "Confirm your age",
+    body: "Visitors confirm they're 18 or older to browse. Listed companions go further — their age and identity are verified from an ID document (21+).",
   },
   {
     title: "Publish or browse",
-    body: "Companions keep a profile live with a monthly listing subscription. Clients browse published profiles by city and category.",
+    body: "Companions keep a profile live with a monthly listing subscription. Clients browse published profiles by city and category — no ID needed.",
   },
   {
     title: "Request time together",
@@ -82,8 +82,8 @@ const STEPS = [
 
 const TRUST = [
   {
-    title: "Age-gated at 21",
-    body: "A deliberate buffer above the legal age of majority, enforced in code — not just in the terms.",
+    title: "Age-checked",
+    body: "Visitors confirm they're 18+; listed companions are ID-verified at 21+, a deliberate buffer enforced in code.",
   },
   {
     title: "POPIA-minded",

@@ -4,6 +4,7 @@ import { Fraunces } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth";
 import { SiteHeader } from "@/components/nav";
+import { AgeGate } from "@/components/age-gate";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -36,6 +37,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <AuthProvider>
           <SiteHeader />
           <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6">{children}</main>
+          <AgeGate />
         </AuthProvider>
       </body>
     </html>
