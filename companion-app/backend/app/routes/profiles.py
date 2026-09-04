@@ -512,6 +512,61 @@ async def delete_price_list(
     return await _owner_response(db, profile)
 
 
+# --- Agent-facing management of a roster companion's profile by id ---
+# These are defined after every literal "/me/..." route so that a request to
+# e.g. POST /profiles/me/availability matches the literal route rather than
+# binding profile_id="me" here.
+
+@router.patch("/{profile_id}", response_model=CompanionProfileResponse)
+async def manage_profile(
+    profile_id: UUID,
+    payload: CompanionProfileUpdate,
+    current_user=Depends(require_role(*_COMPANION_ROLES)),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Edit a profile's details by id. Callable by the companion who owns the
+    profile or by the agent assigned to manage it (profile.agent_id) — this
+    is how an agency edits a roster companion's profile inline. Anyone else
+    gets a 403. Companions editing their own profile normally use
+    PATCH /profiles/me; this endpoint is the agent-facing equivalent.
+    """
+    profile = await profiles_repo.get_by_id(db, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found.")
+    if not profiles_repo.can_manage(profile, current_user):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the profile owner or its managing agent can edit this profile.",
+        )
+    profile = await profiles_repo.update(db, profile, payload)
+    return await _owner_response(db, profile)
+
+
+@router.post("/{profile_id}/availability", response_model=CompanionProfileResponse)
+async def set_profile_availability(
+    profile_id: UUID,
+    payload: AvailabilityUpdate,
+    current_user=Depends(require_role(*_COMPANION_ROLES)),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Toggle 'available now' for a profile by id — the agent-facing counterpart
+    to POST /profiles/me/availability. Callable by the profile owner or its
+    managing agent, so an agency can surface a roster companion from its page.
+    """
+    profile = await profiles_repo.get_by_id(db, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found.")
+    if not profiles_repo.can_manage(profile, current_user):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the profile owner or its managing agent can change availability.",
+        )
+    await profiles_repo.set_availability(db, profile, available=payload.available)
+    return await _owner_response(db, profile)
+
+
 @router.get("/{profile_id}", response_model=CompanionProfileResponse)
 async def get_public_profile(
     profile_id: UUID,

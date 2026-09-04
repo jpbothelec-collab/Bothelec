@@ -6,8 +6,13 @@ import { api } from "@/lib/api";
 import { useApi, useAction } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth";
 import { RequireAuth } from "@/components/guard";
-import { Alert, Badge, Button, Card, Empty, Field, Input, Loading } from "@/components/ui";
-import type { Agency } from "@/lib/types";
+import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, Textarea } from "@/components/ui";
+import {
+  CATEGORY_LABELS,
+  type Agency,
+  type CompanionProfile,
+  type CompanionshipCategory,
+} from "@/lib/types";
 
 export default function AgencyPage() {
   return (
@@ -198,29 +203,159 @@ function AgencyView({ agency, onChanged }: { agency: Agency; onChanged: () => vo
           <h2 className="text-lg font-semibold text-ink">Roster</h2>
           <Badge>{agency.roster.length}</Badge>
         </div>
+        <p className="mt-1 text-sm text-muted">
+          Edit a companion&rsquo;s details and toggle their availability directly from here.
+        </p>
         <div className="mt-3 flex flex-col gap-2">
           {agency.roster.length === 0 && (
             <Empty>No companions linked yet. Share your code to grow your roster.</Empty>
           )}
           {agency.roster.map((p) => (
-            <Card key={p.id} className="flex flex-wrap items-center gap-3 p-4">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-ink">{p.display_name}</span>
-                  {p.is_available && <Badge tone="ok">Available now</Badge>}
-                  <Badge tone={p.is_published ? "accent" : "neutral"}>
-                    {p.is_published ? "Published" : "Unpublished"}
-                  </Badge>
-                </div>
-                {p.city && <p className="mt-0.5 text-xs text-muted">{p.city}</p>}
-              </div>
-              <Link href={`/companions/${p.id}`} className="text-sm font-medium text-accent-ink">
-                View →
-              </Link>
-            </Card>
+            <RosterRow key={p.id} profile={p} onChanged={onChanged} />
           ))}
         </div>
       </div>
     </div>
+  );
+}
+
+function RosterRow({ profile, onChanged }: { profile: CompanionProfile; onChanged: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const { loading: availLoading, run: runAvail } = useAction();
+
+  function toggleAvailability() {
+    runAvail(async () => {
+      await api.setProfileAvailability(profile.id, !profile.is_available);
+      onChanged();
+    });
+  }
+
+  return (
+    <Card className="p-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium text-ink">{profile.display_name}</span>
+            {profile.is_available && <Badge tone="ok">Available now</Badge>}
+            <Badge tone={profile.is_published ? "accent" : "neutral"}>
+              {profile.is_published ? "Published" : "Unpublished"}
+            </Badge>
+          </div>
+          {profile.city && <p className="mt-0.5 text-xs text-muted">{profile.city}</p>}
+        </div>
+        <Button
+          variant="secondary"
+          onClick={toggleAvailability}
+          loading={availLoading}
+          className="whitespace-nowrap"
+        >
+          {profile.is_available ? "Set unavailable" : "Set available now"}
+        </Button>
+        <Button variant="secondary" onClick={() => setEditing((v) => !v)}>
+          {editing ? "Close" : "Edit"}
+        </Button>
+        <Link href={`/companions/${profile.id}`} className="text-sm font-medium text-accent-ink">
+          View →
+        </Link>
+      </div>
+      {editing && (
+        <RosterEditForm
+          profile={profile}
+          onSaved={() => {
+            setEditing(false);
+            onChanged();
+          }}
+        />
+      )}
+    </Card>
+  );
+}
+
+function RosterEditForm({ profile, onSaved }: { profile: CompanionProfile; onSaved: () => void }) {
+  const [displayName, setDisplayName] = useState(profile.display_name);
+  const [city, setCity] = useState(profile.city ?? "");
+  const [bio, setBio] = useState(profile.bio ?? "");
+  const [rate, setRate] = useState(profile.indicative_rate_note ?? "");
+  const [contact, setContact] = useState(profile.contact_details ?? "");
+  const [cats, setCats] = useState<CompanionshipCategory[]>(profile.categories);
+  const { loading, error, run } = useAction();
+
+  function toggleCat(c: CompanionshipCategory) {
+    setCats((cur) => (cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c]));
+  }
+
+  function save(e: React.FormEvent) {
+    e.preventDefault();
+    run(async () => {
+      await api.manageProfile(profile.id, {
+        display_name: displayName,
+        bio,
+        city,
+        indicative_rate_note: rate,
+        contact_details: contact,
+        categories: cats,
+      });
+      onSaved();
+    });
+  }
+
+  return (
+    <form className="mt-4 flex flex-col gap-4 border-t border-hair pt-4" onSubmit={save}>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Display name">
+          <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
+        </Field>
+        <Field label="City">
+          <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Cape Town" />
+        </Field>
+      </div>
+      <Field label="Bio">
+        <Textarea value={bio} onChange={(e) => setBio(e.target.value)} />
+      </Field>
+      <Field label="Indicative rate note" hint="Informational only — settled off-platform.">
+        <Input
+          value={rate}
+          onChange={(e) => setRate(e.target.value)}
+          placeholder="e.g. From R1500 / evening"
+        />
+      </Field>
+      <Field
+        label="Contact details"
+        hint="How clients can reach this companion (e.g. WhatsApp, email). Shown on the public profile."
+      >
+        <Textarea
+          value={contact}
+          onChange={(e) => setContact(e.target.value)}
+          placeholder="WhatsApp +27 …  ·  name@example.com"
+          className="min-h-16"
+        />
+      </Field>
+      <div>
+        <span className="text-sm font-medium text-ink">Categories</span>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {(Object.keys(CATEGORY_LABELS) as CompanionshipCategory[]).map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => toggleCat(c)}
+              className={
+                "rounded-full border px-3 py-1 text-sm " +
+                (cats.includes(c)
+                  ? "border-transparent bg-accent-soft text-accent-ink"
+                  : "border-hair text-muted hover:bg-surface-2")
+              }
+            >
+              {CATEGORY_LABELS[c]}
+            </button>
+          ))}
+        </div>
+      </div>
+      {error && <Alert>{error}</Alert>}
+      <div className="flex gap-2">
+        <Button type="submit" loading={loading}>
+          Save changes
+        </Button>
+      </div>
+    </form>
   );
 }

@@ -203,6 +203,24 @@ export const api = {
     indicative_rate_note?: string;
     contact_details?: string;
   }) => request<CompanionProfile>("/profiles/me", { method: "PATCH", body: b }),
+  // Agent-facing: edit / toggle availability on a roster companion's profile
+  // by id (owner or managing agent). Backend enforces can_manage.
+  manageProfile: (
+    profileId: string,
+    b: {
+      display_name?: string;
+      bio?: string;
+      city?: string;
+      categories?: CompanionshipCategory[];
+      indicative_rate_note?: string;
+      contact_details?: string;
+    },
+  ) => request<CompanionProfile>(`/profiles/${profileId}`, { method: "PATCH", body: b }),
+  setProfileAvailability: (profileId: string, available: boolean) =>
+    request<CompanionProfile>(`/profiles/${profileId}/availability`, {
+      method: "POST",
+      body: { available },
+    }),
   setListingFee: (profileId: string, monthlyFeeZar: number) =>
     request<CompanionProfile>(`/profiles/${profileId}/listing-fee`, {
       method: "PATCH",
