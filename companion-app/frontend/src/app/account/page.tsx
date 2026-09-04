@@ -28,7 +28,7 @@ function AccountInner() {
 
   return (
     <div className="py-6">
-      <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">Account</h1>
+      <h1 className="text-gradient w-fit font-display text-3xl font-semibold tracking-tight">Account</h1>
 
       <Card className="mt-6 flex items-center justify-between p-5">
         <div>

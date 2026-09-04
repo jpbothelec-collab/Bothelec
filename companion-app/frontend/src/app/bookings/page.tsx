@@ -57,7 +57,7 @@ function BookingsInner() {
 
   return (
     <div className="py-6">
-      <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">Bookings</h1>
+      <h1 className="text-gradient w-fit font-display text-3xl font-semibold tracking-tight">Bookings</h1>
       <p className="mt-2 text-sm text-muted">
         Requests you&apos;ve made or received. The companionship fee is settled directly, off-platform.
       </p>

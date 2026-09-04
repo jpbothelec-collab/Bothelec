@@ -33,7 +33,7 @@ function LoginForm() {
 
   return (
     <div className="mx-auto max-w-md py-6">
-      <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">Welcome back</h1>
+      <h1 className="text-gradient w-fit font-display text-3xl font-semibold tracking-tight">Welcome back</h1>
       <p className="mt-2 text-sm text-muted">Log in to manage your profile, bookings and account.</p>
 
       <Card className="mt-6 p-6">

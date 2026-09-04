@@ -18,7 +18,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <RequireAuth roles={["admin"]}>
       <div className="py-6">
         <div className="flex items-center gap-2">
-          <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">Admin</h1>
+          <h1 className="text-gradient w-fit font-display text-3xl font-semibold tracking-tight">Admin</h1>
           <span className="rounded-full bg-accent-soft px-2.5 py-0.5 text-xs font-medium text-accent-ink">
             staff
           </span>

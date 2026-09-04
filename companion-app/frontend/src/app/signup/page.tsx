@@ -52,7 +52,7 @@ export default function SignupPage() {
 
   return (
     <div className="mx-auto max-w-md py-6">
-      <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">Create your account</h1>
+      <h1 className="text-gradient w-fit font-display text-3xl font-semibold tracking-tight">Create your account</h1>
       <p className="mt-2 text-sm text-muted">
         {role === "client"
           ? "As a client, you only confirm you're 18 or older — no ID verification needed."

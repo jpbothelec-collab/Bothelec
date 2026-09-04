@@ -9,7 +9,7 @@ export default function TermsPage() {
   return (
     <article className="mx-auto max-w-2xl py-6">
       <div className="flex items-center gap-3">
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">Terms of Service</h1>
+        <h1 className="text-gradient w-fit font-display text-3xl font-semibold tracking-tight">Terms of Service</h1>
         {data && <Badge tone="accent">v{data.tos_version}</Badge>}
       </div>
       <Card className="mt-6 space-y-4 p-6 text-sm leading-relaxed text-muted">

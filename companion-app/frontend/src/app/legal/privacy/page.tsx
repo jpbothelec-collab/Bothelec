@@ -9,7 +9,7 @@ export default function PrivacyPage() {
   return (
     <article className="mx-auto max-w-2xl py-6">
       <div className="flex items-center gap-3">
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">Privacy Policy</h1>
+        <h1 className="text-gradient w-fit font-display text-3xl font-semibold tracking-tight">Privacy Policy</h1>
         {data && <Badge tone="accent">v{data.privacy_policy_version}</Badge>}
       </div>
       <Card className="mt-6 space-y-4 p-6 text-sm leading-relaxed text-muted">

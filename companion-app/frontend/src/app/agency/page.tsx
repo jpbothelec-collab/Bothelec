@@ -148,7 +148,7 @@ function AgencyView({ agency, onChanged }: { agency: Agency; onChanged: () => vo
   return (
     <div className="py-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">Agency</h1>
+        <h1 className="text-gradient w-fit font-display text-3xl font-semibold tracking-tight">Agency</h1>
         {user && (
           <Link
             href={`/agencies/${user.id}`}

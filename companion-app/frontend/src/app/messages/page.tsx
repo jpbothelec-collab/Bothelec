@@ -29,7 +29,7 @@ function MessagesInner() {
 
   return (
     <div className="mx-auto max-w-2xl py-6">
-      <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">Messages</h1>
+      <h1 className="text-gradient w-fit font-display text-3xl font-semibold tracking-tight">Messages</h1>
       <p className="mt-2 text-sm text-muted">
         Conversations with companions and clients. Keep arrangements respectful — messages may be
         reviewed.
