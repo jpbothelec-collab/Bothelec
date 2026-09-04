@@ -32,7 +32,9 @@ function CreateProfile({ onCreated }: { onCreated: () => void }) {
   const [agencyCode, setAgencyCode] = useState("");
   return (
     <div className="mx-auto max-w-lg py-6">
-      <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">Create your profile</h1>
+      <h1 className="text-gradient w-fit font-display text-3xl font-semibold tracking-tight">
+        Create your profile
+      </h1>
       <p className="mt-2 text-sm text-muted">
         List as an individual, or join an agency by entering its code below.
       </p>
@@ -131,7 +133,9 @@ function ProfileEditor({ profile, onSaved }: { profile: CompanionProfile; onSave
   return (
     <div className="py-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">My profile</h1>
+        <h1 className="text-gradient w-fit font-display text-3xl font-semibold tracking-tight">
+          My profile
+        </h1>
         <Badge tone={profile.is_published ? "ok" : "neutral"}>
           {profile.is_published ? "Published" : "Not published"}
         </Badge>

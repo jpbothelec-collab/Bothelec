@@ -28,7 +28,9 @@ export default function BrowsePage() {
 
   return (
     <div className="py-6">
-      <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">Browse companions</h1>
+      <h1 className="text-gradient w-fit font-display text-3xl font-semibold tracking-tight">
+        Browse companions
+      </h1>
       <p className="mt-2 text-sm text-muted">Published, verified profiles across South Africa.</p>
 
       <form onSubmit={apply} className="mt-6 flex flex-wrap items-end gap-3">
@@ -47,7 +49,10 @@ export default function BrowsePage() {
             ))}
           </Select>
         </label>
-        <button type="submit" className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+        <button
+          type="submit"
+          className="bg-grad-plum rounded-lg px-4 py-2 text-sm font-medium text-white shadow-sm shadow-accent/25 hover:brightness-110"
+        >
           Search
         </button>
       </form>
