@@ -74,13 +74,25 @@ export default function CompanionPage({ params }: { params: { id: string } }) {
           </section>
         )}
 
-        {p.indicative_rate_note && (
+        {(p.indicative_rate_note || p.price_list_url) && (
           <Card className="p-4">
-            <h2 className="text-sm font-semibold text-ink">Indicative rate</h2>
-            <p className="mt-1 text-sm text-muted">{p.indicative_rate_note}</p>
+            <h2 className="text-sm font-semibold text-ink">Rates</h2>
+            {p.indicative_rate_note && (
+              <p className="mt-1 text-sm text-muted">{p.indicative_rate_note}</p>
+            )}
+            {p.price_list_url && (
+              <a
+                href={p.price_list_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-block text-sm font-medium text-accent-ink hover:underline"
+              >
+                View price list ↗
+              </a>
+            )}
             <p className="mt-2 text-xs text-faint">
-              The companionship fee is agreed and settled directly with {p.display_name}. Amicora is
-              never party to it.
+              Rates are indicative. The companionship fee is agreed and settled directly with{" "}
+              {p.display_name}. Amicora is never party to it.
             </p>
           </Card>
         )}

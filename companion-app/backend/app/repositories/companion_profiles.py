@@ -110,6 +110,14 @@ async def set_listing_fee(db: AsyncSession, profile: CompanionProfile, *, fee_ce
     await db.refresh(profile)
 
 
+async def set_price_list(db: AsyncSession, profile: CompanionProfile, *, path: str | None) -> None:
+    """Set (or clear, with path=None) the companion's price-list storage key."""
+    profile.price_list_path = path
+    profile.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(profile)
+
+
 async def set_availability(db: AsyncSession, profile: CompanionProfile, *, available: bool) -> None:
     """Toggle the 'available now' flag. Turning it on bumps the profile to the
     top of the availability ranking (availability_bumped_at = now)."""

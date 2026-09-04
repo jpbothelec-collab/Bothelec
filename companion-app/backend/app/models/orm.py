@@ -125,6 +125,8 @@ class CompanionProfile(Base):
     indicative_rate_note: Mapped[str | None] = mapped_column(String, nullable=True)
     # Free-text contact details the lister chooses to publish (WhatsApp, email, …).
     contact_details: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Storage key for the companion's own price-list document (indicative, off-platform).
+    price_list_path: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Monthly platform listing fee for THIS profile, in ZAR cents. Set by
     # the companion (self-managed) or by the managing agent — agents can

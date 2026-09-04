@@ -203,6 +203,8 @@ function ProfileEditor({ profile, onSaved }: { profile: CompanionProfile; onSave
         <div className="flex flex-col gap-6">
           <AvailabilityCard profile={profile} onChanged={onSaved} />
 
+          <PriceListCard profile={profile} onChanged={onSaved} />
+
           <Card className="p-5">
             <h2 className="font-medium text-ink">Publication</h2>
             <p className="mt-1 text-sm text-muted">
@@ -238,6 +240,64 @@ function ProfileEditor({ profile, onSaved }: { profile: CompanionProfile; onSave
 
       <PhotoManager profile={profile} onChanged={onSaved} />
     </div>
+  );
+}
+
+function PriceListCard({ profile, onChanged }: { profile: CompanionProfile; onChanged: () => void }) {
+  const { loading, error, run } = useAction();
+  function upload(file?: File) {
+    if (!file) return;
+    run(async () => {
+      await api.uploadProfilePriceList(file);
+      onChanged();
+    });
+  }
+  function remove() {
+    run(async () => {
+      await api.deleteProfilePriceList();
+      onChanged();
+    });
+  }
+  return (
+    <Card className="p-5">
+      <h2 className="font-medium text-ink">Price list</h2>
+      <p className="mt-1 text-sm text-muted">
+        Advertise your rates as a PDF or image. Indicative only — the fee is agreed and settled
+        directly with the client, off-platform.
+      </p>
+      {profile.price_list_url && (
+        <a
+          href={profile.price_list_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 inline-block text-sm font-medium text-accent-ink hover:underline"
+        >
+          View current price list ↗
+        </a>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <label className="cursor-pointer rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+          {profile.price_list_url ? "Replace" : "Upload price list"}
+          <input
+            type="file"
+            accept="image/*,application/pdf"
+            onChange={(e) => upload(e.target.files?.[0])}
+            className="hidden"
+            disabled={loading}
+          />
+        </label>
+        {profile.price_list_url && (
+          <Button variant="secondary" onClick={remove} loading={loading}>
+            Remove
+          </Button>
+        )}
+      </div>
+      {error && (
+        <div className="mt-3">
+          <Alert>{error}</Alert>
+        </div>
+      )}
+    </Card>
   );
 }
 

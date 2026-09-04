@@ -143,6 +143,12 @@ CREATE TABLE companion_profiles (
     -- them here.
     contact_details       TEXT,
 
+    -- Storage key for the companion's own price-list document (PDF/image),
+    -- served to clients as a short-lived signed URL. This is the companion's
+    -- indicative rates, advertised for information only — the companionship
+    -- fee is settled directly, off-platform; the platform is never party to it.
+    price_list_path       TEXT,
+
     -- Monthly platform LISTING fee for this specific profile. Set by the
     -- companion (self-managed) or by the managing agent. Agents can set a
     -- different fee per companion they manage — this is NOT the booking

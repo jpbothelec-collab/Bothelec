@@ -203,6 +203,7 @@ class CompanionProfileResponse(BaseModel):
     categories: list[CompanionshipCategory]
     indicative_rate_note: str | None
     contact_details: str | None
+    price_list_url: str | None  # signed URL to the companion's own price-list document
     is_available: bool
     agency_name: str | None  # name of the managing agency, if any
     is_published: bool

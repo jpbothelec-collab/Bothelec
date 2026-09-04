@@ -221,6 +221,13 @@ export const api = {
   },
   deletePortfolioImage: (mediaId: string) =>
     request<null>(`/profiles/me/media/${mediaId}`, { method: "DELETE" }),
+  uploadProfilePriceList: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<CompanionProfile>("/profiles/me/price-list", { method: "POST", form });
+  },
+  deleteProfilePriceList: () =>
+    request<CompanionProfile>("/profiles/me/price-list", { method: "DELETE" }),
   publishMyProfile: () => request<{ id: string; is_published: boolean; detail: string }>(
     "/profiles/me/publish",
     { method: "POST" },

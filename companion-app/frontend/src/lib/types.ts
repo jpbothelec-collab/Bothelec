@@ -74,6 +74,7 @@ export interface CompanionProfile {
   categories: CompanionshipCategory[];
   indicative_rate_note: string | null;
   contact_details: string | null;
+  price_list_url: string | null;
   is_available: boolean;
   agency_name: string | null;
   is_published: boolean;

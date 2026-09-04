@@ -90,6 +90,16 @@ async def _media_payload(media_items) -> list[dict]:
     ]
 
 
+async def _signed(path: str | None) -> str | None:
+    """Short-lived signed URL for a stored profile asset (e.g. price list), or None."""
+    if not path:
+        return None
+    try:
+        return await storage.get_signed_url(path, expires_in=settings.PORTFOLIO_URL_TTL_SECONDS)
+    except Exception:
+        return None
+
+
 async def _agency_name(db: AsyncSession, profile) -> str | None:
     """Resolve the managing agency's name for a profile, if it's linked to one."""
     if not profile.agent_id:
@@ -112,6 +122,7 @@ async def _owner_response(db: AsyncSession, profile) -> CompanionProfileResponse
         categories=profile.categories,
         indicative_rate_note=profile.indicative_rate_note,
         contact_details=profile.contact_details,
+        price_list_url=await _signed(profile.price_list_path),
         is_available=profile.is_available,
         agency_name=await _agency_name(db, profile),
         is_published=profile.is_published,
@@ -157,6 +168,7 @@ async def _public_response(
         categories=profile.categories,
         indicative_rate_note=profile.indicative_rate_note,
         contact_details=profile.contact_details,
+        price_list_url=await _signed(profile.price_list_path),
         is_available=profile.is_available,
         agency_name=await _agency_name(db, profile),
         is_published=profile.is_published,
@@ -452,6 +464,52 @@ async def delete_portfolio_image(
 
     await storage.delete_object(media.storage_path)
     await profiles_repo.delete_media(db, media)
+
+
+@router.post("/me/price-list", response_model=CompanionProfileResponse)
+async def upload_price_list(
+    file: UploadFile,
+    current_user=Depends(require_role(*_COMPANION_ROLES)),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Upload the companion's own price-list document (pdf or image). This is
+    advertised to clients for information only — the companionship fee is
+    settled directly, off-platform, and the platform never handles it.
+    """
+    profile = await profiles_repo.get_by_user_id(db, current_user.id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Create a profile before uploading a price list.")
+    try:
+        key = await storage.store_encrypted(file, prefix=f"price-lists/{profile.id}")
+    except storage.UnsupportedFileType as e:
+        raise HTTPException(status_code=415, detail=str(e))
+    except storage.FileTooLarge as e:
+        raise HTTPException(status_code=413, detail=str(e))
+    if profile.price_list_path:
+        try:
+            await storage.delete_object(profile.price_list_path)
+        except Exception:
+            pass
+    await profiles_repo.set_price_list(db, profile, path=key)
+    return await _owner_response(db, profile)
+
+
+@router.delete("/me/price-list", response_model=CompanionProfileResponse)
+async def delete_price_list(
+    current_user=Depends(require_role(*_COMPANION_ROLES)),
+    db: AsyncSession = Depends(get_db),
+):
+    profile = await profiles_repo.get_by_user_id(db, current_user.id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="No profile found for this account.")
+    if profile.price_list_path:
+        try:
+            await storage.delete_object(profile.price_list_path)
+        except Exception:
+            pass
+    await profiles_repo.set_price_list(db, profile, path=None)
+    return await _owner_response(db, profile)
 
 
 @router.get("/{profile_id}", response_model=CompanionProfileResponse)
