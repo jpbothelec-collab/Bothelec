@@ -421,7 +421,12 @@ async def upload_portfolio_image(
     profile = await profiles_repo.get_by_user_id(db, current_user.id)
     if not profile:
         raise HTTPException(status_code=404, detail="Create a profile before uploading images.")
+    return await _store_portfolio_image(db, profile, file)
 
+
+async def _store_portfolio_image(db: AsyncSession, profile, file: UploadFile) -> PortfolioMediaUploadResponse:
+    """Enforce the upload cap, store the encrypted image, and queue it for
+    moderation. Shared by the owner (/me/media) and agent (/{id}/media) routes."""
     current_count = await profiles_repo.count_active_media(db, profile.id)
 
     try:
@@ -565,6 +570,55 @@ async def set_profile_availability(
         )
     await profiles_repo.set_availability(db, profile, available=payload.available)
     return await _owner_response(db, profile)
+
+
+@router.post("/{profile_id}/media", response_model=PortfolioMediaUploadResponse,
+             status_code=status.HTTP_201_CREATED)
+async def upload_managed_portfolio_image(
+    profile_id: UUID,
+    file: UploadFile,
+    current_user=Depends(require_role(*_COMPANION_ROLES)),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Upload a portfolio image to a profile by id — the agent-facing
+    counterpart to POST /profiles/me/media, so an agency can manage a roster
+    companion's photos. Callable by the profile owner or its managing agent;
+    the same per-profile upload cap applies. New images enter the moderation
+    queue exactly as owner uploads do.
+    """
+    profile = await profiles_repo.get_by_id(db, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found.")
+    if not profiles_repo.can_manage(profile, current_user):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the profile owner or its managing agent can add photos.",
+        )
+    return await _store_portfolio_image(db, profile, file)
+
+
+@router.delete("/{profile_id}/media/{media_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_managed_portfolio_image(
+    profile_id: UUID,
+    media_id: UUID,
+    current_user=Depends(require_role(*_COMPANION_ROLES)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a photo from a managed profile by id (owner or managing agent)."""
+    profile = await profiles_repo.get_by_id(db, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found.")
+    if not profiles_repo.can_manage(profile, current_user):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the profile owner or its managing agent can remove photos.",
+        )
+    media = await profiles_repo.get_media(db, media_id)
+    if not media or media.profile_id != profile.id:
+        raise HTTPException(status_code=404, detail="Image not found on this profile.")
+    await storage.delete_object(media.storage_path)
+    await profiles_repo.delete_media(db, media)
 
 
 @router.get("/{profile_id}", response_model=CompanionProfileResponse)

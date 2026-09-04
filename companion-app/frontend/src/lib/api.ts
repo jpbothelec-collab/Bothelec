@@ -239,6 +239,20 @@ export const api = {
   },
   deletePortfolioImage: (mediaId: string) =>
     request<null>(`/profiles/me/media/${mediaId}`, { method: "DELETE" }),
+  // Agent-facing: manage a roster companion's photos by profile id.
+  uploadManagedPortfolioImage: (profileId: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<{
+      id: string;
+      moderation_status: string;
+      image_count: number;
+      upload_limit: number;
+      message: string;
+    }>(`/profiles/${profileId}/media`, { method: "POST", form });
+  },
+  deleteManagedPortfolioImage: (profileId: string, mediaId: string) =>
+    request<null>(`/profiles/${profileId}/media/${mediaId}`, { method: "DELETE" }),
   uploadProfilePriceList: (file: File) => {
     const form = new FormData();
     form.append("file", file);

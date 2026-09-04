@@ -259,15 +259,95 @@ function RosterRow({ profile, onChanged }: { profile: CompanionProfile; onChange
         </Link>
       </div>
       {editing && (
-        <RosterEditForm
-          profile={profile}
-          onSaved={() => {
-            setEditing(false);
-            onChanged();
-          }}
-        />
+        <>
+          <RosterEditForm profile={profile} onSaved={onChanged} />
+          <RosterPhotos profile={profile} onChanged={onChanged} />
+        </>
       )}
     </Card>
+  );
+}
+
+function RosterPhotos({ profile, onChanged }: { profile: CompanionProfile; onChanged: () => void }) {
+  const { loading, error, run } = useAction();
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  function upload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file
+    if (!file) return;
+    run(async () => {
+      await api.uploadManagedPortfolioImage(profile.id, file);
+      onChanged();
+    });
+  }
+
+  function remove(id: string) {
+    setBusyId(id);
+    run(async () => {
+      await api.deleteManagedPortfolioImage(profile.id, id);
+      onChanged();
+    }).finally(() => setBusyId(null));
+  }
+
+  const statusTone = (s: string) =>
+    s === "approved" ? "ok" : s === "rejected" ? "block" : "warn";
+
+  return (
+    <div className="mt-4 border-t border-hair pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-medium text-ink">Photos</h3>
+          <p className="mt-0.5 text-xs text-muted">
+            Up to 10. New photos are reviewed before they appear publicly.
+          </p>
+        </div>
+        <label className="cursor-pointer rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+          {loading ? "Uploading…" : "Add photo"}
+          <input type="file" accept="image/*" onChange={upload} className="hidden" disabled={loading} />
+        </label>
+      </div>
+
+      {error && (
+        <div className="mt-3">
+          <Alert>{error}</Alert>
+        </div>
+      )}
+
+      {profile.media.length === 0 ? (
+        <p className="mt-4 rounded-lg border border-dashed border-hair-strong px-4 py-6 text-center text-sm text-muted">
+          No photos yet.
+        </p>
+      ) : (
+        <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-5">
+          {profile.media.map((m) => (
+            <div key={m.id} className="group relative overflow-hidden rounded-lg bg-surface-2">
+              <div className="aspect-square">
+                {m.url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={m.url} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full items-center justify-center font-display text-2xl text-hair-strong">
+                    {profile.display_name.slice(0, 1)}
+                  </div>
+                )}
+              </div>
+              <div className="absolute left-1.5 top-1.5">
+                <Badge tone={statusTone(m.moderation_status)}>{m.moderation_status}</Badge>
+              </div>
+              <button
+                type="button"
+                onClick={() => remove(m.id)}
+                disabled={busyId === m.id}
+                className="absolute right-1.5 top-1.5 rounded-md bg-black/55 px-2 py-0.5 text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 disabled:opacity-50"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
