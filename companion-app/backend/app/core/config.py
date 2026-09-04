@@ -109,7 +109,16 @@ class Settings(BaseSettings):
     # --- File storage (S3-compatible) ---
     S3_BUCKET: str = "companion-platform-uploads"
     S3_REGION: str = "af-south-1"
-    S3_ENDPOINT_URL: str | None = None  # set if using non-AWS S3-compatible storage
+    # Endpoint the *backend* uses to read/write objects. For AWS leave unset;
+    # for a self-hosted store (e.g. MinIO) point at the internal address,
+    # e.g. http://minio:9000 inside a Docker network.
+    S3_ENDPOINT_URL: str | None = None
+    # Endpoint used only to build the short-lived signed URLs handed to the
+    # browser. It must be reachable by end-user browsers, so behind MinIO it
+    # is the server's public IP/host (e.g. http://203.0.113.10:9000 now, or
+    # https://s3.your-domain later) rather than the internal Docker address.
+    # Falls back to S3_ENDPOINT_URL when unset (correct for real AWS S3).
+    S3_PUBLIC_ENDPOINT_URL: str | None = None
 
     # --- Verification document retention ---
     # Days to retain raw ID documents after a verification decision is made.

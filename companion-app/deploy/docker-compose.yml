@@ -1,0 +1,125 @@
+# Amicora — full production stack for a single Linux host (xneelo Cloud/VPS).
+#
+#   caddy  ── reverse proxy + automatic HTTPS (public :80/:443)
+#     ├── /api/*  → backend  (FastAPI)
+#     └── /*      → frontend (Next.js)
+#   backend  ── FastAPI, runs alembic migrations on start
+#   frontend ── Next.js standalone server
+#   postgres ── application database
+#   minio    ── S3-compatible object storage (portfolio images, ID docs)
+#
+# Copy .env.example to .env and fill it in before `docker compose up -d`.
+# See README.md for the full runbook.
+
+name: amicora
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    ports:
+      # Published so browsers can fetch signed image URLs directly from MinIO.
+      # S3_PUBLIC_ENDPOINT_URL in .env must point here (server IP / host :9000).
+      - "9000:9000"
+      # MinIO admin console (optional). Restrict or drop in the firewall if
+      # you don't need it exposed.
+      - "9001:9001"
+
+  # One-shot: create the bucket (private) and exit. Retries until MinIO is up.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD; do
+        echo 'waiting for minio...'; sleep 2;
+      done;
+      mc mb --ignore-existing local/$$S3_BUCKET;
+      mc anonymous set none local/$$S3_BUCKET;
+      echo 'bucket ready (private)';
+      "
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      S3_BUCKET: ${S3_BUCKET}
+
+  backend:
+    build:
+      context: ../backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      ENV: production
+      SECRET_KEY: ${SECRET_KEY}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # Object storage
+      S3_BUCKET: ${S3_BUCKET}
+      S3_REGION: ${S3_REGION}
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      # Same-origin frontend, so CORS isn't exercised; set for completeness.
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      # Billing (optional — leave blank until Paystack is configured)
+      PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY}
+      PAYSTACK_PUBLIC_KEY: ${PAYSTACK_PUBLIC_KEY}
+      PAYSTACK_CLIENT_PREMIUM_PLAN_CODE: ${PAYSTACK_CLIENT_PREMIUM_PLAN_CODE}
+      BILLING_CALLBACK_URL: ${BILLING_CALLBACK_URL}
+
+  frontend:
+    build:
+      context: ../frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # ":80" for IP-only (no TLS). A bare domain (e.g. amicora.co.za) makes
+      # Caddy fetch a Let's Encrypt certificate automatically.
+      SITE_ADDRESS: ${SITE_ADDRESS}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  postgres_data:
+  minio_data:
+  caddy_data:
+  caddy_config:

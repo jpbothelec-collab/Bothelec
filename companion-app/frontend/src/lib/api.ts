@@ -24,8 +24,24 @@ import type {
   UserRole,
 } from "./types";
 
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") || "http://localhost:8000";
+// Where the browser reaches the API.
+//   1. NEXT_PUBLIC_API_BASE, if set at build time, always wins.
+//   2. In a production build with no override, default to the same origin the
+//      page was served from, under /api — the reverse proxy (Caddy) forwards
+//      /api/* to the backend. This means the deployed app works on a bare IP
+//      or a domain, over http or https, with no rebuild when the domain is
+//      added and no cross-origin (CORS) requests.
+//   3. Otherwise (local dev / SSR / build step) fall back to localhost:8000.
+function resolveApiBase(): string {
+  const explicit = process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "");
+  if (explicit) return explicit;
+  if (typeof window !== "undefined" && process.env.NODE_ENV === "production") {
+    return `${window.location.origin}/api`;
+  }
+  return "http://localhost:8000";
+}
+
+export const API_BASE = resolveApiBase();
 
 const TOKEN_KEY = "amicora_token";
 

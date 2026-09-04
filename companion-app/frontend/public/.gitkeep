@@ -1,0 +1,2 @@
+# Static assets served at the site root by Next.js. Kept so the
+# production Docker build (which COPYs this directory) always has it.

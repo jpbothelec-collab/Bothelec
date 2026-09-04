@@ -1,0 +1,17 @@
+# SITE_ADDRESS is ":80" for IP-only access, or your domain (e.g.
+# amicora.co.za) — a bare domain triggers automatic HTTPS via Let's Encrypt.
+{$SITE_ADDRESS} {
+	encode gzip
+
+	# API: strip the /api prefix and forward to the FastAPI backend, whose
+	# routes live at the root (/auth, /profiles, ...). Same origin as the
+	# web app, so the browser makes no cross-origin requests.
+	handle_path /api/* {
+		reverse_proxy backend:8000
+	}
+
+	# Everything else: the Next.js server.
+	handle {
+		reverse_proxy frontend:3000
+	}
+}

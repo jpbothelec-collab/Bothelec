@@ -59,7 +59,7 @@ def _delete_sync(key: str) -> None:
 
 
 def _presign_get_sync(key: str, expires_in: int) -> str:
-    client = get_s3_client()
+    client = get_s3_client(for_signing=True)
     return client.generate_presigned_url(
         "get_object",
         Params={"Bucket": settings.S3_BUCKET, "Key": key},
@@ -93,7 +93,7 @@ async def get_signed_url(storage_key: str, *, expires_in: int = 300) -> str:
 
 
 def _presign_many_sync(keys: list[str], expires_in: int) -> list[str]:
-    client = get_s3_client()
+    client = get_s3_client(for_signing=True)
     return [
         client.generate_presigned_url(
             "get_object",
