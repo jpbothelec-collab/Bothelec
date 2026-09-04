@@ -8,7 +8,7 @@ export function ProfileCard({ p }: { p: CompanionProfile }) {
       href={`/companions/${p.id}`}
       className="group flex flex-col overflow-hidden rounded-xl2 border border-hair bg-surface shadow-card transition-transform hover:-translate-y-0.5"
     >
-      <div className="relative flex aspect-[4/5] items-center justify-center overflow-hidden bg-accent-soft">
+      <div className="relative flex aspect-[4/5] items-center justify-center overflow-hidden bg-gradient-to-br from-accent-soft to-accent-2-soft">
         {p.media[0]?.url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img

@@ -14,8 +14,9 @@ type BtnProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 const btnBase =
   "inline-flex items-center justify-center gap-2 rounded-lg text-sm font-medium px-4 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
 const btnVariants: Record<BtnVariant, string> = {
-  primary: "bg-accent text-white hover:opacity-90",
-  secondary: "border border-hair-strong text-ink hover:bg-surface-2",
+  primary:
+    "bg-grad-plum text-white shadow-sm shadow-accent/25 hover:brightness-110 active:brightness-95",
+  secondary: "border border-hair-strong text-ink hover:bg-surface-2 hover:border-accent/40",
   ghost: "text-accent-ink hover:bg-accent-soft",
   danger: "bg-block text-white hover:opacity-90",
 };

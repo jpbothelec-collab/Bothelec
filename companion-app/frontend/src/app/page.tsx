@@ -6,11 +6,11 @@ export default function Home() {
       {/* hero */}
       <section className="flex flex-col gap-5">
         <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-accent-ink">
-          <span className="inline-block h-px w-6 bg-accent" />
+          <span className="bg-grad-brand inline-block h-[3px] w-7 rounded-full" />
           South Africa · 18+
         </span>
         <h1 className="max-w-2xl text-balance font-display text-4xl font-semibold leading-[1.05] tracking-tight text-ink sm:text-5xl">
-          Companionship, arranged with care.
+          Companionship, arranged with <span className="text-gradient">care</span>.
         </h1>
         <p className="max-w-xl text-[15px] leading-relaxed text-muted">
           Amicora is a listing and introduction service. Verified companions and agencies publish
@@ -20,7 +20,7 @@ export default function Home() {
         <div className="flex flex-wrap gap-3 pt-1">
           <Link
             href="/browse"
-            className="rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-white hover:opacity-90"
+            className="bg-grad-brand rounded-lg px-5 py-2.5 text-sm font-medium text-white shadow-sm shadow-accent/30 hover:brightness-110"
           >
             Browse companions
           </Link>

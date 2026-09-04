@@ -3,73 +3,124 @@
 @tailwind utilities;
 
 :root {
-  --ground: #f5f2f0;
+  --ground: #f6f0f3;
   --surface: #ffffff;
-  --surface-2: #faf7f6;
-  --ink: #241e28;
-  --muted: #6e6473;
-  --faint: #928897;
-  --hair: #e5dee0;
-  --hair-strong: #d6ccd1;
-  --accent: #7c3e6e;
-  --accent-soft: #f0e3ec;
-  --accent-ink: #6a3260;
-  --ok: #2f7d57;
-  --ok-soft: #e1f0e7;
-  --warn: #9a6a16;
-  --warn-soft: #f6ebd5;
-  --block: #a93f33;
-  --block-soft: #f6e1dd;
+  --surface-2: #fbf3f7;
+  --ink: #201823;
+  --muted: #6c5f6c;
+  --faint: #988a97;
+  --hair: #ecdce6;
+  --hair-strong: #dbc6d3;
+
+  /* primary — vivid plum-magenta */
+  --accent: #a52872;
+  --accent-strong: #7c1450;
+  --accent-soft: #f8e0ef;
+  --accent-ink: #8c1c5c;
+
+  /* secondary — warm coral, for gradients and lively highlights */
+  --accent-2: #e07a4e;
+  --accent-2-soft: #fce6da;
+  --accent-2-ink: #b8542c;
+
+  --ok: #2f8159;
+  --ok-soft: #dff0e8;
+  --warn: #a06a12;
+  --warn-soft: #f7ebd3;
+  --block: #c0392b;
+  --block-soft: #f8e2de;
+
+  /* brand gradient (plum → coral) used on hero accents and CTAs */
+  --grad-brand: linear-gradient(115deg, var(--accent) 0%, #c04a70 55%, var(--accent-2) 100%);
+  --grad-plum: linear-gradient(180deg, var(--accent) 0%, var(--accent-strong) 100%);
+  /* soft page tint so backgrounds aren't flat */
+  --ground-tint:
+    radial-gradient(900px 480px at 12% -8%, rgba(165, 40, 114, 0.10), transparent 60%),
+    radial-gradient(760px 420px at 100% 0%, rgba(224, 122, 78, 0.10), transparent 55%);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --ground: #161219;
-    --surface: #201b25;
-    --surface-2: #1a1620;
-    --ink: #ece4ea;
-    --muted: #a99dad;
-    --faint: #7e7286;
-    --hair: #322a38;
-    --hair-strong: #3e3446;
-    --accent: #ce8fbe;
-    --accent-soft: #2e2033;
-    --accent-ink: #dfa9d2;
+    --ground: #140f19;
+    --surface: #201826;
+    --surface-2: #1a1420;
+    --ink: #efe5ee;
+    --muted: #b1a4b6;
+    --faint: #82758a;
+    --hair: #342a3b;
+    --hair-strong: #43364c;
+
+    --accent: #e58bc6;
+    --accent-strong: #b95a96;
+    --accent-soft: #341f30;
+    --accent-ink: #f0a6d6;
+
+    --accent-2: #f0a072;
+    --accent-2-soft: #33241b;
+    --accent-2-ink: #f3b68e;
+
     --ok: #6fc79b;
     --ok-soft: #1e2e27;
     --warn: #d9ae5b;
     --warn-soft: #2e2717;
     --block: #e08276;
     --block-soft: #33201e;
+
+    --grad-brand: linear-gradient(115deg, #d060a5 0%, #dd7a86 55%, #f0a072 100%);
+    --grad-plum: linear-gradient(180deg, #c76faa 0%, #8e3f70 100%);
+    --ground-tint:
+      radial-gradient(900px 480px at 12% -8%, rgba(229, 139, 198, 0.12), transparent 60%),
+      radial-gradient(760px 420px at 100% 0%, rgba(240, 160, 114, 0.10), transparent 55%);
   }
 }
 
 :root[data-theme="dark"] {
-  --ground: #161219;
-  --surface: #201b25;
-  --surface-2: #1a1620;
-  --ink: #ece4ea;
-  --muted: #a99dad;
-  --faint: #7e7286;
-  --hair: #322a38;
-  --hair-strong: #3e3446;
-  --accent: #ce8fbe;
-  --accent-soft: #2e2033;
-  --accent-ink: #dfa9d2;
+  --ground: #140f19;
+  --surface: #201826;
+  --surface-2: #1a1420;
+  --ink: #efe5ee;
+  --muted: #b1a4b6;
+  --faint: #82758a;
+  --hair: #342a3b;
+  --hair-strong: #43364c;
+
+  --accent: #e58bc6;
+  --accent-strong: #b95a96;
+  --accent-soft: #341f30;
+  --accent-ink: #f0a6d6;
+
+  --accent-2: #f0a072;
+  --accent-2-soft: #33241b;
+  --accent-2-ink: #f3b68e;
+
   --ok: #6fc79b;
   --ok-soft: #1e2e27;
   --warn: #d9ae5b;
   --warn-soft: #2e2717;
   --block: #e08276;
   --block-soft: #33201e;
+
+  --grad-brand: linear-gradient(115deg, #d060a5 0%, #dd7a86 55%, #f0a072 100%);
+  --grad-plum: linear-gradient(180deg, #c76faa 0%, #8e3f70 100%);
+  --ground-tint:
+    radial-gradient(900px 480px at 12% -8%, rgba(229, 139, 198, 0.12), transparent 60%),
+    radial-gradient(760px 420px at 100% 0%, rgba(240, 160, 114, 0.10), transparent 55%);
 }
 
 * {
   box-sizing: border-box;
 }
 
+html {
+  /* never let a stray wide child scroll the whole page sideways on mobile */
+  overflow-x: hidden;
+}
+
 body {
-  background: var(--ground);
+  background-color: var(--ground);
+  background-image: var(--ground-tint);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
   color: var(--ink);
   font-family: var(--font-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -83,4 +134,22 @@ body {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* ---------- brand helpers ---------- */
+
+/* plum→coral gradient text, for hero words and accents */
+.text-gradient {
+  background: var(--grad-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* filled brand gradient surface (CTAs, hero panels) */
+.bg-grad-brand {
+  background-image: var(--grad-brand);
+}
+.bg-grad-plum {
+  background-image: var(--grad-plum);
 }
