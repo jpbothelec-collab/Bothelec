@@ -123,6 +123,13 @@ function ProfileEditor({ profile, onSaved }: { profile: CompanionProfile; onSave
     });
   }
 
+  function feature() {
+    run(async () => {
+      const res = await api.startFeaturedCheckout(profile.id);
+      window.location.href = res.authorization_url;
+    });
+  }
+
   function billing(kind: "checkout" | "cancel") {
     run(async () => {
       if (kind === "checkout") {
@@ -273,6 +280,21 @@ function ProfileEditor({ profile, onSaved }: { profile: CompanionProfile; onSave
                 Cancel listing
               </Button>
             </div>
+          </Card>
+
+          <Card className="p-5">
+            <div className="flex items-center gap-2">
+              <h2 className="font-medium text-ink">Featured boost</h2>
+              {profile.is_featured && <Badge tone="accent">★ Featured</Badge>}
+            </div>
+            <p className="mt-1 text-sm text-muted">
+              {profile.is_featured
+                ? "Your profile is boosted to the top of Browse. You can extend it anytime."
+                : "Get a “Featured” badge and float to the top of Browse for a set period."}
+            </p>
+            <Button onClick={feature} loading={loading} className="mt-4">
+              {profile.is_featured ? "Extend feature" : "Feature my profile"}
+            </Button>
           </Card>
 
           <AgencyCard profile={profile} onChanged={onSaved} />

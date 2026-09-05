@@ -9,6 +9,7 @@ any single feature area: the verification queue listing, and direct
 account suspension/ban actions independent of a specific report or
 flagged message.
 """
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -179,8 +180,70 @@ async def list_profiles_for_activation(
             listing_is_manual=bool(sub and sub.provider == "manual"),
             approved_photo_count=sum(1 for m in media if m.moderation_status == "approved"),
             is_published=p.is_published,
+            is_featured=bool(p.featured_until and p.featured_until > datetime.now(timezone.utc)),
+            featured_until=p.featured_until,
         ))
     return rows
+
+
+@router.post("/profiles/{profile_id}/feature", response_model=AdminProfileRow)
+async def feature_profile(
+    profile_id: UUID,
+    admin=Depends(require_admin_permission(AdminPermission.MANAGE_BILLING)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Grant (or extend) a featured boost for FEATURED_LISTING_DAYS — admin comp, no payment."""
+    profile = await profiles_repo.get_by_id(db, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found.")
+    now = datetime.now(timezone.utc)
+    base = profile.featured_until if (profile.featured_until and profile.featured_until > now) else now
+    until = base + timedelta(days=settings.FEATURED_LISTING_DAYS)
+    await profiles_repo.set_featured(db, profile, until=until)
+    await audit_repo.write(
+        db, actor_id=admin.id, action="profile_featured_manually",
+        target_type="companion_profile", target_id=profile.id,
+        metadata={"featured_until": until.isoformat()},
+    )
+    return await _admin_profile_row(db, profile)
+
+
+@router.post("/profiles/{profile_id}/unfeature", response_model=AdminProfileRow)
+async def unfeature_profile(
+    profile_id: UUID,
+    admin=Depends(require_admin_permission(AdminPermission.MANAGE_BILLING)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Clear a featured boost immediately."""
+    profile = await profiles_repo.get_by_id(db, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found.")
+    await profiles_repo.set_featured(db, profile, until=None)
+    await audit_repo.write(
+        db, actor_id=admin.id, action="profile_unfeatured",
+        target_type="companion_profile", target_id=profile.id,
+    )
+    return await _admin_profile_row(db, profile)
+
+
+async def _admin_profile_row(db: AsyncSession, p) -> AdminProfileRow:
+    owner = await users_repo.get_by_id(db, p.user_id)
+    sub = await subs_repo.get_active_listing_subscription(db, p.id)
+    media = await profiles_repo.list_media(db, p.id)
+    return AdminProfileRow(
+        id=p.id,
+        display_name=p.display_name,
+        owner_email=owner.email if owner else "(unknown)",
+        owner_role=UserRole(owner.role) if owner else UserRole.companion,
+        owner_verification_status=VerificationStatus(owner.verification_status) if owner else VerificationStatus.unverified,
+        monthly_listing_fee_zar=p.monthly_listing_fee_cents / 100,
+        listing_active=sub is not None,
+        listing_is_manual=bool(sub and sub.provider == "manual"),
+        approved_photo_count=sum(1 for m in media if m.moderation_status == "approved"),
+        is_published=p.is_published,
+        is_featured=bool(p.featured_until and p.featured_until > datetime.now(timezone.utc)),
+        featured_until=p.featured_until,
+    )
 
 
 @router.post("/profiles/{profile_id}/activate", response_model=ProfileActivationResult)

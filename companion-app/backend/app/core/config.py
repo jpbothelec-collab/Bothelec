@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     # fixed price, so unlike listing plans it doesn't need dynamic creation.
     PAYSTACK_CLIENT_PREMIUM_PLAN_CODE: str = ""
     CLIENT_PREMIUM_MONTHLY_FEE_ZAR: float = 149.00
+    # Featured-listing boost: a one-off charge that floats a profile to the
+    # top of Browse (with a "Featured" badge) for FEATURED_LISTING_DAYS days.
+    FEATURED_LISTING_FEE_ZAR: float = 200.00
+    FEATURED_LISTING_DAYS: int = 7
     # Where Paystack redirects the browser after checkout completes.
     BILLING_CALLBACK_URL: str = "https://example.com/billing/callback"
 

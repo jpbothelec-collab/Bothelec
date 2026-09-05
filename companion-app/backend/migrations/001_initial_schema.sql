@@ -174,6 +174,8 @@ CREATE TABLE companion_profiles (
     is_available          BOOLEAN NOT NULL DEFAULT FALSE,
     availability_bumped_at TIMESTAMPTZ,
     published_at            TIMESTAMPTZ,
+    -- Paid featured boost: while in the future, floats to top of Browse.
+    featured_until          TIMESTAMPTZ,
 
     created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at             TIMESTAMPTZ NOT NULL DEFAULT now()

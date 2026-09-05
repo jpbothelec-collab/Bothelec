@@ -143,6 +143,11 @@ class CompanionProfile(Base):
     is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     published_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Paid "featured" boost: while featured_until is in the future the profile
+    # floats to the top of Browse with a Featured badge. Set by a featured
+    # checkout (Paystack) or an admin grant.
+    featured_until: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # "Available now" toggle + rotation timestamp (see search ordering / rotation job).
     is_available: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     availability_bumped_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True),

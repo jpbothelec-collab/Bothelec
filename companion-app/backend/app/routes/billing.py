@@ -80,6 +80,34 @@ async def start_listing_checkout(
     )
 
 
+@router.post("/featured/{profile_id}/checkout", response_model=CheckoutResponse)
+async def start_featured_checkout(
+    profile_id: UUID,
+    current_user=Depends(require_role(UserRole.companion, UserRole.agent)),
+    db: AsyncSession = Depends(get_db),
+):
+    """One-off checkout to feature a profile (top of Browse) for a set period."""
+    profile = await profiles_repo.get_by_id(db, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found.")
+    if not profiles_repo.can_manage(profile, current_user):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the profile owner or its managing agent can feature this profile.",
+        )
+    try:
+        result = await billing.start_featured_checkout(profile=profile, payer_email=current_user.email)
+    except billing.BillingConfigError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except paystack.PaystackError as e:
+        raise HTTPException(status_code=502, detail=f"Payment provider error: {e}")
+    return CheckoutResponse(
+        authorization_url=result["authorization_url"],
+        access_code=result["access_code"],
+        reference=result["reference"],
+    )
+
+
 @router.post("/premium/checkout", response_model=CheckoutResponse)
 async def start_premium_checkout(
     current_user=Depends(require_role(UserRole.client)),
@@ -240,6 +268,18 @@ async def _handle_charge_success(db: AsyncSession, data: dict) -> None:
             plan_code=plan_code,
             status="active",
         )
+
+    elif purpose == "featured_listing":
+        profile_id = UUID(metadata["profile_id"])
+        profile = await profiles_repo.get_by_id(db, profile_id)
+        if not profile:
+            return
+        from datetime import datetime, timedelta, timezone
+        from app.core.config import settings
+        days = int(metadata.get("days") or settings.FEATURED_LISTING_DAYS)
+        now = datetime.now(timezone.utc)
+        base = profile.featured_until if (profile.featured_until and profile.featured_until > now) else now
+        await profiles_repo.set_featured(db, profile, until=base + timedelta(days=days))
 
     elif purpose == "client_premium_subscription":
         user_id = UUID(metadata["user_id"])

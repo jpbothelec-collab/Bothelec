@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.orm import CompanionProfile, PortfolioMedia
@@ -43,11 +43,13 @@ async def search_published(
     )
     total = count_result.scalar_one()
 
-    # Ranking: "available now" profiles float to the top, most-recently
-    # bumped first (a scheduled rotation job re-bumps them in turn so each
-    # available lister cycles through the top). Then newest-published.
+    # Ranking: paid "featured" profiles first, then "available now" (most
+    # recently bumped, cycled by the rotation job), then newest-published.
+    now = datetime.now(timezone.utc)
+    featured_first = case((CompanionProfile.featured_until > now, 1), else_=0).desc()
     result = await db.execute(
         base_query.order_by(
+            featured_first,
             CompanionProfile.is_available.desc(),
             CompanionProfile.availability_bumped_at.desc().nullslast(),
             CompanionProfile.published_at.desc(),
@@ -137,6 +139,14 @@ async def set_availability(db: AsyncSession, profile: CompanionProfile, *, avail
     profile.is_available = available
     if available:
         profile.availability_bumped_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(profile)
+
+
+async def set_featured(db: AsyncSession, profile: CompanionProfile, *, until) -> None:
+    """Set (or clear, with until=None) the featured-boost expiry timestamp."""
+    profile.featured_until = until
+    profile.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(profile)
 

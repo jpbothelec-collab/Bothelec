@@ -133,6 +133,7 @@ export interface CompanionProfile {
   contact_details: string | null;
   price_list_url: string | null;
   is_available: boolean;
+  is_featured: boolean;
   agency_name: string | null;
   is_published: boolean;
   published_at: string | null;
@@ -256,6 +257,8 @@ export interface AdminProfileRow {
   listing_is_manual: boolean;
   approved_photo_count: number;
   is_published: boolean;
+  is_featured: boolean;
+  featured_until: string | null;
 }
 
 export interface ProfileActivationResult {

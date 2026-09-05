@@ -68,6 +68,20 @@ function ProfileRow({ p, onChanged }: { p: AdminProfileRow; onChanged: () => voi
       onChanged();
     });
   }
+  function toggleFeature() {
+    setNote(null);
+    run(async () => {
+      const r = p.is_featured
+        ? await api.adminUnfeatureProfile(p.id)
+        : await api.adminFeatureProfile(p.id);
+      setNote(
+        r.is_featured && r.featured_until
+          ? `Featured until ${new Date(r.featured_until).toLocaleDateString()}.`
+          : "Feature removed.",
+      );
+      onChanged();
+    });
+  }
 
   return (
     <Card className="p-4">
@@ -80,6 +94,7 @@ function ProfileRow({ p, onChanged }: { p: AdminProfileRow; onChanged: () => voi
             <Badge tone={p.is_published ? "ok" : "neutral"}>
               {p.is_published ? "Published" : "Unpublished"}
             </Badge>
+            {p.is_featured && <Badge tone="accent">★ Featured</Badge>}
           </div>
           <p className="mt-0.5 text-xs text-muted">
             {p.owner_email} · {p.owner_role}
@@ -105,6 +120,9 @@ function ProfileRow({ p, onChanged }: { p: AdminProfileRow; onChanged: () => voi
               Deactivate
             </Button>
           )}
+          <Button variant="secondary" onClick={toggleFeature} loading={loading}>
+            {p.is_featured ? "Unfeature" : "Feature"}
+          </Button>
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-hair pt-3">

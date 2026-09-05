@@ -18,6 +18,7 @@ Two independent policies:
    the companion's listing subscription — see
    app/repositories/subscriptions.py for the plan-code distinction.
 """
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
@@ -91,6 +92,10 @@ async def _media_payload(media_items) -> list[dict]:
     ]
 
 
+def _is_featured(profile) -> bool:
+    return bool(profile.featured_until and profile.featured_until > datetime.now(timezone.utc))
+
+
 async def _signed(path: str | None) -> str | None:
     """Short-lived signed URL for a stored profile asset (e.g. price list), or None."""
     if not path:
@@ -126,6 +131,7 @@ async def _owner_response(db: AsyncSession, profile) -> CompanionProfileResponse
         contact_details=profile.contact_details,
         price_list_url=await _signed(profile.price_list_path),
         is_available=profile.is_available,
+        is_featured=_is_featured(profile),
         agency_name=await _agency_name(db, profile),
         is_published=profile.is_published,
         published_at=profile.published_at,
@@ -173,6 +179,7 @@ async def _public_response(
         contact_details=profile.contact_details,
         price_list_url=await _signed(profile.price_list_path),
         is_available=profile.is_available,
+        is_featured=_is_featured(profile),
         agency_name=await _agency_name(db, profile),
         is_published=profile.is_published,
         published_at=profile.published_at,

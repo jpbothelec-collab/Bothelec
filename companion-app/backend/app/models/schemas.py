@@ -226,6 +226,7 @@ class CompanionProfileResponse(BaseModel):
     contact_details: str | None
     price_list_url: str | None  # signed URL to the companion's own price-list document
     is_available: bool
+    is_featured: bool  # paid boost active — floats to the top of Browse
     agency_name: str | None  # name of the managing agency, if any
     is_published: bool
     published_at: datetime | None
@@ -470,6 +471,8 @@ class AdminProfileRow(BaseModel):
     listing_is_manual: bool
     approved_photo_count: int
     is_published: bool
+    is_featured: bool
+    featured_until: datetime | None
 
 
 class ProfileActivationResult(BaseModel):

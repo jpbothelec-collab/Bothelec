@@ -342,6 +342,10 @@ export const api = {
     request<{ authorization_url: string }>("/billing/premium/checkout", { method: "POST" }),
   cancelPremium: () =>
     request<{ detail: string }>("/billing/premium/cancel", { method: "POST" }),
+  startFeaturedCheckout: (profileId: string) =>
+    request<{ authorization_url: string }>(`/billing/featured/${profileId}/checkout`, {
+      method: "POST",
+    }),
   startListingCheckout: (profileId: string) =>
     request<{ authorization_url: string }>(`/billing/listing/${profileId}/checkout`, {
       method: "POST",
@@ -387,6 +391,10 @@ export const api = {
     request<ProfileActivationResult>(`/admin/profiles/${profileId}/activate`, { method: "POST" }),
   adminDeactivateProfile: (profileId: string) =>
     request<ProfileActivationResult>(`/admin/profiles/${profileId}/deactivate`, { method: "POST" }),
+  adminFeatureProfile: (profileId: string) =>
+    request<AdminProfileRow>(`/admin/profiles/${profileId}/feature`, { method: "POST" }),
+  adminUnfeatureProfile: (profileId: string) =>
+    request<AdminProfileRow>(`/admin/profiles/${profileId}/unfeature`, { method: "POST" }),
   setAdminLevel: (userId: string, level: AdminLevel) =>
     request<AdminLevelResponse>(`/admin/admins/${userId}/level`, {
       method: "POST",
