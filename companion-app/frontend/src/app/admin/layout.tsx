@@ -8,6 +8,7 @@ import { cx } from "@/components/ui";
 const TABS = [
   { href: "/admin", label: "Verification" },
   { href: "/admin/moderation", label: "Moderation" },
+  { href: "/admin/profiles", label: "Activation" },
   { href: "/admin/users", label: "Users" },
   { href: "/admin/admins", label: "Admin tiers" },
 ];

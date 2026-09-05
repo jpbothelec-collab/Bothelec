@@ -85,6 +85,45 @@ async def get_active_premium_subscription(db: AsyncSession, user_id: UUID) -> Su
     return next((s for s in result.scalars().all() if _not_expired(s)), None)
 
 
+async def grant_manual_listing(
+    db: AsyncSession, *, user_id: UUID, profile_id: UUID, plan_code: str
+) -> Subscription:
+    """
+    Admin override: create an active listing subscription with no payment
+    provider ('manual'), so a profile can be activated without going through
+    Paystack. No-op (returns the existing row) if the profile already has an
+    active listing subscription.
+    """
+    existing = await get_active_listing_subscription(db, profile_id)
+    if existing:
+        return existing
+    ref = f"manual:{profile_id}:{int(datetime.now(timezone.utc).timestamp())}"
+    return await create_subscription(
+        db,
+        user_id=user_id,
+        profile_id=profile_id,
+        provider="manual",
+        provider_subscription_id=ref,
+        plan_code=plan_code,
+        status="active",
+    )
+
+
+async def cancel_manual_listing(db: AsyncSession, profile_id: UUID) -> bool:
+    """
+    Cancel a manually-granted listing subscription for a profile. Only acts
+    on 'manual' subscriptions — a real Paystack subscription must be canceled
+    through the provider (the /billing cancel flow), not here. Returns True if
+    a manual subscription was canceled.
+    """
+    sub = await get_active_listing_subscription(db, profile_id)
+    if sub and sub.provider == "manual":
+        sub.status = "canceled"
+        await db.commit()
+        return True
+    return False
+
+
 async def get_by_provider_ref(db: AsyncSession, *, provider: str, provider_subscription_id: str) -> Subscription | None:
     result = await db.execute(
         select(Subscription).where(

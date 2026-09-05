@@ -59,6 +59,14 @@ async def search_published(
     return items, total
 
 
+async def list_all(db: AsyncSession) -> list[CompanionProfile]:
+    """All profiles, newest first — for the admin activation dashboard."""
+    result = await db.execute(
+        select(CompanionProfile).order_by(CompanionProfile.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
 async def get_by_user_id(db: AsyncSession, user_id: UUID) -> CompanionProfile | None:
     result = await db.execute(select(CompanionProfile).where(CompanionProfile.user_id == user_id))
     return result.scalar_one_or_none()

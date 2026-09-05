@@ -19,17 +19,23 @@ from app.dependencies.auth import require_admin_permission
 from app.models.schemas import (
     AdminLevel,
     AdminLevelResponse,
+    AdminProfileRow,
     AdminUserActionResult,
     PendingVerificationDocument,
+    ProfileActivationResult,
     SetAdminLevelRequest,
     UserRole,
     VerificationStatus,
 )
 from app.repositories import audit_log as audit_repo
+from app.repositories import companion_profiles as profiles_repo
 from app.repositories import identity_documents as docs_repo
+from app.repositories import subscriptions as subs_repo
 from app.repositories import users as users_repo
 from app.services import admin_access
 from app.services.admin_access import AdminPermission
+
+_LISTING_PLAN = {"agent": "agent_listing_monthly", "companion": "companion_listing_monthly"}
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -112,6 +118,114 @@ async def unban_user(
         db, actor_id=admin.id, action="user_unbanned", target_type="user", target_id=user_id,
     )
     return AdminUserActionResult(user_id=user_id, detail="User unbanned.")
+
+
+@router.get("/profiles", response_model=list[AdminProfileRow])
+async def list_profiles_for_activation(
+    admin=Depends(require_admin_permission(AdminPermission.MANAGE_BILLING)),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    All companion profiles with their activation state (owner verification,
+    listing subscription, approved-photo count, published) — the data the
+    admin activation dashboard needs to decide what to switch on.
+    """
+    rows: list[AdminProfileRow] = []
+    for p in await profiles_repo.list_all(db):
+        owner = await users_repo.get_by_id(db, p.user_id)
+        if not owner:
+            continue
+        sub = await subs_repo.get_active_listing_subscription(db, p.id)
+        media = await profiles_repo.list_media(db, p.id)
+        rows.append(AdminProfileRow(
+            id=p.id,
+            display_name=p.display_name,
+            owner_email=owner.email,
+            owner_role=UserRole(owner.role),
+            owner_verification_status=VerificationStatus(owner.verification_status),
+            listing_active=sub is not None,
+            listing_is_manual=bool(sub and sub.provider == "manual"),
+            approved_photo_count=sum(1 for m in media if m.moderation_status == "approved"),
+            is_published=p.is_published,
+        ))
+    return rows
+
+
+@router.post("/profiles/{profile_id}/activate", response_model=ProfileActivationResult)
+async def activate_profile(
+    profile_id: UUID,
+    admin=Depends(require_admin_permission(AdminPermission.MANAGE_BILLING)),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Manual activation override (no payment): mark the profile owner
+    identity-verified and grant an active listing subscription, so the
+    profile can be published without going through Paystack. Photos still
+    pass through moderation, and the owner still clicks Publish. Use for
+    launch/testing or comped listings; audited.
+    """
+    profile = await profiles_repo.get_by_id(db, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found.")
+    owner = await users_repo.get_by_id(db, profile.user_id)
+    if not owner:
+        raise HTTPException(status_code=404, detail="Profile owner not found.")
+
+    if owner.verification_status != VerificationStatus.verified.value:
+        await users_repo.set_verification_status(db, owner.id, VerificationStatus.verified)
+
+    plan_code = _LISTING_PLAN.get(owner.role, "companion_listing_monthly")
+    await subs_repo.grant_manual_listing(db, user_id=owner.id, profile_id=profile.id, plan_code=plan_code)
+
+    await audit_repo.write(
+        db, actor_id=admin.id, action="profile_activated_manually",
+        target_type="companion_profile", target_id=profile.id,
+        metadata={"owner_id": str(owner.id), "plan_code": plan_code},
+    )
+    return ProfileActivationResult(
+        profile_id=profile.id,
+        owner_verification_status=VerificationStatus.verified,
+        listing_active=True,
+        detail="Profile activated: owner verified and listing subscription granted.",
+    )
+
+
+@router.post("/profiles/{profile_id}/deactivate", response_model=ProfileActivationResult)
+async def deactivate_profile(
+    profile_id: UUID,
+    admin=Depends(require_admin_permission(AdminPermission.MANAGE_BILLING)),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Reverse a manual activation: cancel the manually-granted listing
+    subscription and unpublish the profile. Only affects 'manual'
+    subscriptions — a real Paystack subscription must be canceled through
+    the billing flow. Owner verification is left intact.
+    """
+    profile = await profiles_repo.get_by_id(db, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found.")
+
+    canceled = await subs_repo.cancel_manual_listing(db, profile.id)
+    if not canceled:
+        raise HTTPException(
+            status_code=409,
+            detail="No manual listing to cancel (there may be a Paystack subscription — cancel it via billing).",
+        )
+    if profile.is_published:
+        await profiles_repo.set_published(db, profile, published=False)
+
+    await audit_repo.write(
+        db, actor_id=admin.id, action="profile_deactivated_manually",
+        target_type="companion_profile", target_id=profile.id,
+    )
+    owner = await users_repo.get_by_id(db, profile.user_id)
+    return ProfileActivationResult(
+        profile_id=profile.id,
+        owner_verification_status=VerificationStatus(owner.verification_status),
+        listing_active=False,
+        detail="Manual listing canceled and profile unpublished.",
+    )
 
 
 @router.post("/admins/{user_id}/level", response_model=AdminLevelResponse)

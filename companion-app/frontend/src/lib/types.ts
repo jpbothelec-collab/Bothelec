@@ -179,6 +179,25 @@ export interface ReportResponse {
   created_at: string;
 }
 
+export interface AdminProfileRow {
+  id: string;
+  display_name: string;
+  owner_email: string;
+  owner_role: UserRole;
+  owner_verification_status: VerificationStatus;
+  listing_active: boolean;
+  listing_is_manual: boolean;
+  approved_photo_count: number;
+  is_published: boolean;
+}
+
+export interface ProfileActivationResult {
+  profile_id: string;
+  owner_verification_status: VerificationStatus;
+  listing_active: boolean;
+  detail: string;
+}
+
 export interface AdminLevelResponse {
   user_id: string;
   admin_level: AdminLevel;

@@ -28,6 +28,7 @@ class AdminPermission(str, Enum):
     SUSPEND_USERS = "suspend_users"               # soft suspend / reactivate
     BAN_USERS = "ban_users"                        # hard ban / unban (blocks login)
     MANAGE_ADMINS = "manage_admins"                # assign admin tiers to other admins
+    MANAGE_BILLING = "manage_billing"              # manually activate/deactivate a profile's listing
 
 
 ALL_PERMISSIONS: frozenset[AdminPermission] = frozenset(AdminPermission)
@@ -37,7 +38,7 @@ _MODERATOR = frozenset({
     AdminPermission.REVIEW_VERIFICATION,
     AdminPermission.MODERATE_CONTENT,
 })
-_MANAGER = _MODERATOR | {AdminPermission.SUSPEND_USERS}
+_MANAGER = _MODERATOR | {AdminPermission.SUSPEND_USERS, AdminPermission.MANAGE_BILLING}
 _SUPERADMIN = ALL_PERMISSIONS
 
 LEVEL_PERMISSIONS: dict[AdminLevel, frozenset[AdminPermission]] = {

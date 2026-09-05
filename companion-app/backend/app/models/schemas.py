@@ -428,6 +428,26 @@ class AdminUserActionResult(BaseModel):
     detail: str
 
 
+class AdminProfileRow(BaseModel):
+    """A profile as seen in the admin activation dashboard."""
+    id: UUID
+    display_name: str
+    owner_email: str
+    owner_role: UserRole
+    owner_verification_status: VerificationStatus
+    listing_active: bool
+    listing_is_manual: bool
+    approved_photo_count: int
+    is_published: bool
+
+
+class ProfileActivationResult(BaseModel):
+    profile_id: UUID
+    owner_verification_status: VerificationStatus
+    listing_active: bool
+    detail: str
+
+
 class SetAdminLevelRequest(BaseModel):
     level: AdminLevel
 

@@ -2,6 +2,7 @@
 import type {
   AdminLevel,
   AdminLevelResponse,
+  AdminProfileRow,
   Agency,
   Booking,
   BookingStatus,
@@ -14,6 +15,7 @@ import type {
   LegalVersions,
   Message,
   PendingVerificationDocument,
+  ProfileActivationResult,
   ProfileSearch,
   PublicAgency,
   ReportReason,
@@ -367,6 +369,11 @@ export const api = {
     request<{ user_id: string; detail: string }>(`/admin/users/${id}/ban`, { method: "POST" }),
   unbanUser: (id: string) =>
     request<{ user_id: string; detail: string }>(`/admin/users/${id}/unban`, { method: "POST" }),
+  adminProfiles: () => request<AdminProfileRow[]>("/admin/profiles"),
+  adminActivateProfile: (profileId: string) =>
+    request<ProfileActivationResult>(`/admin/profiles/${profileId}/activate`, { method: "POST" }),
+  adminDeactivateProfile: (profileId: string) =>
+    request<ProfileActivationResult>(`/admin/profiles/${profileId}/deactivate`, { method: "POST" }),
   setAdminLevel: (userId: string, level: AdminLevel) =>
     request<AdminLevelResponse>(`/admin/admins/${userId}/level`, {
       method: "POST",
