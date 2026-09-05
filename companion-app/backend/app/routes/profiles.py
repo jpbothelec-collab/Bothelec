@@ -280,24 +280,18 @@ async def update_my_profile(
 async def set_listing_fee(
     profile_id: UUID,
     payload: ListingFeeUpdate,
-    current_user=Depends(require_role(*_COMPANION_ROLES)),
+    admin=Depends(require_admin_permission(AdminPermission.MANAGE_BILLING)),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Sets the monthly platform listing fee for a specific profile. Callable
-    by the companion who owns the profile, or by the agent assigned to
-    manage it (profile.agent_id) — this is how an agent sets a different
-    fee per companion under their management. Anyone else gets a 403.
+    Sets the monthly platform listing fee for a profile. This is the fee
+    Amicora charges to list, so it is admin-only (MANAGE_BILLING) — the
+    companion or managing agent cannot change what they're billed. Set it
+    from the admin Activation dashboard.
     """
     profile = await profiles_repo.get_by_id(db, profile_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found.")
-
-    if not profiles_repo.can_manage(profile, current_user):
-        raise HTTPException(
-            status_code=403,
-            detail="Only the profile owner or its managing agent can set the listing fee.",
-        )
 
     fee_cents = round(payload.monthly_fee_zar * 100)
     await profiles_repo.set_listing_fee(db, profile, fee_cents=fee_cents)

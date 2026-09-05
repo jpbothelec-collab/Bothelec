@@ -185,6 +185,7 @@ export interface AdminProfileRow {
   owner_email: string;
   owner_role: UserRole;
   owner_verification_status: VerificationStatus;
+  monthly_listing_fee_zar: number;
   listing_active: boolean;
   listing_is_manual: boolean;
   approved_photo_count: number;

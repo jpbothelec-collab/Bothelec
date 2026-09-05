@@ -435,6 +435,7 @@ class AdminProfileRow(BaseModel):
     owner_email: str
     owner_role: UserRole
     owner_verification_status: VerificationStatus
+    monthly_listing_fee_zar: float
     listing_active: bool
     listing_is_manual: bool
     approved_photo_count: int

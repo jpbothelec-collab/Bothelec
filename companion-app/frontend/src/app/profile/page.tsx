@@ -80,7 +80,6 @@ function ProfileEditor({ profile, onSaved }: { profile: CompanionProfile; onSave
   const [rate, setRate] = useState(profile.indicative_rate_note ?? "");
   const [contact, setContact] = useState(profile.contact_details ?? "");
   const [cats, setCats] = useState<CompanionshipCategory[]>(profile.categories);
-  const [feeRands, setFeeRands] = useState(String(profile.monthly_listing_fee_zar));
   const { loading, error, run } = useAction();
   const [ok, setOk] = useState<string | null>(null);
 
@@ -101,10 +100,6 @@ function ProfileEditor({ profile, onSaved }: { profile: CompanionProfile; onSave
         contact_details: contact,
         categories: cats,
       });
-      const zar = parseFloat(feeRands || "0");
-      if (zar !== profile.monthly_listing_fee_zar) {
-        await api.setListingFee(profile.id, zar);
-      }
       setOk("Profile saved.");
       onSaved();
     });
@@ -187,15 +182,14 @@ function ProfileEditor({ profile, onSaved }: { profile: CompanionProfile; onSave
                 ))}
               </div>
             </div>
-            <Field label="Monthly listing fee (ZAR)" hint="What you pay Amicora to keep this profile live.">
-              <Input
-                type="number"
-                min={0}
-                step="0.01"
-                value={feeRands}
-                onChange={(e) => setFeeRands(e.target.value)}
-              />
-            </Field>
+            <div className="rounded-lg border border-hair bg-surface-2 p-3">
+              <p className="text-sm font-medium text-ink">
+                Monthly listing fee: R{profile.monthly_listing_fee_zar.toFixed(2)}
+              </p>
+              <p className="mt-0.5 text-xs text-muted">
+                Set by Amicora. Contact us if you have a question about your listing fee.
+              </p>
+            </div>
             {error && <Alert>{error}</Alert>}
             {ok && <Alert tone="ok">{ok}</Alert>}
             <Button type="submit" loading={loading}>

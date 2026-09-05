@@ -143,6 +143,7 @@ async def list_profiles_for_activation(
             owner_email=owner.email,
             owner_role=UserRole(owner.role),
             owner_verification_status=VerificationStatus(owner.verification_status),
+            monthly_listing_fee_zar=p.monthly_listing_fee_cents / 100,
             listing_active=sub is not None,
             listing_is_manual=bool(sub and sub.provider == "manual"),
             approved_photo_count=sum(1 for m in media if m.moderation_status == "approved"),

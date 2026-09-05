@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useApi, useAction } from "@/lib/useApi";
-import { Alert, Badge, Button, Card, Empty, Loading } from "@/components/ui";
+import { Alert, Badge, Button, Card, Empty, Input, Loading } from "@/components/ui";
 import type { AdminProfileRow } from "@/lib/types";
 
 export default function AdminProfilesPage() {
@@ -39,8 +39,18 @@ export default function AdminProfilesPage() {
 function ProfileRow({ p, onChanged }: { p: AdminProfileRow; onChanged: () => void }) {
   const { loading, error, run } = useAction();
   const [note, setNote] = useState<string | null>(null);
+  const [fee, setFee] = useState(String(p.monthly_listing_fee_zar));
 
   const verified = p.owner_verification_status === "verified";
+
+  function saveFee() {
+    setNote(null);
+    run(async () => {
+      await api.setListingFee(p.id, parseFloat(fee || "0"));
+      setNote(`Listing fee set to R${parseFloat(fee || "0").toFixed(2)}.`);
+      onChanged();
+    });
+  }
 
   function activate() {
     setNote(null);
@@ -96,6 +106,21 @@ function ProfileRow({ p, onChanged }: { p: AdminProfileRow; onChanged: () => voi
             </Button>
           )}
         </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-hair pt-3">
+        <span className="text-xs font-medium text-muted">Listing fee (ZAR)</span>
+        <Input
+          type="number"
+          min={0}
+          step="0.01"
+          value={fee}
+          onChange={(e) => setFee(e.target.value)}
+          className="w-32"
+        />
+        <Button variant="secondary" onClick={saveFee} loading={loading}>
+          Save fee
+        </Button>
+        <span className="text-xs text-faint">Amicora sets this — the lister can&rsquo;t edit it.</span>
       </div>
       {p.approved_photo_count === 0 && (verified && p.listing_active) && (
         <p className="mt-2 text-xs text-faint">
