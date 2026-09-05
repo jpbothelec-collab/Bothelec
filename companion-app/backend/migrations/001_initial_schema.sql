@@ -94,7 +94,7 @@ CREATE TABLE identity_documents (
     user_id             UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 
     document_type       TEXT NOT NULL,               -- 'sa_id', 'passport'
-    document_number_enc BYTEA NOT NULL,               -- encrypted at rest (pgcrypto / app-level KMS)
+    document_number_enc BYTEA,                        -- optional; encrypted ID number if ever captured (extracted at review, not submission)
     storage_path         TEXT,                          -- pointer to encrypted S3 object; nulled by retention purge job after review
     extracted_dob         DATE,                         -- OCR/manual extraction result
     extracted_full_name   TEXT,
