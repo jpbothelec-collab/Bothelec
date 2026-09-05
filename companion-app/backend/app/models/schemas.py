@@ -493,6 +493,16 @@ class AdminLevelResponse(BaseModel):
     detail: str
 
 
+class BannerAdResponse(BaseModel):
+    id: UUID
+    title: str
+    image_url: str | None  # short-lived signed URL to the banner image
+    link_url: str | None
+    placement: str
+    is_active: bool
+    sort_order: int
+
+
 class MediaModerationDecision(BaseModel):
     approve: bool
     rejection_reason: str | None = None

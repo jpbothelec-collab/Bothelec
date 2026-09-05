@@ -349,3 +349,20 @@ CREATE TABLE audit_log (
 );
 
 CREATE INDEX idx_audit_log_target ON audit_log(target_type, target_id);
+
+-- ------------------------------------------------------------
+-- BANNER ADS (third-party advertising, admin-managed)
+-- ------------------------------------------------------------
+
+CREATE TABLE banner_ads (
+    id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    title        TEXT NOT NULL,
+    image_path   TEXT NOT NULL,                 -- encrypted stored asset key
+    link_url     TEXT,                          -- click target (optional)
+    placement    TEXT NOT NULL DEFAULT 'browse',
+    is_active    BOOLEAN NOT NULL DEFAULT TRUE,
+    sort_order   INTEGER NOT NULL DEFAULT 0,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_banner_ads_active ON banner_ads(placement, is_active);

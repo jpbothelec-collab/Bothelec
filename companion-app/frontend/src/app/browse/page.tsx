@@ -57,6 +57,8 @@ export default function BrowsePage() {
         </button>
       </form>
 
+      <AdSlot />
+
       <div className="mt-8">
         {loading && <Loading />}
         {error && <Alert>{error}</Alert>}
@@ -69,6 +71,41 @@ export default function BrowsePage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function AdSlot() {
+  const { data } = useApi(() => api.publicAds("browse"), []);
+  if (!data || data.length === 0) return null;
+  return (
+    <div className="mt-6 flex flex-col gap-3">
+      {data.map((ad) => {
+        const img = ad.image_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={ad.image_url} alt={ad.title} className="w-full rounded-xl2 object-cover" />
+        ) : null;
+        if (!img) return null;
+        return (
+          <div key={ad.id} className="relative overflow-hidden rounded-xl2 border border-hair">
+            <span className="absolute right-2 top-2 z-10 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white">
+              Ad
+            </span>
+            {ad.link_url ? (
+              <a
+                href={ad.link_url}
+                target="_blank"
+                rel="nofollow noopener noreferrer sponsored"
+                aria-label={ad.title}
+              >
+                {img}
+              </a>
+            ) : (
+              img
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

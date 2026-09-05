@@ -321,3 +321,21 @@ class AuditLog(Base):
 
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True),
                                                   server_default=func.now())
+
+
+class BannerAd(Base):
+    """A third-party banner advertisement, managed by admins and shown in a
+    placement slot (e.g. the Browse page)."""
+    __tablename__ = "banner_ads"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True,
+                                          default=uuid.uuid4)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    image_path: Mapped[str] = mapped_column(String, nullable=False)  # stored asset key
+    link_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    placement: Mapped[str] = mapped_column(String, nullable=False, default="browse")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True),
+                                                 server_default=func.now())

@@ -4,6 +4,7 @@ import type {
   AdminLevelResponse,
   AdminProfileRow,
   Agency,
+  BannerAd,
   Booking,
   BookingStatus,
   CancellationPolicy,
@@ -293,6 +294,16 @@ export const api = {
     "/profiles/me/unpublish",
     { method: "POST" },
   ),
+
+  // --- ads (banner advertising) ---
+  publicAds: (placement = "browse") =>
+    request<BannerAd[]>("/ads", { auth: false, query: { placement } }),
+  adminAds: () => request<BannerAd[]>("/admin/ads"),
+  adminCreateAd: (form: FormData) =>
+    request<BannerAd>("/admin/ads", { method: "POST", form }),
+  adminToggleAd: (id: string) =>
+    request<BannerAd>(`/admin/ads/${id}/toggle`, { method: "POST" }),
+  adminDeleteAd: (id: string) => request<null>(`/admin/ads/${id}`, { method: "DELETE" }),
 
   // --- messaging ---
   startConversation: (profileId: string, bookingId?: string) =>

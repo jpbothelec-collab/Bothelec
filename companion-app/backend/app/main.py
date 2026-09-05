@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import scheduler
 from app.core.config import settings
-from app.routes import admin, agency, auth, billing, bookings, messaging, profiles, reports, reviews, verification
+from app.routes import admin, ads, agency, auth, billing, bookings, messaging, profiles, reports, reviews, verification
 
 
 @asynccontextmanager
@@ -40,6 +40,8 @@ app.include_router(messaging.router)
 app.include_router(reviews.router)
 app.include_router(reports.router)
 app.include_router(admin.router)
+app.include_router(ads.router)
+app.include_router(ads.admin_router)
 
 
 @app.get("/health")

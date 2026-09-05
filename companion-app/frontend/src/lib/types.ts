@@ -146,6 +146,16 @@ export interface CompanionProfile {
   media: PortfolioMedia[];
 }
 
+export interface BannerAd {
+  id: string;
+  title: string;
+  image_url: string | null;
+  link_url: string | null;
+  placement: string;
+  is_active: boolean;
+  sort_order: number;
+}
+
 export interface ProfileSearch {
   items: CompanionProfile[];
   total: number;
