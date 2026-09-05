@@ -9,6 +9,7 @@ import type {
   BookingStatus,
   CancellationPolicy,
   CompanionProfile,
+  FeaturedPricing,
   CompanionshipCategory,
   Conversation,
   FlaggedMessage,
@@ -353,6 +354,10 @@ export const api = {
     request<{ authorization_url: string }>("/billing/premium/checkout", { method: "POST" }),
   cancelPremium: () =>
     request<{ detail: string }>("/billing/premium/cancel", { method: "POST" }),
+  featuredPricing: () => request<FeaturedPricing>("/billing/featured-pricing", { auth: false }),
+  adminFeaturedPricing: () => request<FeaturedPricing>("/admin/featured-pricing"),
+  adminSetFeaturedPricing: (b: { fee_zar: number; days: number }) =>
+    request<FeaturedPricing>("/admin/featured-pricing", { method: "POST", body: b }),
   startFeaturedCheckout: (profileId: string) =>
     request<{ authorization_url: string }>(`/billing/featured/${profileId}/checkout`, {
       method: "POST",

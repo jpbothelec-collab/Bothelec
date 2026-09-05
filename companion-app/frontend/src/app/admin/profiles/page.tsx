@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useApi, useAction } from "@/lib/useApi";
-import { Alert, Badge, Button, Card, Empty, Input, Loading } from "@/components/ui";
+import { Alert, Badge, Button, Card, Empty, Field, Input, Loading } from "@/components/ui";
 import type { AdminProfileRow } from "@/lib/types";
 
 export default function AdminProfilesPage() {
@@ -12,7 +12,8 @@ export default function AdminProfilesPage() {
 
   return (
     <div>
-      <h2 className="text-lg font-semibold text-ink">Profile activation</h2>
+      <FeaturedPricingCard />
+      <h2 className="mt-8 text-lg font-semibold text-ink">Profile activation</h2>
       <p className="mt-1 text-sm text-muted">
         Manually activate a profile without payment — this marks the owner verified and grants a
         listing subscription, so they can publish. Photos still pass moderation, and the owner still
@@ -33,6 +34,69 @@ export default function AdminProfilesPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function FeaturedPricingCard() {
+  const { data, reload } = useApi(() => api.adminFeaturedPricing(), []);
+  const { loading, error, run } = useAction();
+  const [fee, setFee] = useState("");
+  const [days, setDays] = useState("");
+  const [ok, setOk] = useState<string | null>(null);
+
+  // seed inputs once pricing loads
+  useEffect(() => {
+    if (data) {
+      setFee(String(data.fee_zar));
+      setDays(String(data.days));
+    }
+  }, [data]);
+
+  function save() {
+    setOk(null);
+    run(async () => {
+      const r = await api.adminSetFeaturedPricing({
+        fee_zar: parseFloat(fee || "0"),
+        days: parseInt(days || "0", 10),
+      });
+      setOk(`Saved: R${r.fee_zar.toFixed(2)} for ${r.days} day${r.days === 1 ? "" : "s"}.`);
+      reload();
+    });
+  }
+
+  return (
+    <Card className="p-5">
+      <h2 className="font-medium text-ink">Featured pricing</h2>
+      <p className="mt-1 text-sm text-muted">
+        The one-off fee and duration for a lister to feature their profile at the top of Browse.
+      </p>
+      <div className="mt-4 flex flex-wrap items-end gap-3">
+        <Field label="Fee (ZAR)">
+          <Input
+            type="number"
+            min={0}
+            step="0.01"
+            value={fee}
+            onChange={(e) => setFee(e.target.value)}
+            className="w-32"
+          />
+        </Field>
+        <Field label="Days">
+          <Input
+            type="number"
+            min={1}
+            value={days}
+            onChange={(e) => setDays(e.target.value)}
+            className="w-24"
+          />
+        </Field>
+        <Button onClick={save} loading={loading}>
+          Save pricing
+        </Button>
+      </div>
+      {ok && <p className="mt-2 text-xs text-ok">{ok}</p>}
+      {error && <div className="mt-2"><Alert>{error}</Alert></div>}
+    </Card>
   );
 }
 

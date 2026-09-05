@@ -30,6 +30,8 @@ from app.models.schemas import (
     UserRole,
     VerificationStatus,
 )
+from app.models.schemas import FeaturedPricing
+from app.repositories import app_settings as app_settings_repo
 from app.repositories import audit_log as audit_repo
 from app.repositories import companion_profiles as profiles_repo
 from app.repositories import identity_documents as docs_repo
@@ -186,6 +188,37 @@ async def list_profiles_for_activation(
     return rows
 
 
+@router.get("/featured-pricing", response_model=FeaturedPricing)
+async def get_featured_pricing(
+    admin=Depends(require_admin_permission(AdminPermission.MANAGE_BILLING)),
+    db: AsyncSession = Depends(get_db),
+):
+    fee_cents = await app_settings_repo.get_int(
+        db, app_settings_repo.FEATURED_FEE_CENTS, round(settings.FEATURED_LISTING_FEE_ZAR * 100)
+    )
+    days = await app_settings_repo.get_int(
+        db, app_settings_repo.FEATURED_DAYS, settings.FEATURED_LISTING_DAYS
+    )
+    return FeaturedPricing(fee_zar=fee_cents / 100, days=days)
+
+
+@router.post("/featured-pricing", response_model=FeaturedPricing)
+async def set_featured_pricing(
+    payload: FeaturedPricing,
+    admin=Depends(require_admin_permission(AdminPermission.MANAGE_BILLING)),
+    db: AsyncSession = Depends(get_db),
+):
+    await app_settings_repo.set_value(
+        db, app_settings_repo.FEATURED_FEE_CENTS, str(round(payload.fee_zar * 100))
+    )
+    await app_settings_repo.set_value(db, app_settings_repo.FEATURED_DAYS, str(payload.days))
+    await audit_repo.write(
+        db, actor_id=admin.id, action="featured_pricing_set", target_type="app_settings", target_id=None,
+        metadata={"fee_zar": payload.fee_zar, "days": payload.days},
+    )
+    return payload
+
+
 @router.post("/profiles/{profile_id}/feature", response_model=AdminProfileRow)
 async def feature_profile(
     profile_id: UUID,
@@ -198,7 +231,10 @@ async def feature_profile(
         raise HTTPException(status_code=404, detail="Profile not found.")
     now = datetime.now(timezone.utc)
     base = profile.featured_until if (profile.featured_until and profile.featured_until > now) else now
-    until = base + timedelta(days=settings.FEATURED_LISTING_DAYS)
+    days = await app_settings_repo.get_int(
+        db, app_settings_repo.FEATURED_DAYS, settings.FEATURED_LISTING_DAYS
+    )
+    until = base + timedelta(days=days)
     await profiles_repo.set_featured(db, profile, until=until)
     await audit_repo.write(
         db, actor_id=admin.id, action="profile_featured_manually",

@@ -123,23 +123,24 @@ async def start_listing_checkout(db, *, profile: CompanionProfile, payer_email: 
     )
 
 
-async def start_featured_checkout(*, profile: CompanionProfile, payer_email: str) -> dict:
+async def start_featured_checkout(
+    *, profile: CompanionProfile, payer_email: str, fee_cents: int, days: int
+) -> dict:
     """
-    One-off charge to feature a profile for FEATURED_LISTING_DAYS. Not a
-    subscription — a single transaction; the webhook (purpose
-    'featured_listing') sets/extends featured_until on success.
+    One-off charge to feature a profile for `days`. Not a subscription — a
+    single transaction; the webhook (purpose 'featured_listing') sets/extends
+    featured_until on success. Fee and days come from editable app settings.
     """
-    amount_cents = round(settings.FEATURED_LISTING_FEE_ZAR * 100)
-    if amount_cents <= 0:
+    if fee_cents <= 0:
         raise BillingConfigError("Featured-listing fee is not configured.")
     return await paystack.initialize_transaction(
         email=payer_email,
-        amount_cents=amount_cents,
+        amount_cents=fee_cents,
         plan_code=None,  # one-off, no recurring plan
         metadata={
             "purpose": "featured_listing",
             "profile_id": str(profile.id),
-            "days": settings.FEATURED_LISTING_DAYS,
+            "days": days,
         },
         callback_url=settings.BILLING_CALLBACK_URL,
     )

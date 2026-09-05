@@ -493,6 +493,11 @@ class AdminLevelResponse(BaseModel):
     detail: str
 
 
+class FeaturedPricing(BaseModel):
+    fee_zar: float = Field(ge=0)
+    days: int = Field(ge=1, le=365)
+
+
 class BannerAdResponse(BaseModel):
     id: UUID
     title: str

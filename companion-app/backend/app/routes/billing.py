@@ -18,15 +18,28 @@ from app.dependencies.auth import require_role
 from app.models.schemas import (
     CancellationPolicyResponse,
     CheckoutResponse,
+    FeaturedPricing,
     SubscriptionCancellationResponse,
     UserRole,
 )
+from app.core.config import settings
+from app.repositories import app_settings as app_settings_repo
 from app.repositories import audit_log as audit_repo
 from app.repositories import companion_profiles as profiles_repo
 from app.repositories import subscriptions as subs_repo
 from app.repositories import users as users_repo
 from app.services import billing, cancellation_policy
 from app.services.payments import paystack
+
+
+async def _featured_pricing(db) -> FeaturedPricing:
+    fee_cents = await app_settings_repo.get_int(
+        db, app_settings_repo.FEATURED_FEE_CENTS, round(settings.FEATURED_LISTING_FEE_ZAR * 100)
+    )
+    days = await app_settings_repo.get_int(
+        db, app_settings_repo.FEATURED_DAYS, settings.FEATURED_LISTING_DAYS
+    )
+    return FeaturedPricing(fee_zar=fee_cents / 100, days=days)
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 
@@ -80,6 +93,12 @@ async def start_listing_checkout(
     )
 
 
+@router.get("/featured-pricing", response_model=FeaturedPricing)
+async def get_featured_pricing(db: AsyncSession = Depends(get_db)):
+    """Public: current featured-boost price and duration, for the profile UI."""
+    return await _featured_pricing(db)
+
+
 @router.post("/featured/{profile_id}/checkout", response_model=CheckoutResponse)
 async def start_featured_checkout(
     profile_id: UUID,
@@ -95,8 +114,16 @@ async def start_featured_checkout(
             status_code=403,
             detail="Only the profile owner or its managing agent can feature this profile.",
         )
+    fee_cents = await app_settings_repo.get_int(
+        db, app_settings_repo.FEATURED_FEE_CENTS, round(settings.FEATURED_LISTING_FEE_ZAR * 100)
+    )
+    days = await app_settings_repo.get_int(
+        db, app_settings_repo.FEATURED_DAYS, settings.FEATURED_LISTING_DAYS
+    )
     try:
-        result = await billing.start_featured_checkout(profile=profile, payer_email=current_user.email)
+        result = await billing.start_featured_checkout(
+            profile=profile, payer_email=current_user.email, fee_cents=fee_cents, days=days
+        )
     except billing.BillingConfigError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except paystack.PaystackError as e:

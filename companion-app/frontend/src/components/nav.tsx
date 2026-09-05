@@ -88,7 +88,7 @@ export function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-20 border-b border-hair bg-ground/85 backdrop-blur">
-      <div className="mx-auto flex w-full max-w-5xl items-center gap-1 px-4 py-3 sm:px-6">
+      <div className="mx-auto flex w-full max-w-7xl items-center gap-1 px-4 py-3 sm:px-6">
         <Link
           href="/"
           className="mr-1 flex items-center gap-2 font-display text-xl font-semibold tracking-tight text-ink"
@@ -148,7 +148,7 @@ export function SiteHeader() {
       {/* Mobile menu panel */}
       {open && (
         <div className="border-t border-hair bg-ground/95 backdrop-blur md:hidden">
-          <div className="mx-auto flex w-full max-w-5xl flex-col gap-1 px-4 py-3">
+          <div className="mx-auto flex w-full max-w-7xl flex-col gap-1 px-4 py-3">
             {links(true)}
             <div className="mt-2 flex flex-col gap-2 border-t border-hair pt-3">
               {ready && !user && (

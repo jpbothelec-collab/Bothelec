@@ -146,6 +146,11 @@ export interface CompanionProfile {
   media: PortfolioMedia[];
 }
 
+export interface FeaturedPricing {
+  fee_zar: number;
+  days: number;
+}
+
 export interface BannerAd {
   id: string;
   title: string;

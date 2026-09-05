@@ -366,3 +366,13 @@ CREATE TABLE banner_ads (
 );
 
 CREATE INDEX idx_banner_ads_active ON banner_ads(placement, is_active);
+
+-- ------------------------------------------------------------
+-- APP SETTINGS (editable platform-wide key/value config)
+-- ------------------------------------------------------------
+
+CREATE TABLE app_settings (
+    key         TEXT PRIMARY KEY,
+    value       TEXT NOT NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);

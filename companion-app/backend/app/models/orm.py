@@ -339,3 +339,12 @@ class BannerAd(Base):
 
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True),
                                                  server_default=func.now())
+
+
+class AppSetting(Base):
+    """Editable platform-wide key/value settings (e.g. the featured-listing fee)."""
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    value: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
