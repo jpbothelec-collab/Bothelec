@@ -16,9 +16,9 @@ export default function ProfilePage() {
 }
 
 function ProfileInner() {
-  const { data, error, loading, reload } = useApi(() => api.myProfile(), []);
+  const { data, error, status, loading, reload } = useApi(() => api.myProfile(), []);
   // A 404 means "no profile yet" — offer creation instead of an error.
-  const notFound = error && /not found|404/i.test(error);
+  const notFound = status === 404;
 
   if (loading) return <Loading />;
   if (data) return <ProfileEditor profile={data} onSaved={reload} />;

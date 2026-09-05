@@ -6,6 +6,7 @@ import { ApiError } from "./api";
 interface State<T> {
   data: T | null;
   error: string | null;
+  status: number | null; // HTTP status of a failed request (e.g. 404), when known
   loading: boolean;
   reload: () => void;
 }
@@ -14,6 +15,7 @@ interface State<T> {
 export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = []): State<T> {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [nonce, setNonce] = useState(0);
 
@@ -24,16 +26,21 @@ export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = []): State<T> 
     let live = true;
     setLoading(true);
     setError(null);
+    setStatus(null);
     run()
       .then((d) => live && setData(d))
-      .catch((e) => live && setError(e instanceof ApiError ? e.message : "Something went wrong."))
+      .catch((e) => {
+        if (!live) return;
+        setError(e instanceof ApiError ? e.message : "Something went wrong.");
+        setStatus(e instanceof ApiError ? e.status : null);
+      })
       .finally(() => live && setLoading(false));
     return () => {
       live = false;
     };
   }, [run, nonce]);
 
-  return { data, error, loading, reload: () => setNonce((n) => n + 1) };
+  return { data, error, status, loading, reload: () => setNonce((n) => n + 1) };
 }
 
 /** Wrap an async action with loading + error state for buttons/forms. */
