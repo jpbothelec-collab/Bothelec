@@ -292,6 +292,14 @@ function RosterPhotos({ profile, onChanged }: { profile: CompanionProfile; onCha
     }).finally(() => setBusyId(null));
   }
 
+  function makeCover(id: string) {
+    setBusyId(id);
+    run(async () => {
+      await api.setCoverPhoto(profile.id, id);
+      onChanged();
+    }).finally(() => setBusyId(null));
+  }
+
   const statusTone = (s: string) =>
     s === "approved" ? "ok" : s === "rejected" ? "block" : "warn";
 
@@ -322,8 +330,14 @@ function RosterPhotos({ profile, onChanged }: { profile: CompanionProfile; onCha
         </p>
       ) : (
         <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-5">
-          {profile.media.map((m) => (
-            <div key={m.id} className="group relative overflow-hidden rounded-lg bg-surface-2">
+          {profile.media.map((m, i) => (
+            <div
+              key={m.id}
+              className={
+                "group relative overflow-hidden rounded-lg bg-surface-2 " +
+                (i === 0 ? "ring-2 ring-accent" : "")
+              }
+            >
               <div className="aspect-square">
                 {m.url ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -334,7 +348,8 @@ function RosterPhotos({ profile, onChanged }: { profile: CompanionProfile; onCha
                   </div>
                 )}
               </div>
-              <div className="absolute left-1.5 top-1.5">
+              <div className="absolute left-1.5 top-1.5 flex flex-col items-start gap-1">
+                {i === 0 && <Badge tone="accent">Cover</Badge>}
                 <Badge tone={statusTone(m.moderation_status)}>{m.moderation_status}</Badge>
               </div>
               <button
@@ -345,6 +360,16 @@ function RosterPhotos({ profile, onChanged }: { profile: CompanionProfile; onCha
               >
                 Remove
               </button>
+              {i !== 0 && (
+                <button
+                  type="button"
+                  onClick={() => makeCover(m.id)}
+                  disabled={busyId === m.id}
+                  className="absolute inset-x-1.5 bottom-1.5 rounded-md bg-black/55 px-2 py-1 text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 disabled:opacity-50"
+                >
+                  Make cover
+                </button>
+              )}
             </div>
           ))}
         </div>

@@ -276,6 +276,8 @@ export const api = {
   },
   deleteManagedPortfolioImage: (profileId: string, mediaId: string) =>
     request<null>(`/profiles/${profileId}/media/${mediaId}`, { method: "DELETE" }),
+  setCoverPhoto: (profileId: string, mediaId: string) =>
+    request<CompanionProfile>(`/profiles/${profileId}/media/${mediaId}/cover`, { method: "POST" }),
   uploadProfilePriceList: (file: File) => {
     const form = new FormData();
     form.append("file", file);

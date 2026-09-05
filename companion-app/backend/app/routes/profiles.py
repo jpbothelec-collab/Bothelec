@@ -618,6 +618,30 @@ async def delete_managed_portfolio_image(
     await profiles_repo.delete_media(db, media)
 
 
+@router.post("/{profile_id}/media/{media_id}/cover", response_model=CompanionProfileResponse)
+async def set_cover_photo(
+    profile_id: UUID,
+    media_id: UUID,
+    current_user=Depends(require_role(*_COMPANION_ROLES)),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Make a photo the profile cover (first slide / browse-card image).
+    Callable by the profile owner or its managing agent.
+    """
+    profile = await profiles_repo.get_by_id(db, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found.")
+    if not profiles_repo.can_manage(profile, current_user):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the profile owner or its managing agent can set the cover photo.",
+        )
+    if not await profiles_repo.set_cover(db, profile, media_id):
+        raise HTTPException(status_code=404, detail="Image not found on this profile.")
+    return await _owner_response(db, profile)
+
+
 @router.get("/{profile_id}", response_model=CompanionProfileResponse)
 async def get_public_profile(
     profile_id: UUID,

@@ -228,6 +228,22 @@ async def add_media(
     return media
 
 
+async def set_cover(db: AsyncSession, profile: CompanionProfile, media_id: UUID) -> bool:
+    """
+    Make the given photo the cover (display_order 0), pushing the rest down in
+    their existing order. The cover is the first slide and the browse-card
+    image. Returns False if the media isn't on this profile.
+    """
+    media = await list_media(db, profile.id)  # ordered by display_order
+    if not any(m.id == media_id for m in media):
+        return False
+    ordered = [m for m in media if m.id == media_id] + [m for m in media if m.id != media_id]
+    for idx, m in enumerate(ordered):
+        m.display_order = idx
+    await db.commit()
+    return True
+
+
 async def get_media(db: AsyncSession, media_id: UUID) -> PortfolioMedia | None:
     result = await db.execute(select(PortfolioMedia).where(PortfolioMedia.id == media_id))
     return result.scalar_one_or_none()
