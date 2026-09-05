@@ -8,7 +8,13 @@ import { useApi, useAction } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth";
 import { Alert, Badge, Button, Card, Field, Input, Loading, Select, Stars, Textarea } from "@/components/ui";
 import { ReportDialog } from "@/components/report-dialog";
-import { CATEGORY_LABELS, type CompanionProfile, type CompanionshipCategory } from "@/lib/types";
+import {
+  CATEGORY_LABELS,
+  PROFILE_DETAIL_FIELDS,
+  type CompanionProfile,
+  type CompanionshipCategory,
+  type ProfileDetails,
+} from "@/lib/types";
 
 export default function CompanionPage({ params }: { params: { id: string } }) {
   const { id } = params;
@@ -67,12 +73,7 @@ export default function CompanionPage({ params }: { params: { id: string } }) {
 
         <Gallery profile={p} />
 
-        {p.bio && (
-          <section>
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">About</h2>
-            <p className="mt-2 whitespace-pre-wrap text-[15px] leading-relaxed text-ink">{p.bio}</p>
-          </section>
-        )}
+        <Details details={p.details} />
 
         {(p.indicative_rate_note || p.price_list_url) && (
           <Card className="p-4">
@@ -114,6 +115,32 @@ export default function CompanionPage({ params }: { params: { id: string } }) {
         <BookingPanel profile={p} />
       </aside>
     </div>
+  );
+}
+
+function Details({ details }: { details: ProfileDetails }) {
+  const heading = details.main_heading?.trim();
+  const rows = PROFILE_DETAIL_FIELDS.filter(
+    (f) => f.key !== "main_heading" && String(details[f.key] ?? "").trim(),
+  );
+  if (!heading && rows.length === 0) return null;
+  return (
+    <section>
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">About</h2>
+      {heading && <p className="mt-2 font-display text-lg leading-snug text-ink">{heading}</p>}
+      {rows.length > 0 && (
+        <dl className="mt-3 grid grid-cols-1 gap-x-8 gap-y-2.5 sm:grid-cols-2">
+          {rows.map((f) => (
+            <div key={f.key} className={f.long ? "sm:col-span-2" : ""}>
+              <dt className="text-xs uppercase tracking-wide text-faint">{f.label}</dt>
+              <dd className="mt-0.5 whitespace-pre-wrap text-[15px] text-ink">
+                {String(details[f.key])}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </section>
   );
 }
 

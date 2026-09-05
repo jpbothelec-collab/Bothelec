@@ -38,6 +38,9 @@ export function ProfileCard({ p }: { p: CompanionProfile }) {
           <h3 className="font-medium text-ink">{p.display_name}</h3>
           {p.city && <span className="text-xs text-muted">{p.city}</span>}
         </div>
+        {p.details?.main_heading && (
+          <p className="line-clamp-1 text-xs text-muted">{p.details.main_heading}</p>
+        )}
         {p.categories.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {p.categories.slice(0, 3).map((c) => (

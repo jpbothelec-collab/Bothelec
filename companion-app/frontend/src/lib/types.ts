@@ -64,12 +64,53 @@ export interface PortfolioMedia {
 // Matches the backend's CompanionProfileResponse (app/models/schemas.py).
 // Used for both the public (viewer-gated) and owner views — image counts and
 // images_locked reflect what the current viewer may see.
+export interface ProfileDetails {
+  main_heading?: string | null;
+  area?: string | null;
+  age?: string | null;
+  build?: string | null;
+  height?: string | null;
+  hair_colour?: string | null;
+  eyes?: string | null;
+  language?: string | null;
+  smoker?: string | null;
+  body_art?: string | null;
+  starsign?: string | null;
+  likes?: string | null;
+  dislikes?: string | null;
+  premises_parking?: string | null;
+}
+
+// Field order + labels for editing and display. `long` fields use a textarea
+// and span the full width.
+export const PROFILE_DETAIL_FIELDS: {
+  key: keyof ProfileDetails;
+  label: string;
+  long?: boolean;
+}[] = [
+  { key: "main_heading", label: "Main heading", long: true },
+  { key: "area", label: "Area" },
+  { key: "age", label: "Age" },
+  { key: "build", label: "Build" },
+  { key: "height", label: "Height" },
+  { key: "hair_colour", label: "Hair colour" },
+  { key: "eyes", label: "Eyes" },
+  { key: "language", label: "Language" },
+  { key: "smoker", label: "Smoker" },
+  { key: "body_art", label: "Body art" },
+  { key: "starsign", label: "Star sign" },
+  { key: "likes", label: "Likes", long: true },
+  { key: "dislikes", label: "Dislikes", long: true },
+  { key: "premises_parking", label: "Premises & parking", long: true },
+];
+
 export interface CompanionProfile {
   id: string;
   user_id: string;
   agent_id: string | null;
   display_name: string;
   bio: string | null;
+  details: ProfileDetails;
   city: string | null;
   categories: CompanionshipCategory[];
   indicative_rate_note: string | null;

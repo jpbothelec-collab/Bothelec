@@ -9,9 +9,11 @@ import { RequireAuth } from "@/components/guard";
 import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, Textarea } from "@/components/ui";
 import {
   CATEGORY_LABELS,
+  PROFILE_DETAIL_FIELDS,
   type Agency,
   type CompanionProfile,
   type CompanionshipCategory,
+  type ProfileDetails,
 } from "@/lib/types";
 
 export default function AgencyPage() {
@@ -354,7 +356,7 @@ function RosterPhotos({ profile, onChanged }: { profile: CompanionProfile; onCha
 function RosterEditForm({ profile, onSaved }: { profile: CompanionProfile; onSaved: () => void }) {
   const [displayName, setDisplayName] = useState(profile.display_name);
   const [city, setCity] = useState(profile.city ?? "");
-  const [bio, setBio] = useState(profile.bio ?? "");
+  const [details, setDetails] = useState<ProfileDetails>(profile.details ?? {});
   const [rate, setRate] = useState(profile.indicative_rate_note ?? "");
   const [contact, setContact] = useState(profile.contact_details ?? "");
   const [cats, setCats] = useState<CompanionshipCategory[]>(profile.categories);
@@ -364,12 +366,16 @@ function RosterEditForm({ profile, onSaved }: { profile: CompanionProfile; onSav
     setCats((cur) => (cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c]));
   }
 
+  function setDetail(key: keyof ProfileDetails, value: string) {
+    setDetails((d) => ({ ...d, [key]: value }));
+  }
+
   function save(e: React.FormEvent) {
     e.preventDefault();
     run(async () => {
       await api.manageProfile(profile.id, {
         display_name: displayName,
-        bio,
+        details,
         city,
         indicative_rate_note: rate,
         contact_details: contact,
@@ -389,9 +395,29 @@ function RosterEditForm({ profile, onSaved }: { profile: CompanionProfile; onSav
           <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Cape Town" />
         </Field>
       </div>
-      <Field label="Bio">
-        <Textarea value={bio} onChange={(e) => setBio(e.target.value)} />
-      </Field>
+      <div>
+        <span className="text-sm font-medium text-ink">Listing details</span>
+        <div className="mt-2 grid gap-3 sm:grid-cols-2">
+          {PROFILE_DETAIL_FIELDS.map((f) => (
+            <div key={f.key} className={f.long ? "sm:col-span-2" : undefined}>
+              <Field label={f.label}>
+                {f.long ? (
+                  <Textarea
+                    value={details[f.key] ?? ""}
+                    onChange={(e) => setDetail(f.key, e.target.value)}
+                    className="min-h-16"
+                  />
+                ) : (
+                  <Input
+                    value={details[f.key] ?? ""}
+                    onChange={(e) => setDetail(f.key, e.target.value)}
+                  />
+                )}
+              </Field>
+            </div>
+          ))}
+        </div>
+      </div>
       <Field label="Indicative rate note" hint="Informational only — settled off-platform.">
         <Input
           value={rate}

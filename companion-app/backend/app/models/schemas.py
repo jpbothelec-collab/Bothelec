@@ -152,9 +152,28 @@ class CompanionshipCategory(str, Enum):
     other = "other"
 
 
+class ProfileDetails(BaseModel):
+    """Structured listing attributes shown on the profile (all optional)."""
+    main_heading: str | None = Field(default=None, max_length=120)
+    area: str | None = Field(default=None, max_length=80)
+    age: str | None = Field(default=None, max_length=20)
+    build: str | None = Field(default=None, max_length=40)
+    height: str | None = Field(default=None, max_length=40)
+    hair_colour: str | None = Field(default=None, max_length=40)
+    eyes: str | None = Field(default=None, max_length=40)
+    language: str | None = Field(default=None, max_length=120)
+    smoker: str | None = Field(default=None, max_length=40)
+    body_art: str | None = Field(default=None, max_length=120)
+    starsign: str | None = Field(default=None, max_length=40)
+    likes: str | None = Field(default=None, max_length=500)
+    dislikes: str | None = Field(default=None, max_length=500)
+    premises_parking: str | None = Field(default=None, max_length=300)
+
+
 class CompanionProfileCreate(BaseModel):
     display_name: str = Field(min_length=2, max_length=80)
     bio: str | None = Field(default=None, max_length=2000)
+    details: ProfileDetails | None = None
     city: str | None = None
     categories: list[CompanionshipCategory] = Field(default_factory=list)
     indicative_rate_note: str | None = Field(default=None, max_length=500)
@@ -166,6 +185,7 @@ class CompanionProfileCreate(BaseModel):
 class CompanionProfileUpdate(BaseModel):
     display_name: str | None = Field(default=None, min_length=2, max_length=80)
     bio: str | None = Field(default=None, max_length=2000)
+    details: ProfileDetails | None = None
     city: str | None = None
     categories: list[CompanionshipCategory] | None = None
     indicative_rate_note: str | None = Field(default=None, max_length=500)
@@ -199,6 +219,7 @@ class CompanionProfileResponse(BaseModel):
     agent_id: UUID | None
     display_name: str
     bio: str | None
+    details: ProfileDetails
     city: str | None
     categories: list[CompanionshipCategory]
     indicative_rate_note: str | None

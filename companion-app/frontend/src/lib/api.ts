@@ -17,6 +17,7 @@ import type {
   PendingMedia,
   PendingVerificationDocument,
   ProfileActivationResult,
+  ProfileDetails,
   ProfileSearch,
   PublicAgency,
   ReportReason,
@@ -174,6 +175,7 @@ export const api = {
   createProfile: (b: {
     display_name: string;
     bio?: string;
+    details?: ProfileDetails;
     city?: string;
     categories?: CompanionshipCategory[];
     indicative_rate_note?: string;
@@ -217,6 +219,7 @@ export const api = {
   updateMyProfile: (b: {
     display_name?: string;
     bio?: string;
+    details?: ProfileDetails;
     city?: string;
     categories?: CompanionshipCategory[];
     indicative_rate_note?: string;
@@ -229,6 +232,7 @@ export const api = {
     b: {
       display_name?: string;
       bio?: string;
+      details?: ProfileDetails;
       city?: string;
       categories?: CompanionshipCategory[];
       indicative_rate_note?: string;

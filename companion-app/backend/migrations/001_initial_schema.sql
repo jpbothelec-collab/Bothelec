@@ -130,6 +130,10 @@ CREATE TABLE companion_profiles (
 
     display_name        TEXT NOT NULL,
     bio                  TEXT,
+    -- Structured listing attributes (heading, area, age, build, height, hair,
+    -- eyes, language, smoker, body art, star sign, likes, dislikes, premises
+    -- & parking). JSON object so the field set can grow without a migration.
+    details              JSONB NOT NULL DEFAULT '{}',
     city                  TEXT,
     categories            companionship_category[] NOT NULL DEFAULT '{}',
 

@@ -5,7 +5,13 @@ import { api } from "@/lib/api";
 import { useApi, useAction } from "@/lib/useApi";
 import { RequireAuth } from "@/components/guard";
 import { Alert, Badge, Button, Card, Field, Input, Loading, Textarea } from "@/components/ui";
-import { CATEGORY_LABELS, type CompanionProfile, type CompanionshipCategory } from "@/lib/types";
+import {
+  CATEGORY_LABELS,
+  PROFILE_DETAIL_FIELDS,
+  type CompanionProfile,
+  type CompanionshipCategory,
+  type ProfileDetails,
+} from "@/lib/types";
 
 export default function ProfilePage() {
   return (
@@ -75,7 +81,7 @@ function CreateProfile({ onCreated }: { onCreated: () => void }) {
 
 function ProfileEditor({ profile, onSaved }: { profile: CompanionProfile; onSaved: () => void }) {
   const [displayName, setDisplayName] = useState(profile.display_name);
-  const [bio, setBio] = useState(profile.bio ?? "");
+  const [details, setDetails] = useState<ProfileDetails>(profile.details ?? {});
   const [city, setCity] = useState(profile.city ?? "");
   const [rate, setRate] = useState(profile.indicative_rate_note ?? "");
   const [contact, setContact] = useState(profile.contact_details ?? "");
@@ -83,10 +89,14 @@ function ProfileEditor({ profile, onSaved }: { profile: CompanionProfile; onSave
   const { loading, error, run } = useAction();
   const [ok, setOk] = useState<string | null>(null);
 
-  useEffect(() => setOk(null), [displayName, bio, city, rate, contact, cats]);
+  useEffect(() => setOk(null), [displayName, details, city, rate, contact, cats]);
 
   function toggleCat(c: CompanionshipCategory) {
     setCats((cur) => (cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c]));
+  }
+
+  function setDetail(key: keyof ProfileDetails, value: string) {
+    setDetails((d) => ({ ...d, [key]: value }));
   }
 
   function saveDetails(e: React.FormEvent) {
@@ -94,7 +104,7 @@ function ProfileEditor({ profile, onSaved }: { profile: CompanionProfile; onSave
     run(async () => {
       await api.updateMyProfile({
         display_name: displayName,
-        bio,
+        details,
         city,
         indicative_rate_note: rate,
         contact_details: contact,
@@ -145,9 +155,30 @@ function ProfileEditor({ profile, onSaved }: { profile: CompanionProfile; onSave
             <Field label="City">
               <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Cape Town" />
             </Field>
-            <Field label="Bio">
-              <Textarea value={bio} onChange={(e) => setBio(e.target.value)} />
-            </Field>
+            <div>
+              <span className="text-sm font-medium text-ink">Listing details</span>
+              <p className="mt-0.5 text-xs text-muted">Shown on your public profile. All optional.</p>
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                {PROFILE_DETAIL_FIELDS.map((f) => (
+                  <div key={f.key} className={f.long ? "sm:col-span-2" : undefined}>
+                    <Field label={f.label}>
+                      {f.long ? (
+                        <Textarea
+                          value={details[f.key] ?? ""}
+                          onChange={(e) => setDetail(f.key, e.target.value)}
+                          className="min-h-16"
+                        />
+                      ) : (
+                        <Input
+                          value={details[f.key] ?? ""}
+                          onChange={(e) => setDetail(f.key, e.target.value)}
+                        />
+                      )}
+                    </Field>
+                  </div>
+                ))}
+              </div>
+            </div>
             <Field label="Indicative rate note" hint="Informational only — settled off-platform.">
               <Input value={rate} onChange={(e) => setRate(e.target.value)} placeholder="e.g. From R1500 / evening" />
             </Field>

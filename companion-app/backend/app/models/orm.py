@@ -7,7 +7,7 @@ those phases get built out.
 import uuid
 
 from sqlalchemy import Date, DateTime, ForeignKey, Integer, JSON, String, Boolean, func
-from sqlalchemy.dialects.postgresql import ARRAY, ENUM as PGEnum, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, ENUM as PGEnum, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -120,6 +120,11 @@ class CompanionProfile(Base):
 
     display_name: Mapped[str] = mapped_column(String, nullable=False)
     bio: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Structured listing attributes (main heading, area, age, build, height,
+    # hair colour, eyes, language, smoker, body art, star sign, likes,
+    # dislikes, premises & parking). Stored as a JSON object so the set can
+    # evolve without a migration per field.
+    details: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
     city: Mapped[str | None] = mapped_column(String, nullable=True)
     categories: Mapped[list[str]] = mapped_column(ARRAY(_companionship_category), nullable=False, default=list)
     indicative_rate_note: Mapped[str | None] = mapped_column(String, nullable=True)

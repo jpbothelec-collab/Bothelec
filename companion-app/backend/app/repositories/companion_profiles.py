@@ -82,6 +82,7 @@ async def create(db: AsyncSession, *, user_id: UUID, data) -> CompanionProfile:
         user_id=user_id,
         display_name=data.display_name,
         bio=data.bio,
+        details=({k: v for k, v in data.details.model_dump().items() if v} if data.details else {}),
         city=data.city,
         categories=[c.value for c in data.categories],
         indicative_rate_note=data.indicative_rate_note,
@@ -98,6 +99,10 @@ async def update(db: AsyncSession, profile: CompanionProfile, data) -> Companion
     for field, value in update_fields.items():
         if field == "categories" and value is not None:
             value = [c.value if hasattr(c, "value") else c for c in value]
+        elif field == "details" and value is not None:
+            # model_dump already turned the nested model into a dict; keep only
+            # non-empty values so cleared fields drop out of the stored object.
+            value = {k: v for k, v in value.items() if v}
         setattr(profile, field, value)
     profile.updated_at = datetime.now(timezone.utc)
     await db.commit()
