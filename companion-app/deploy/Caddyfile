@@ -15,3 +15,11 @@
 		reverse_proxy frontend:3000
 	}
 }
+
+# Object storage over TLS. Set S3_ADDRESS to your images subdomain
+# (e.g. s3.example.com) so browser-facing signed URLs are HTTPS and avoid
+# mixed-content blocking. Defaults to a harmless local-only address when
+# unset (IP-only mode, where images are served directly from MinIO :9000).
+{$S3_ADDRESS} {
+	reverse_proxy minio:9000
+}

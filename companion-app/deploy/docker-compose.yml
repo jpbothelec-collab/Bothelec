@@ -113,6 +113,9 @@ services:
       # ":80" for IP-only (no TLS). A bare domain (e.g. amicora.co.za) makes
       # Caddy fetch a Let's Encrypt certificate automatically.
       SITE_ADDRESS: ${SITE_ADDRESS}
+      # Images subdomain (e.g. s3.amicora.co.za) for TLS image serving.
+      # Harmless local default keeps Caddy valid in IP-only mode.
+      S3_ADDRESS: ${S3_ADDRESS:-http://localhost:9081}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
