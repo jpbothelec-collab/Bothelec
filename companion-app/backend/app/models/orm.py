@@ -131,7 +131,7 @@ class CompanionProfile(Base):
     # Monthly platform listing fee for THIS profile, in ZAR cents. Set by
     # the companion (self-managed) or by the managing agent — agents can
     # set a different fee per companion they manage. Not the booking fee.
-    monthly_listing_fee_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    monthly_listing_fee_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=35000)
     provider_plan_code: Mapped[str | None] = mapped_column(String, nullable=True)
     provider_plan_synced_fee_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
 

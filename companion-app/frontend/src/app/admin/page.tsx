@@ -78,6 +78,34 @@ function ReviewRow({ doc, onDone }: { doc: PendingVerificationDocument; onDone: 
         )}
       </div>
 
+      {doc.image_url ? (
+        <div className="mt-3">
+          {/\.pdf(\?|$)/i.test(doc.image_url) ? (
+            <a
+              href={doc.image_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-medium text-accent-ink hover:underline"
+            >
+              Open ID document (PDF) ↗
+            </a>
+          ) : (
+            <a href={doc.image_url} target="_blank" rel="noopener noreferrer" title="Open full size">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={doc.image_url}
+                alt="ID document"
+                className="max-h-96 w-auto rounded-lg border border-hair"
+              />
+            </a>
+          )}
+        </div>
+      ) : (
+        <p className="mt-3 text-xs text-faint">
+          Document image unavailable (it may have been purged after the retention window).
+        </p>
+      )}
+
       {mode === "approve" && (
         <div className="mt-4 flex flex-col gap-3 border-t border-hair pt-4">
           <div className="grid gap-3 sm:grid-cols-2">

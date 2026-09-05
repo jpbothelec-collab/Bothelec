@@ -156,6 +156,15 @@ export interface PendingVerificationDocument {
   user_id: string;
   document_type: string;
   created_at: string;
+  image_url: string | null;
+}
+
+export interface PendingMedia {
+  id: string;
+  profile_id: string;
+  display_name: string;
+  created_at: string;
+  url: string | null;
 }
 
 export interface FlaggedMessage {

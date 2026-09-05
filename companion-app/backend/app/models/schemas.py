@@ -421,6 +421,15 @@ class PendingVerificationDocument(BaseModel):
     user_id: UUID
     document_type: str
     created_at: datetime
+    image_url: str | None = None  # short-lived signed URL to view the document
+
+
+class PendingMediaItem(BaseModel):
+    id: UUID
+    profile_id: UUID
+    display_name: str
+    created_at: datetime
+    url: str | None = None  # short-lived signed URL to view the pending photo
 
 
 class AdminUserActionResult(BaseModel):

@@ -16,11 +16,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.dependencies.auth import require_admin_permission
+from app.core.config import settings
 from app.models.schemas import (
     AdminLevel,
     AdminLevelResponse,
     AdminProfileRow,
     AdminUserActionResult,
+    PendingMediaItem,
     PendingVerificationDocument,
     ProfileActivationResult,
     SetAdminLevelRequest,
@@ -32,8 +34,17 @@ from app.repositories import companion_profiles as profiles_repo
 from app.repositories import identity_documents as docs_repo
 from app.repositories import subscriptions as subs_repo
 from app.repositories import users as users_repo
-from app.services import admin_access
+from app.services import admin_access, storage
 from app.services.admin_access import AdminPermission
+
+
+async def _signed(path: str | None) -> str | None:
+    if not path:
+        return None
+    try:
+        return await storage.get_signed_url(path, expires_in=settings.PORTFOLIO_URL_TTL_SECONDS)
+    except Exception:
+        return None
 
 _LISTING_PLAN = {"agent": "agent_listing_monthly", "companion": "companion_listing_monthly"}
 
@@ -49,10 +60,30 @@ async def get_verification_queue(
     docs = await docs_repo.list_pending(db)
     return [
         PendingVerificationDocument(
-            id=d.id, user_id=d.user_id, document_type=d.document_type, created_at=d.created_at
+            id=d.id, user_id=d.user_id, document_type=d.document_type, created_at=d.created_at,
+            image_url=await _signed(d.storage_path),
         )
         for d in docs
     ]
+
+
+@router.get("/pending-media", response_model=list[PendingMediaItem])
+async def get_pending_media(
+    admin=Depends(require_admin_permission(AdminPermission.MODERATE_CONTENT)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Portfolio photos awaiting moderation, across all profiles, with signed view URLs."""
+    items: list[PendingMediaItem] = []
+    for m in await profiles_repo.list_pending_media(db):
+        profile = await profiles_repo.get_by_id(db, m.profile_id)
+        items.append(PendingMediaItem(
+            id=m.id,
+            profile_id=m.profile_id,
+            display_name=profile.display_name if profile else "(unknown)",
+            created_at=m.created_at,
+            url=await _signed(m.storage_path),
+        ))
+    return items
 
 
 @router.post("/users/{user_id}/suspend", response_model=AdminUserActionResult)

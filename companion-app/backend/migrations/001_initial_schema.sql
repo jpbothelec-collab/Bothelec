@@ -153,7 +153,7 @@ CREATE TABLE companion_profiles (
     -- companion (self-managed) or by the managing agent. Agents can set a
     -- different fee per companion they manage — this is NOT the booking
     -- fee, which is settled off-platform between client and companion.
-    monthly_listing_fee_cents INTEGER NOT NULL DEFAULT 0,  -- store as integer cents, currency ZAR
+    monthly_listing_fee_cents INTEGER NOT NULL DEFAULT 35000, -- ZAR 350 default per profile  -- store as integer cents, currency ZAR
 
     -- Paystack plan synced to the fee above. provider_plan_synced_fee_cents
     -- lets billing code detect drift (fee edited since last sync) and

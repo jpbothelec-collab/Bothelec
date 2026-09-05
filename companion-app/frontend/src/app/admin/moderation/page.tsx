@@ -4,14 +4,83 @@ import { useState } from "react";
 import { api } from "@/lib/api";
 import { useApi, useAction } from "@/lib/useApi";
 import { Alert, Badge, Button, Card, Empty, Input, Loading } from "@/components/ui";
-import type { FlaggedMessage, ReportResponse } from "@/lib/types";
+import type { FlaggedMessage, PendingMedia, ReportResponse } from "@/lib/types";
 
 export default function ModerationPage() {
   return (
     <div className="flex flex-col gap-10">
+      <PendingPhotos />
       <FlaggedMessages />
       <Reports />
     </div>
+  );
+}
+
+function PendingPhotos() {
+  const { data, error, loading, reload } = useApi(() => api.pendingMedia(), []);
+  const { loading: acting, error: actErr, run } = useAction();
+
+  function decide(m: PendingMedia, approve: boolean) {
+    run(async () => {
+      await api.moderateMedia(m.id, {
+        approve,
+        rejection_reason: approve ? undefined : "Rejected in moderation review.",
+      });
+      reload();
+    });
+  }
+
+  return (
+    <section>
+      <div className="flex items-center gap-2">
+        <h2 className="text-lg font-semibold text-ink">Pending photos</h2>
+        {data && <Badge>{data.length}</Badge>}
+      </div>
+      <p className="mt-1 text-sm text-muted">
+        Portfolio photos awaiting review. Approved photos become visible on the profile; rejected
+        ones are deleted and free up an upload slot.
+      </p>
+
+      <div className="mt-4">
+        {loading && <Loading />}
+        {(error || actErr) && <Alert>{error || actErr}</Alert>}
+        {data && data.length === 0 && <Empty>No photos awaiting review.</Empty>}
+        {data && data.length > 0 && (
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            {data.map((m) => (
+              <Card key={m.id} className="overflow-hidden p-0">
+                <div className="aspect-square bg-surface-2">
+                  {m.url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={m.url} alt={m.display_name} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-xs text-faint">
+                      no preview
+                    </div>
+                  )}
+                </div>
+                <div className="p-3">
+                  <p className="truncate text-sm font-medium text-ink">{m.display_name}</p>
+                  <div className="mt-2 flex gap-2">
+                    <Button onClick={() => decide(m, true)} loading={acting} className="flex-1">
+                      Approve
+                    </Button>
+                    <Button
+                      variant="danger"
+                      onClick={() => decide(m, false)}
+                      loading={acting}
+                      className="flex-1"
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 

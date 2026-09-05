@@ -14,6 +14,7 @@ import type {
   IdConsentNotice,
   LegalVersions,
   Message,
+  PendingMedia,
   PendingVerificationDocument,
   ProfileActivationResult,
   ProfileSearch,
@@ -352,6 +353,12 @@ export const api = {
     `/verification/documents/${id}/review`,
     { method: "POST", body: b },
   ),
+  pendingMedia: () => request<PendingMedia[]>("/admin/pending-media"),
+  moderateMedia: (mediaId: string, b: { approve: boolean; rejection_reason?: string }) =>
+    request<{ id: string; moderation_status: string }>(`/profiles/media/${mediaId}/moderate`, {
+      method: "POST",
+      body: b,
+    }),
   flaggedMessages: () => request<FlaggedMessage[]>("/messages/flagged"),
   reviewMessage: (id: string, b: { outcome: string; suspend_sender?: boolean }) =>
     request<{ id: string; review_outcome: string }>(`/messages/${id}/review`, {

@@ -197,6 +197,16 @@ async def list_media(db: AsyncSession, profile_id: UUID) -> list[PortfolioMedia]
     return list(result.scalars().all())
 
 
+async def list_pending_media(db: AsyncSession) -> list[PortfolioMedia]:
+    """All portfolio images awaiting moderation, across every profile, oldest first."""
+    result = await db.execute(
+        select(PortfolioMedia)
+        .where(PortfolioMedia.moderation_status == "pending")
+        .order_by(PortfolioMedia.created_at.asc())
+    )
+    return list(result.scalars().all())
+
+
 async def add_media(
     db: AsyncSession, *, profile_id: UUID, storage_path: str, display_order: int
 ) -> PortfolioMedia:
