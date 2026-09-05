@@ -145,13 +145,34 @@ function Details({ details }: { details: ProfileDetails }) {
 }
 
 function Reviews({ profileId, count }: { profileId: string; count: number }) {
-  const { data, loading } = useApi(() => api.profileReviews(profileId), [profileId]);
-  if (count === 0 && (!data || data.length === 0)) return null;
+  const { user } = useAuth();
+  const { data, loading, reload } = useApi(() => api.profileReviews(profileId), [profileId]);
+  const isClient = user?.role === "client";
+  const { data: bookings } = useApi(
+    () => (isClient ? api.myBookings() : Promise.resolve([])),
+    [isClient],
+  );
+
+  const completed = (bookings ?? []).find(
+    (b) => b.profile_id === profileId && b.status === "completed",
+  );
+  const alreadyReviewed = !!(data && user && data.some((r) => r.author_id === user.id));
+  const canReview = Boolean(isClient && completed && !alreadyReviewed);
+
+  if (count === 0 && (!data || data.length === 0) && !canReview) return null;
+
   return (
     <section>
       <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Reviews</h2>
       {loading && <Loading />}
+      {canReview && completed && <WriteReview bookingId={completed.id} onDone={reload} />}
+      {isClient && alreadyReviewed && (
+        <p className="mt-2 text-xs text-faint">You&rsquo;ve reviewed this companion. Thank you.</p>
+      )}
       <div className="mt-3 flex flex-col gap-3">
+        {data && data.length === 0 && (
+          <p className="text-sm text-muted">No reviews yet.</p>
+        )}
         {data?.map((r) => (
           <Card key={r.id} className="p-4">
             <div className="flex items-center justify-between">
@@ -167,6 +188,52 @@ function Reviews({ profileId, count }: { profileId: string; count: number }) {
         ))}
       </div>
     </section>
+  );
+}
+
+function WriteReview({ bookingId, onDone }: { bookingId: string; onDone: () => void }) {
+  const { loading, error, run, setError } = useAction();
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState("");
+
+  function submit() {
+    if (rating < 1) return setError("Choose a star rating.");
+    run(async () => {
+      await api.createReview(bookingId, { rating, comment: comment.trim() || undefined });
+      onDone();
+    });
+  }
+
+  return (
+    <Card className="mt-3 p-4">
+      <p className="text-sm font-medium text-ink">Leave a review</p>
+      <p className="mt-0.5 text-xs text-muted">
+        You had a completed booking with this companion — share how it went.
+      </p>
+      <div className="mt-2 flex gap-1">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button
+            key={n}
+            type="button"
+            onClick={() => setRating(n)}
+            aria-label={`${n} star${n === 1 ? "" : "s"}`}
+            className={"text-2xl leading-none " + (n <= rating ? "text-accent" : "text-hair-strong")}
+          >
+            ★
+          </button>
+        ))}
+      </div>
+      <Textarea
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        placeholder="Optional — a few words about your experience."
+        className="mt-3 min-h-16"
+      />
+      {error && <div className="mt-2"><Alert>{error}</Alert></div>}
+      <Button onClick={submit} loading={loading} className="mt-3">
+        Submit review
+      </Button>
+    </Card>
   );
 }
 

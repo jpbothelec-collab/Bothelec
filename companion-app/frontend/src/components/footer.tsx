@@ -10,7 +10,7 @@ const LINKS = [
 export function SiteFooter() {
   return (
     <footer className="mt-16 border-t border-hair">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-8 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <div className="mx-auto flex w-full flex-col gap-4 px-4 py-8 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
         <div>
           <span className="font-display text-lg font-semibold tracking-tight text-ink">Amicora</span>
           <p className="mt-1 max-w-md text-xs leading-relaxed text-faint">

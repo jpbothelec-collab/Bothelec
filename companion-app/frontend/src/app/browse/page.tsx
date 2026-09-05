@@ -64,7 +64,7 @@ export default function BrowsePage() {
         {error && <Alert>{error}</Alert>}
         {data && data.items.length === 0 && <Empty>No companions match those filters yet.</Empty>}
         {data && data.items.length > 0 && (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {data.items.map((p) => (
               <ProfileCard key={p.id} p={p} />
             ))}
