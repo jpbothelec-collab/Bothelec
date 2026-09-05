@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
@@ -170,31 +170,89 @@ function Reviews({ profileId, count }: { profileId: string; count: number }) {
   );
 }
 
+function Slideshow({
+  slides,
+  name,
+}: {
+  slides: { id: string; url: string | null }[];
+  name: string;
+}) {
+  const n = slides.length;
+  const [i, setI] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const idx = Math.min(i, n - 1);
+
+  useEffect(() => {
+    if (paused || n <= 1) return;
+    const t = setInterval(() => setI((c) => (c + 1) % n), 4500);
+    return () => clearInterval(t);
+  }, [paused, n]);
+
+  return (
+    <div
+      className="relative overflow-hidden rounded-xl2 bg-accent-soft"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+    >
+      <div className="aspect-[3/4] w-full">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={slides[idx].url!}
+          alt={`${name} ${idx + 1}`}
+          className="h-full w-full object-cover"
+        />
+      </div>
+      {n > 1 && (
+        <>
+          <button
+            type="button"
+            aria-label="Previous photo"
+            onClick={() => setI((c) => (c - 1 + n) % n)}
+            className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/45 px-3 py-1.5 text-xl leading-none text-white hover:bg-black/65"
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            aria-label="Next photo"
+            onClick={() => setI((c) => (c + 1) % n)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/45 px-3 py-1.5 text-xl leading-none text-white hover:bg-black/65"
+          >
+            ›
+          </button>
+          <span className="absolute right-2 top-2 rounded-full bg-black/45 px-2 py-0.5 text-xs text-white">
+            {idx + 1}/{n}
+          </span>
+          <div className="absolute bottom-2 left-1/2 flex -translate-x-1/2 gap-1.5">
+            {slides.map((s, k) => (
+              <button
+                key={s.id}
+                type="button"
+                aria-label={`Go to photo ${k + 1}`}
+                onClick={() => setI(k)}
+                className={
+                  "h-1.5 rounded-full transition-all " +
+                  (k === idx ? "w-5 bg-white" : "w-1.5 bg-white/60 hover:bg-white/80")
+                }
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function Gallery({ profile }: { profile: CompanionProfile }) {
-  const { media, visible_image_count, total_image_count, images_locked } = profile;
+  const { total_image_count, visible_image_count, images_locked } = profile;
+  const slides = profile.media.filter((m) => m.url);
   const initial = profile.display_name.slice(0, 1);
   return (
     <div className="flex flex-col gap-3">
-      {visible_image_count > 0 ? (
-        <div className="grid grid-cols-2 gap-3">
-          {media.map((m, i) => (
-            <div
-              key={m.id}
-              className={`flex items-center justify-center overflow-hidden rounded-xl2 bg-accent-soft text-accent-ink/50 ${
-                i === 0 ? "col-span-2 aspect-[3/2]" : "aspect-square"
-              }`}
-            >
-              {m.url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={m.url} alt={`${profile.display_name} ${i + 1}`} className="h-full w-full object-cover" />
-              ) : (
-                <span className="font-display text-3xl">{initial}</span>
-              )}
-            </div>
-          ))}
-        </div>
+      {slides.length > 0 ? (
+        <Slideshow slides={slides} name={profile.display_name} />
       ) : (
-        <div className="flex aspect-[3/2] items-center justify-center rounded-xl2 bg-accent-soft font-display text-6xl text-accent-ink/50">
+        <div className="flex aspect-[3/4] items-center justify-center rounded-xl2 bg-accent-soft font-display text-6xl text-accent-ink/50">
           {initial}
         </div>
       )}

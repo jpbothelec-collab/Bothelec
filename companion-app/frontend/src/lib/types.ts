@@ -81,12 +81,28 @@ export interface ProfileDetails {
   premises_parking?: string | null;
 }
 
+export const STAR_SIGNS = [
+  "Aries",
+  "Taurus",
+  "Gemini",
+  "Cancer",
+  "Leo",
+  "Virgo",
+  "Libra",
+  "Scorpio",
+  "Sagittarius",
+  "Capricorn",
+  "Aquarius",
+  "Pisces",
+];
+
 // Field order + labels for editing and display. `long` fields use a textarea
-// and span the full width.
+// and span the full width; `options` renders a dropdown instead of a text box.
 export const PROFILE_DETAIL_FIELDS: {
   key: keyof ProfileDetails;
   label: string;
   long?: boolean;
+  options?: string[];
 }[] = [
   { key: "main_heading", label: "Main heading", long: true },
   { key: "area", label: "Area" },
@@ -96,9 +112,9 @@ export const PROFILE_DETAIL_FIELDS: {
   { key: "hair_colour", label: "Hair colour" },
   { key: "eyes", label: "Eyes" },
   { key: "language", label: "Language" },
-  { key: "smoker", label: "Smoker" },
+  { key: "smoker", label: "Smoker", options: ["Yes", "No"] },
   { key: "body_art", label: "Body art" },
-  { key: "starsign", label: "Star sign" },
+  { key: "starsign", label: "Star sign", options: STAR_SIGNS },
   { key: "likes", label: "Likes", long: true },
   { key: "dislikes", label: "Dislikes", long: true },
   { key: "premises_parking", label: "Premises & parking", long: true },

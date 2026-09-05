@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { useApi, useAction } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth";
 import { RequireAuth } from "@/components/guard";
-import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, Textarea } from "@/components/ui";
+import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, Select, Textarea } from "@/components/ui";
 import {
   CATEGORY_LABELS,
   PROFILE_DETAIL_FIELDS,
@@ -401,7 +401,19 @@ function RosterEditForm({ profile, onSaved }: { profile: CompanionProfile; onSav
           {PROFILE_DETAIL_FIELDS.map((f) => (
             <div key={f.key} className={f.long ? "sm:col-span-2" : undefined}>
               <Field label={f.label}>
-                {f.long ? (
+                {f.options ? (
+                  <Select
+                    value={details[f.key] ?? ""}
+                    onChange={(e) => setDetail(f.key, e.target.value)}
+                  >
+                    <option value="">—</option>
+                    {f.options.map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
+                  </Select>
+                ) : f.long ? (
                   <Textarea
                     value={details[f.key] ?? ""}
                     onChange={(e) => setDetail(f.key, e.target.value)}
