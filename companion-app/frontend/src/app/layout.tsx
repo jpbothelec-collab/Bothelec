@@ -6,6 +6,7 @@ import { AuthProvider } from "@/lib/auth";
 import { SiteHeader } from "@/components/nav";
 import { SiteFooter } from "@/components/footer";
 import { AgeGate } from "@/components/age-gate";
+import { SITE_URL } from "@/lib/seo";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -24,9 +25,48 @@ const fraunces = Fraunces({
   display: "swap",
 });
 
+const DESC =
+  "Amicora is a verified companionship listing and introduction service in South Africa. " +
+  "Browse companions and agencies by city and category. Adults only (18+).";
+
 export const metadata: Metadata = {
-  title: "Amicora",
-  description: "South African companionship listing platform.",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "Amicora — Companions & agencies in South Africa (18+)",
+    template: "%s · Amicora",
+  },
+  description: DESC,
+  applicationName: "Amicora",
+  keywords: [
+    "companions",
+    "companionship",
+    "South Africa",
+    "Cape Town",
+    "Johannesburg",
+    "Durban",
+    "Pretoria",
+    "dinner date",
+    "travel companion",
+    "event plus one",
+    "agency",
+  ],
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    siteName: "Amicora",
+    url: SITE_URL,
+    title: "Amicora — Companionship, arranged with care",
+    description: DESC,
+    locale: "en_ZA",
+    images: [{ url: "/og.jpg", width: 1200, height: 630, alt: "Amicora" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Amicora — Companionship, arranged with care",
+    description: DESC,
+    images: ["/og.jpg"],
+  },
+  robots: { index: true, follow: true },
   // RTA ("Restricted to Adults") label — a standard, machine-readable marker
   // that parental-control and content-filtering software detects to block
   // this site on children's devices. See https://www.rtalabel.org

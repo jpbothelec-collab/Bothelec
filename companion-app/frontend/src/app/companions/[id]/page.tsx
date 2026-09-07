@@ -1,452 +1,55 @@
-"use client";
+import type { Metadata } from "next";
+import { SITE_URL, serverFetch } from "@/lib/seo";
+import CompanionView from "./view";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
-import { useApi, useAction } from "@/lib/useApi";
-import { useAuth } from "@/lib/auth";
-import { Alert, Badge, Button, Card, Field, Input, Loading, Select, Stars, Textarea } from "@/components/ui";
-import { ReportDialog } from "@/components/report-dialog";
-import {
-  CATEGORY_LABELS,
-  PROFILE_DETAIL_FIELDS,
-  type CompanionProfile,
-  type CompanionshipCategory,
-  type ProfileDetails,
-} from "@/lib/types";
-
-export default function CompanionPage({ params }: { params: { id: string } }) {
-  const { id } = params;
-  const { data: p, error, loading } = useApi(() => api.publicProfile(id), [id]);
-
-  if (loading) return <Loading />;
-  if (error || !p) return <Alert>{error || "Profile not found."}</Alert>;
-
-  return (
-    <div className="grid gap-8 py-6 lg:grid-cols-[1.4fr_1fr]">
-      <div className="flex flex-col gap-6">
-        <header>
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">
-                {p.display_name}
-              </h1>
-              {p.is_available && <Badge tone="ok">Available now</Badge>}
-            </div>
-            {p.city && <span className="text-sm text-muted">{p.city}</span>}
-          </div>
-          {p.agency_name && (
-            <p className="mt-1 text-sm text-muted">
-              Managed by{" "}
-              {p.agent_id ? (
-                <Link href={`/agencies/${p.agent_id}`} className="font-medium text-accent-ink hover:underline">
-                  {p.agency_name}
-                </Link>
-              ) : (
-                <span className="text-ink">{p.agency_name}</span>
-              )}
-            </p>
-          )}
-          {p.average_rating != null && (
-            <div className="mt-2 flex items-center gap-2 text-sm text-muted">
-              <Stars value={p.average_rating} />
-              <span className="text-ink">{p.average_rating.toFixed(1)}</span>
-              <span className="text-faint">
-                ({p.review_count} review{p.review_count === 1 ? "" : "s"})
-              </span>
-            </div>
-          )}
-          {p.categories.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {p.categories.map((c) => (
-                <Badge key={c} tone="accent">
-                  {CATEGORY_LABELS[c]}
-                </Badge>
-              ))}
-            </div>
-          )}
-          <div className="mt-3">
-            <ReportDialog reportedUserId={p.user_id} reportedName={p.display_name} />
-          </div>
-        </header>
-
-        <Gallery profile={p} />
-
-        <Details details={p.details} />
-
-        {(p.indicative_rate_note || p.price_list_url) && (
-          <Card className="p-4">
-            <h2 className="text-sm font-semibold text-ink">Rates</h2>
-            {p.indicative_rate_note && (
-              <p className="mt-1 text-sm text-muted">{p.indicative_rate_note}</p>
-            )}
-            {p.price_list_url && (
-              <a
-                href={p.price_list_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-block text-sm font-medium text-accent-ink hover:underline"
-              >
-                View price list ↗
-              </a>
-            )}
-            <p className="mt-2 text-xs text-faint">
-              Rates are indicative. The companionship fee is agreed and settled directly with{" "}
-              {p.display_name}. Amicora is never party to it.
-            </p>
-          </Card>
-        )}
-
-        {p.contact_details && (
-          <Card className="p-4">
-            <h2 className="text-sm font-semibold text-ink">Contact</h2>
-            <p className="mt-1 whitespace-pre-wrap text-sm text-ink">{p.contact_details}</p>
-            <p className="mt-2 text-xs text-faint">
-              Shared by {p.display_name}. Arrangements are made directly between you.
-            </p>
-          </Card>
-        )}
-
-        <Reviews profileId={p.id} count={p.review_count} />
-      </div>
-
-      <aside className="lg:sticky lg:top-24 lg:self-start">
-        <BookingPanel profile={p} />
-      </aside>
-    </div>
-  );
+interface ProfileMeta {
+  display_name: string;
+  city: string | null;
+  categories?: string[];
+  details?: { main_heading?: string | null };
 }
 
-function Details({ details }: { details: ProfileDetails }) {
-  const heading = details.main_heading?.trim();
-  const rows = PROFILE_DETAIL_FIELDS.filter(
-    (f) => f.key !== "main_heading" && String(details[f.key] ?? "").trim(),
-  );
-  if (!heading && rows.length === 0) return null;
-  return (
-    <section>
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">About</h2>
-      {heading && <p className="mt-2 font-display text-lg leading-snug text-ink">{heading}</p>}
-      {rows.length > 0 && (
-        <dl className="mt-3 grid grid-cols-1 gap-x-8 gap-y-2.5 sm:grid-cols-2">
-          {rows.map((f) => (
-            <div key={f.key} className={f.long ? "sm:col-span-2" : ""}>
-              <dt className="text-xs uppercase tracking-wide text-faint">{f.label}</dt>
-              <dd className="mt-0.5 whitespace-pre-wrap text-[15px] text-ink">
-                {String(details[f.key])}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      )}
-    </section>
-  );
-}
-
-function Reviews({ profileId, count }: { profileId: string; count: number }) {
-  const { user } = useAuth();
-  const { data, loading, reload } = useApi(() => api.profileReviews(profileId), [profileId]);
-  const isClient = user?.role === "client";
-  const { data: bookings } = useApi(
-    () => (isClient ? api.myBookings() : Promise.resolve([])),
-    [isClient],
-  );
-
-  const completed = (bookings ?? []).find(
-    (b) => b.profile_id === profileId && b.status === "completed",
-  );
-  const alreadyReviewed = !!(data && user && data.some((r) => r.author_id === user.id));
-  const canReview = Boolean(isClient && completed && !alreadyReviewed);
-
-  if (count === 0 && (!data || data.length === 0) && !canReview) return null;
-
-  return (
-    <section>
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Reviews</h2>
-      {loading && <Loading />}
-      {canReview && completed && <WriteReview bookingId={completed.id} onDone={reload} />}
-      {isClient && alreadyReviewed && (
-        <p className="mt-2 text-xs text-faint">You&rsquo;ve reviewed this companion. Thank you.</p>
-      )}
-      <div className="mt-3 flex flex-col gap-3">
-        {data && data.length === 0 && (
-          <p className="text-sm text-muted">No reviews yet.</p>
-        )}
-        {data?.map((r) => (
-          <Card key={r.id} className="p-4">
-            <div className="flex items-center justify-between">
-              <Stars value={r.rating} />
-              <span className="text-xs text-faint">
-                {new Date(r.created_at).toLocaleDateString()}
-              </span>
-            </div>
-            {r.comment && (
-              <p className="mt-2 whitespace-pre-wrap text-sm text-ink">{r.comment}</p>
-            )}
-          </Card>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function WriteReview({ bookingId, onDone }: { bookingId: string; onDone: () => void }) {
-  const { loading, error, run, setError } = useAction();
-  const [rating, setRating] = useState(0);
-  const [comment, setComment] = useState("");
-
-  function submit() {
-    if (rating < 1) return setError("Choose a star rating.");
-    run(async () => {
-      await api.createReview(bookingId, { rating, comment: comment.trim() || undefined });
-      onDone();
-    });
-  }
-
-  return (
-    <Card className="mt-3 p-4">
-      <p className="text-sm font-medium text-ink">Leave a review</p>
-      <p className="mt-0.5 text-xs text-muted">
-        You had a completed booking with this companion — share how it went.
-      </p>
-      <div className="mt-2 flex gap-1">
-        {[1, 2, 3, 4, 5].map((n) => (
-          <button
-            key={n}
-            type="button"
-            onClick={() => setRating(n)}
-            aria-label={`${n} star${n === 1 ? "" : "s"}`}
-            className={"text-2xl leading-none " + (n <= rating ? "text-accent" : "text-hair-strong")}
-          >
-            ★
-          </button>
-        ))}
-      </div>
-      <Textarea
-        value={comment}
-        onChange={(e) => setComment(e.target.value)}
-        placeholder="Optional — a few words about your experience."
-        className="mt-3 min-h-16"
-      />
-      {error && <div className="mt-2"><Alert>{error}</Alert></div>}
-      <Button onClick={submit} loading={loading} className="mt-3">
-        Submit review
-      </Button>
-    </Card>
-  );
-}
-
-function Slideshow({
-  slides,
-  name,
+export async function generateMetadata({
+  params,
 }: {
-  slides: { id: string; url: string | null }[];
-  name: string;
-}) {
-  const n = slides.length;
-  const [i, setI] = useState(0);
-  const [paused, setPaused] = useState(false);
-  const idx = Math.min(i, n - 1);
+  params: { id: string };
+}): Promise<Metadata> {
+  const p = await serverFetch<ProfileMeta>(`/profiles/${params.id}`);
+  if (!p) {
+    // Not found / not published — keep it out of the index.
+    return { title: "Companion", robots: { index: false, follow: false } };
+  }
 
-  useEffect(() => {
-    if (paused || n <= 1) return;
-    const t = setInterval(() => setI((c) => (c + 1) % n), 4500);
-    return () => clearInterval(t);
-  }, [paused, n]);
+  const title = `${p.display_name}${p.city ? " — " + p.city : ""}`;
+  const description =
+    p.details?.main_heading?.trim() ||
+    `${p.display_name} — companion listing${
+      p.city ? " in " + p.city : ""
+    } on Amicora. Adults only (18+).`;
+  const canonical = `/companions/${params.id}`;
 
-  return (
-    <div
-      className="relative overflow-hidden rounded-xl2 bg-accent-soft"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-    >
-      <div className="aspect-[3/4] w-full">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={slides[idx].url!}
-          alt={`${name} ${idx + 1}`}
-          className="h-full w-full object-cover"
-        />
-      </div>
-      {n > 1 && (
-        <>
-          <button
-            type="button"
-            aria-label="Previous photo"
-            onClick={() => setI((c) => (c - 1 + n) % n)}
-            className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/45 px-3 py-1.5 text-xl leading-none text-white hover:bg-black/65"
-          >
-            ‹
-          </button>
-          <button
-            type="button"
-            aria-label="Next photo"
-            onClick={() => setI((c) => (c + 1) % n)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/45 px-3 py-1.5 text-xl leading-none text-white hover:bg-black/65"
-          >
-            ›
-          </button>
-          <span className="absolute right-2 top-2 rounded-full bg-black/45 px-2 py-0.5 text-xs text-white">
-            {idx + 1}/{n}
-          </span>
-          <div className="absolute bottom-2 left-1/2 flex -translate-x-1/2 gap-1.5">
-            {slides.map((s, k) => (
-              <button
-                key={s.id}
-                type="button"
-                aria-label={`Go to photo ${k + 1}`}
-                onClick={() => setI(k)}
-                className={
-                  "h-1.5 rounded-full transition-all " +
-                  (k === idx ? "w-5 bg-white" : "w-1.5 bg-white/60 hover:bg-white/80")
-                }
-              />
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
+  return {
+    title,
+    description,
+    alternates: { canonical },
+    openGraph: {
+      type: "profile",
+      title: `${title} · Amicora`,
+      description,
+      url: `${SITE_URL}${canonical}`,
+      // Use the static branded share image rather than a signed MinIO URL,
+      // which would expire and break social previews.
+      images: [{ url: "/og.jpg", width: 1200, height: 630, alt: "Amicora" }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${title} · Amicora`,
+      description,
+      images: ["/og.jpg"],
+    },
+  };
 }
 
-function Gallery({ profile }: { profile: CompanionProfile }) {
-  const { total_image_count, visible_image_count, images_locked } = profile;
-  const slides = profile.media.filter((m) => m.url);
-  const initial = profile.display_name.slice(0, 1);
-  return (
-    <div className="flex flex-col gap-3">
-      {slides.length > 0 ? (
-        <Slideshow slides={slides} name={profile.display_name} />
-      ) : (
-        <div className="flex aspect-[3/4] items-center justify-center rounded-xl2 bg-accent-soft font-display text-6xl text-accent-ink/50">
-          {initial}
-        </div>
-      )}
-      {images_locked && (
-        <Card className="flex items-center justify-between gap-4 p-4">
-          <p className="text-sm text-muted">
-            <span className="font-medium text-ink">
-              {total_image_count - visible_image_count} more photo
-              {total_image_count - visible_image_count > 1 ? "s" : ""}
-            </span>{" "}
-            available with premium.
-          </p>
-          <Link href="/account" className="whitespace-nowrap text-sm font-medium text-accent-ink">
-            Unlock →
-          </Link>
-        </Card>
-      )}
-    </div>
-  );
-}
-
-function BookingPanel({ profile }: { profile: CompanionProfile }) {
-  const { user, ready } = useAuth();
-  const router = useRouter();
-  const { loading, error, run, setError } = useAction();
-  const { loading: msgLoading, run: runMsg } = useAction();
-  const [done, setDone] = useState(false);
-  const [category, setCategory] = useState<CompanionshipCategory>(
-    profile.categories[0] || "dinner_date",
-  );
-  const [start, setStart] = useState("");
-  const [note, setNote] = useState("");
-
-  if (!ready) return null;
-
-  const name = profile.display_name;
-
-  if (!user) {
-    return (
-      <Card className="p-5">
-        <h2 className="font-medium text-ink">Request time with {name}</h2>
-        <p className="mt-1 text-sm text-muted">Log in as a client to book or message.</p>
-        <Link
-          href="/login"
-          className="mt-4 inline-block rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
-          Log in
-        </Link>
-      </Card>
-    );
-  }
-
-  if (user.role !== "client") {
-    return (
-      <Card className="p-5 text-sm text-muted">Booking requests are made by client accounts.</Card>
-    );
-  }
-
-  function message() {
-    runMsg(async () => {
-      const conv = await api.startConversation(profile.id);
-      router.push(`/messages/${conv.id}`);
-    });
-  }
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!start) {
-      setError("Choose a date and time.");
-      return;
-    }
-    run(async () => {
-      await api.createBooking({
-        profile_id: profile.id,
-        category,
-        requested_start: new Date(start).toISOString(),
-        location_note: note || undefined,
-      });
-      setDone(true);
-    });
-  }
-
-  return (
-    <Card className="p-5">
-      <h2 className="font-medium text-ink">Request time with {name}</h2>
-      <Button variant="secondary" onClick={message} loading={msgLoading} className="mt-3 w-full">
-        Message {name}
-      </Button>
-
-      {done ? (
-        <p className="mt-4 text-sm text-muted">
-          Request sent. Track it under{" "}
-          <Link href="/bookings" className="font-medium text-accent-ink">
-            Bookings
-          </Link>
-          .
-        </p>
-      ) : (
-        <form className="mt-4 flex flex-col gap-3.5 border-t border-hair pt-4" onSubmit={submit}>
-          <Field label="Occasion">
-            <Select
-              value={category}
-              onChange={(e) => setCategory(e.target.value as CompanionshipCategory)}
-            >
-              {(Object.keys(CATEGORY_LABELS) as CompanionshipCategory[]).map((c) => (
-                <option key={c} value={c}>
-                  {CATEGORY_LABELS[c]}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="When">
-            <Input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
-          </Field>
-          <Field label="Location / notes" hint="Optional">
-            <Textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Where you'd like to meet, and anything helpful."
-            />
-          </Field>
-          {error && <Alert>{error}</Alert>}
-          <Button type="submit" loading={loading}>
-            Send booking request
-          </Button>
-        </form>
-      )}
-    </Card>
-  );
+export default function Page({ params }: { params: { id: string } }) {
+  return <CompanionView id={params.id} />;
 }

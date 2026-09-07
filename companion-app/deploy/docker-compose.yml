@@ -104,6 +104,12 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
+    environment:
+      # Absolute site URL for SEO metadata, canonicals, sitemap and robots.
+      SITE_URL: ${SITE_URL:-https://amicora.co.za}
+      # Internal address the Next.js server uses to reach the backend directly
+      # when building metadata and the sitemap (browsers still use /api).
+      INTERNAL_API_BASE: http://backend:8000
 
   caddy:
     image: caddy:2-alpine
