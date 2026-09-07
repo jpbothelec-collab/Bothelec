@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import { useApi } from "@/lib/useApi";
 import { ProfileCard } from "@/components/profile-card";
 import { Alert, Empty, Input, Loading, Select } from "@/components/ui";
 import { CATEGORY_LABELS, type CompanionshipCategory } from "@/lib/types";
+import { CITIES, CATEGORIES } from "@/lib/landing";
 
 export default function BrowsePage() {
   const [city, setCity] = useState("");
@@ -71,6 +73,35 @@ export default function BrowsePage() {
           </div>
         )}
       </div>
+
+      {/* Discovery hubs — crawlable links to the city/category landing pages. */}
+      <section className="mt-12 border-t border-hair pt-8">
+        <h2 className="text-sm font-semibold text-ink">Companions by city</h2>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {CITIES.map((c) => (
+            <Link
+              key={c.slug}
+              href={`/companions/in/${c.slug}`}
+              className="rounded-full border border-hair px-3 py-1 text-sm text-muted hover:border-accent hover:text-accent"
+            >
+              {c.name}
+            </Link>
+          ))}
+        </div>
+
+        <h2 className="mt-6 text-sm font-semibold text-ink">Companions by category</h2>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {CATEGORIES.map((c) => (
+            <Link
+              key={c.slug}
+              href={`/companions/for/${c.slug}`}
+              className="rounded-full border border-hair px-3 py-1 text-sm text-muted hover:border-accent hover:text-accent"
+            >
+              {c.label}
+            </Link>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

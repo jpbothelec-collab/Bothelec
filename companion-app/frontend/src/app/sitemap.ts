@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL, serverFetch } from "@/lib/seo";
+import { CITIES, CATEGORIES } from "@/lib/landing";
 
 interface ProfileLite {
   id: string;
@@ -29,6 +30,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: s.priority,
   }));
 
+  // City and category SEO hub pages.
+  const hubEntries: MetadataRoute.Sitemap = [
+    ...CITIES.map((c) => `/companions/in/${c.slug}`),
+    ...CATEGORIES.map((c) => `/companions/for/${c.slug}`),
+  ].map((path) => ({
+    url: `${SITE_URL}${path}`,
+    lastModified: now,
+    changeFrequency: "weekly" as const,
+    priority: 0.7,
+  }));
+
   // Published companion profiles (public search only returns published ones).
   const profileEntries: MetadataRoute.Sitemap = [];
   for (let page = 1; page <= 40; page++) {
@@ -45,5 +57,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     if (page >= (resp.total_pages || 1)) break;
   }
 
-  return [...staticEntries, ...profileEntries];
+  return [...staticEntries, ...hubEntries, ...profileEntries];
 }
