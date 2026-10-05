@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-md mx-auto bg-white rounded-lg shadow p-6">
+  <h1 class="text-2xl font-bold mb-1">Drive with us</h1>
+  <p class="text-sm text-slate-600 mb-4">We verify your licence, PrDP and vehicle before you can go online.</p>
+  <form method="post">{% include "_form.html" %}
+    <button class="w-full bg-black text-white py-2 rounded">Apply to drive</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,9 @@
+{% csrf_token %}
+{% for field in form %}
+  <label class="block mb-3">
+    <span class="text-sm font-medium">{{ field.label }}</span>
+    {{ field }}
+    {% for e in field.errors %}<span class="text-sm text-red-600">{{ e }}</span>{% endfor %}
+  </label>
+{% endfor %}
+{% for e in form.non_field_errors %}<p class="text-sm text-red-600">{{ e }}</p>{% endfor %}

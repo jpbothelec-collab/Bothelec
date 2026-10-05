@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Drive{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+  <div>
+    <h1 class="text-2xl font-bold">Hi {{ user.first_name|default:user.username }}</h1>
+    <p class="text-sm text-slate-600">{{ driver.vehicle_label }} · {{ driver.get_vehicle_class_display }}{% if driver.rating %} · ★ {{ driver.rating }}{% endif %}</p>
+  </div>
+  <div class="text-right">
+    <p class="text-xs text-slate-500">Today</p>
+    <p class="text-xl font-bold">R{{ earned_today|floatformat:2 }} <span class="text-sm font-normal">· {{ trips_today }} trip{{ trips_today|pluralize }}</span></p>
+  </div>
+</div>
+
+{% if not driver.is_approved %}
+  <div class="bg-amber-100 text-amber-900 rounded p-4 mb-4">Your documents are being reviewed. You can go online once approved.</div>
+{% elif current %}
+  <a href="{% url 'ride_detail' current.pk %}" class="block bg-black text-white rounded p-4 mb-4">
+    Current ride: {{ current.get_status_display }} - {{ current.pickup_address }} → {{ current.dropoff_address }} ›</a>
+{% endif %}
+
+<div class="grid md:grid-cols-5 gap-4">
+  <div class="md:col-span-3">
+    <div id="map" class="map"></div>
+    <p class="text-xs text-slate-500 mt-1">Demo: tap the map to set your position.</p>
+  </div>
+  <div class="md:col-span-2 space-y-3">
+    {% if driver.is_approved %}
+      <form method="post" action="{% url 'driver_toggle_online' %}">{% csrf_token %}
+        <button class="w-full py-3 rounded text-white {% if driver.is_online %}bg-red-700{% else %}bg-green-700{% endif %}">
+          {% if driver.is_online %}Go offline{% else %}Go online{% endif %}</button>
+      </form>
+    {% endif %}
+    <div class="bg-white rounded-lg shadow p-4">
+      <h2 class="font-bold mb-2">Ride requests near you</h2>
+      <div id="requests" class="space-y-2 text-sm text-slate-500">
+        {% if driver.is_online %}Waiting for requests…{% else %}Go online to receive requests.{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<form id="acceptForm" method="post">{% csrf_token %}</form>
+{% if driver.is_online %}{% include "_driver_gps.html" %}{% endif %}
+<script>
+const start = {% if driver.lat is not None %}[{{ driver.lat }}, {{ driver.lng }}]{% else %}null{% endif %};
+const map = makeMap("map", start);
+let me = start ? L.marker(start, {icon: ICONS.me}).addTo(map) : null;
+const reqLayer = L.layerGroup().addTo(map);
+
+window.onDriverMoved = (lat, lng) => {
+  if (!me) me = L.marker([lat, lng], {icon: ICONS.me}).addTo(map); else me.setLatLng([lat, lng]);
+};
+{% if driver.is_online %}
+map.on("click", e => { sendLocation(e.latlng.lat, e.latlng.lng, true); setTimeout(poll, 300); });
+if (!start) sendLocation(JHB[0], JHB[1], true);  // demo default until real GPS arrives
+{% endif %}
+
+function accept(id) {
+  const f = document.getElementById("acceptForm");
+  f.action = `/drive/accept/${id}/`;
+  f.submit();
+}
+
+async function poll() {
+  const r = await (await fetch("{% url 'api_driver_requests' %}")).json();
+  if (!r.online) return;
+  reqLayer.clearLayers();
+  const box = document.getElementById("requests");
+  if (!r.requests.length) { box.textContent = "Waiting for requests…"; return; }
+  box.innerHTML = r.requests.map(q => `
+    <div class="border rounded p-3 text-slate-900">
+      <div class="flex justify-between"><b>R${esc(q.fare)}${q.surge !== "1.0" ? ` <span class="text-amber-600">${esc(q.surge)}×</span>` : ""}</b>
+        <span>${esc(q.km_away)} km away · ${esc(q.payment)}</span></div>
+      <p class="mt-1"><span class="text-green-700">●</span> ${esc(q.pickup)}<br><span class="text-red-700">●</span> ${esc(q.dropoff)} (${esc(q.trip_km)} km)</p>
+      <button onclick="accept(${Number(q.id)})" class="mt-2 w-full bg-black text-white py-2 rounded">Accept</button>
+    </div>`).join("");
+  r.requests.forEach(q => L.marker([q.pickup_lat, q.pickup_lng], {icon: ICONS.pickup}).addTo(reqLayer));
+}
+{% if driver.is_online and not current %}poll(); setInterval(poll, 4000);{% endif %}
+</script>
+{% endblock %}

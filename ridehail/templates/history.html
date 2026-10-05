@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Trips{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Your trips</h1>
+<table class="w-full bg-white rounded-lg shadow text-sm">
+  <thead><tr class="text-left text-slate-500"><th class="p-3">When</th><th>Trip</th><th>{% if as_driver %}Rider{% else %}Driver{% endif %}</th><th>Status</th><th>Fare</th></tr></thead>
+  <tbody>
+  {% for r in rides %}
+    <tr class="border-t"><td class="p-3">{{ r.requested_at|date:"d M Y H:i" }}</td>
+      <td><a class="underline" href="{% url 'ride_detail' r.pk %}">{{ r.pickup_address|truncatechars:25 }} → {{ r.dropoff_address|truncatechars:25 }}</a></td>
+      <td>{% if as_driver %}{{ r.rider.first_name|default:r.rider.username }}{% else %}{{ r.driver.first_name|default:r.driver.username|default:"-" }}{% endif %}</td>
+      <td>{{ r.get_status_display }}</td>
+      <td>R{% if r.final_fare is not None %}{{ r.final_fare }}{% elif r.cancellation_fee %}{{ r.cancellation_fee }}{% else %}{{ r.fare_estimate }} est.{% endif %}</td></tr>
+  {% empty %}<tr><td class="p-3" colspan="5">No trips yet.</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endblock %}

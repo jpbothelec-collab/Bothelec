@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Operations{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Operations</h1>
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+  <div class="bg-white rounded-lg shadow p-4"><p class="text-xs text-slate-500">Drivers online</p><p class="text-2xl font-bold">{{ online }}</p></div>
+  <div class="bg-white rounded-lg shadow p-4"><p class="text-xs text-slate-500">Trips today</p><p class="text-2xl font-bold">{{ today.trips }}</p></div>
+  <div class="bg-white rounded-lg shadow p-4"><p class="text-xs text-slate-500">Gross fares today</p><p class="text-2xl font-bold">R{{ today.gross|default:"0.00" }}</p></div>
+  <div class="bg-white rounded-lg shadow p-4"><p class="text-xs text-slate-500">Platform revenue today</p><p class="text-2xl font-bold text-green-700">R{{ today.revenue|default:"0.00" }}</p></div>
+</div>
+
+<h2 class="font-bold mb-2">Active rides</h2>
+<table class="w-full bg-white rounded-lg shadow text-sm mb-6">
+  <thead><tr class="text-left text-slate-500"><th class="p-3">#</th><th>Rider</th><th>Driver</th><th>Status</th><th>Since</th></tr></thead>
+  <tbody>
+  {% for r in active %}
+    <tr class="border-t"><td class="p-3"><a class="underline" href="{% url 'ride_detail' r.pk %}">{{ r.pk }}</a></td>
+      <td>{{ r.rider.username }}</td><td>{{ r.driver.username|default:"-" }}</td>
+      <td>{{ r.get_status_display }}</td><td>{{ r.requested_at|timesince }}</td></tr>
+  {% empty %}<tr><td class="p-3" colspan="5">No active rides.</td></tr>{% endfor %}
+  </tbody>
+</table>
+
+<h2 class="font-bold mb-2">Drivers awaiting approval</h2>
+<ul class="bg-white rounded-lg shadow divide-y text-sm">
+  {% for d in pending_drivers %}
+    <li class="p-3 flex justify-between"><span>{{ d.user.get_full_name|default:d.user.username }} · {{ d.vehicle_label }} · licence {{ d.licence_number }}</span>
+      <a class="underline" href="{% url 'admin:accounts_driverprofile_change' d.pk %}">Review</a></li>
+  {% empty %}<li class="p-3">None.</li>{% endfor %}
+</ul>
+{% endblock %}

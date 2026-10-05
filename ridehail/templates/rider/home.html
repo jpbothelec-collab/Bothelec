@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Request a ride{% endblock %}
+{% block content %}
+<div class="grid md:grid-cols-5 gap-4">
+  <div class="md:col-span-3">
+    <div id="map" class="map"></div>
+    <p class="text-xs text-slate-500 mt-1">Tap the map to set <b class="text-green-700">pickup</b>, then <b class="text-red-700">drop-off</b>. Tap again to start over.</p>
+  </div>
+  <form method="post" action="{% url 'request_ride' %}" class="md:col-span-2 bg-white rounded-lg shadow p-4" id="rideForm">
+    {% csrf_token %}
+    <h1 class="text-xl font-bold mb-3">Where to?</h1>
+    <div class="flex gap-2 mb-2">
+      <input id="pickupSearch" name="pickup_address" placeholder="Pickup address" class="flex-1 border rounded px-3 py-2">
+      <button type="button" id="locateBtn" class="border rounded px-2" title="Use my location">◎</button>
+    </div>
+    <input id="dropoffSearch" name="dropoff_address" placeholder="Drop-off address" class="w-full border rounded px-3 py-2 mb-3">
+    <input type="hidden" name="pickup_lat"><input type="hidden" name="pickup_lng">
+    <input type="hidden" name="dropoff_lat"><input type="hidden" name="dropoff_lng">
+
+    <div id="options" class="space-y-2 mb-3 text-sm text-slate-500">Set pickup and drop-off to see prices.</div>
+
+    <label class="block text-sm mb-3">Payment
+      <select name="payment_method" class="block w-full border rounded px-3 py-2 mt-1">
+        <option value="cash">Cash</option><option value="card">Card</option>
+      </select>
+    </label>
+    <button id="requestBtn" disabled class="w-full bg-black text-white py-3 rounded disabled:opacity-40">Request ride</button>
+  </form>
+</div>
+
+{% if recent %}
+<h2 class="font-bold mt-8 mb-2">Recent trips</h2>
+<ul class="bg-white rounded-lg shadow divide-y text-sm">
+  {% for r in recent %}
+    <li class="p-3 flex justify-between"><a class="underline" href="{% url 'ride_detail' r.pk %}">{{ r.pickup_address }} → {{ r.dropoff_address }}</a>
+      <span>{{ r.get_status_display }}{% if r.final_fare %} · R{{ r.final_fare }}{% endif %}</span></li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<script>
+const map = makeMap("map");
+const form = document.getElementById("rideForm");
+let pickup = null, dropoff = null, carLayer = L.layerGroup().addTo(map);
+
+function setPoint(kind, latlng, label) {
+  const marker = L.marker(latlng, {icon: ICONS[kind], draggable: true}).addTo(map);
+  marker.on("dragend", () => { setPoint(kind, marker.getLatLng()); map.removeLayer(marker); });
+  if (kind === "pickup") { if (pickup) map.removeLayer(pickup); pickup = marker; }
+  else { if (dropoff) map.removeLayer(dropoff); dropoff = marker; }
+  form[kind + "_lat"].value = latlng.lat.toFixed(6);
+  form[kind + "_lng"].value = latlng.lng.toFixed(6);
+  const input = document.getElementById(kind + "Search");
+  if (label) input.value = label; else reverseGeocode(latlng, input);
+  refresh();
+}
+
+async function reverseGeocode(latlng, input) {
+  input.value = `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`;
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latlng.lat}&lon=${latlng.lng}`);
+    const j = await r.json();
+    if (j.display_name) input.value = j.display_name.split(",").slice(0, 3).join(",");
+  } catch (e) {}
+}
+
+async function geocode(kind) {
+  const q = document.getElementById(kind + "Search").value.trim();
+  if (!q) return;
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=za&q=${encodeURIComponent(q)}`);
+    const [hit] = await r.json();
+    if (hit) { const ll = L.latLng(+hit.lat, +hit.lon); setPoint(kind, ll, q); map.panTo(ll); }
+  } catch (e) {}
+}
+["pickup", "dropoff"].forEach(k => {
+  const input = document.getElementById(k + "Search");
+  input.addEventListener("change", () => geocode(k));
+  input.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); geocode(k); } });
+});
+
+map.on("click", e => {
+  if (!pickup || dropoff) {
+    if (dropoff) { map.removeLayer(dropoff); dropoff = null; form.dropoff_lat.value = ""; }
+    setPoint("pickup", e.latlng);
+  } else {
+    setPoint("dropoff", e.latlng);
+  }
+});
+
+function locateMe() {
+  navigator.geolocation && navigator.geolocation.getCurrentPosition(p => {
+    const ll = L.latLng(p.coords.latitude, p.coords.longitude);
+    map.setView(ll, 14); setPoint("pickup", ll);
+  });
+}
+document.getElementById("locateBtn").onclick = locateMe;
+locateMe();  // like Uber: start with pickup at your current location
+
+async function refresh() {
+  const c = map.getCenter();
+  const at = pickup ? pickup.getLatLng() : c;
+  const nd = await (await fetch(`{% url 'api_nearby_drivers' %}?at_lat=${at.lat}&at_lng=${at.lng}`)).json();
+  carLayer.clearLayers();
+  (nd.drivers || []).forEach(d => L.marker([d.lat, d.lng], {icon: ICONS.car}).addTo(carLayer));
+
+  const box = document.getElementById("options");
+  if (!pickup || !dropoff) return;
+  const p = pickup.getLatLng(), d = dropoff.getLatLng();
+  const q = await (await fetch(`{% url 'api_fare_estimate' %}?pickup_lat=${p.lat}&pickup_lng=${p.lng}&dropoff_lat=${d.lat}&dropoff_lng=${d.lng}`)).json();
+  box.innerHTML = `<p class="text-xs">${q.distance_km} km · about ${Math.round(q.duration_min)} min</p>` +
+    q.options.map((o, i) => `
+      <label class="flex items-center justify-between border rounded p-3 cursor-pointer text-slate-900">
+        <span><input type="radio" name="vehicle_class" value="${o.vehicle_class}" ${i === 0 ? "checked" : ""}>
+          <b>${o.label}</b> <span class="text-xs text-slate-500">${o.seats} seats ·
+          ${o.eta_min ? o.eta_min + " min away" : "no cars nearby"}</span></span>
+        <span class="font-bold">${q.currency}${o.fare}${o.surge !== "1.0" ? ` <span class="text-amber-600 text-xs">${o.surge}×</span>` : ""}</span>
+      </label>`).join("");
+  document.getElementById("requestBtn").disabled = false;
+}
+setInterval(refresh, 10000);
+refresh();
+</script>
+{% endblock %}

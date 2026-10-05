@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Ride #{{ ride.pk }}{% endblock %}
+{% block content %}
+<div class="grid md:grid-cols-5 gap-4">
+  <div class="md:col-span-3">
+    <div id="map" class="map"></div>
+    {% if is_driver and ride.is_active %}<p class="text-xs text-slate-500 mt-1">Demo: tap the map to move your car.</p>{% endif %}
+  </div>
+  <div class="md:col-span-2 bg-white rounded-lg shadow p-4 space-y-3">
+    <p class="text-xs text-slate-500">Ride #{{ ride.pk }} · {{ ride.get_vehicle_class_display }} · {{ ride.get_payment_method_display }}</p>
+    <h1 id="status" class="text-2xl font-bold">{{ ride.get_status_display }}</h1>
+    <p class="text-sm"><span class="text-green-700">●</span> {{ ride.pickup_address }}<br><span class="text-red-700">●</span> {{ ride.dropoff_address }}</p>
+
+    {% if ride.final_fare %}
+      <p class="text-3xl font-bold">R{{ ride.final_fare }}</p>
+      {% if is_driver %}<p class="text-sm">You earn <b>R{{ ride.driver_earnings }}</b> (platform fee R{{ ride.platform_fee }})</p>{% endif %}
+    {% elif ride.cancellation_fee %}
+      <p>Cancellation fee: <b>R{{ ride.cancellation_fee }}</b></p>
+    {% else %}
+      <p>Estimated fare <b>R{{ ride.fare_estimate }}</b>{% if ride.surge != 1 %} <span class="text-amber-600">({{ ride.surge }}× busy)</span>{% endif %}
+        <span class="text-xs text-slate-500">· {{ ride.est_distance_km }} km</span></p>
+    {% endif %}
+
+    <div id="person" class="border rounded p-3 text-sm {% if ride.status == 'requested' %}hidden{% endif %}"></div>
+
+    {% if ride.status == "requested" %}
+      <div class="flex items-center gap-2 text-sm"><span class="animate-ping inline-block w-2 h-2 rounded-full bg-black"></span> Contacting nearby drivers…</div>
+    {% endif %}
+
+    {% if is_driver %}
+      {% if ride.status == "accepted" %}
+        <form method="post" action="{% url 'driver_advance' ride.pk %}">{% csrf_token %}<input type="hidden" name="action" value="arrive">
+          <button class="w-full bg-black text-white py-3 rounded">I've arrived</button></form>
+      {% elif ride.status == "arrived" %}
+        <form method="post" action="{% url 'driver_advance' ride.pk %}">{% csrf_token %}<input type="hidden" name="action" value="start">
+          <button class="w-full bg-green-700 text-white py-3 rounded">Start trip</button></form>
+      {% elif ride.status == "in_progress" %}
+        <form method="post" action="{% url 'driver_advance' ride.pk %}">{% csrf_token %}<input type="hidden" name="action" value="complete">
+          <button class="w-full bg-red-700 text-white py-3 rounded">Complete trip</button></form>
+      {% endif %}
+    {% endif %}
+
+    {% if ride.status == "requested" or ride.status == "accepted" or ride.status == "arrived" %}
+      <form method="post" action="{% url 'ride_cancel' ride.pk %}" onsubmit="return confirm('Cancel this ride?')">{% csrf_token %}
+        <button class="w-full border py-2 rounded text-sm">Cancel ride{% if not is_driver and ride.status == "arrived" %} (R25 fee){% endif %}</button>
+      </form>
+    {% endif %}
+
+    {% if ride.status == "completed" %}
+      {% if is_driver and ride.rating_for_rider is None or not is_driver and ride.rating_for_driver is None %}
+        <form method="post" action="{% url 'ride_rate' ride.pk %}" class="text-center">{% csrf_token %}
+          <p class="text-sm mb-1">Rate your {% if is_driver %}rider{% else %}driver{% endif %}</p>
+          {% for s in "12345" %}<button name="stars" value="{{ s }}" class="text-3xl text-amber-400 hover:scale-125">★</button>{% endfor %}
+        </form>
+      {% endif %}
+      {% if ride.payment_method == "cash" %}<p class="text-sm bg-amber-50 rounded p-2">{% if is_driver %}Collect{% else %}Pay{% endif %} <b>R{{ ride.final_fare }}</b> in cash.</p>{% endif %}
+    {% endif %}
+  </div>
+</div>
+
+{% if is_driver and ride.is_active %}{% include "_driver_gps.html" %}{% endif %}
+<script>
+const pickupLL = [{{ ride.pickup_lat }}, {{ ride.pickup_lng }}], dropoffLL = [{{ ride.dropoff_lat }}, {{ ride.dropoff_lng }}];
+const map = makeMap("map", pickupLL);
+L.marker(pickupLL, {icon: ICONS.pickup}).addTo(map);
+L.marker(dropoffLL, {icon: ICONS.dropoff}).addTo(map);
+L.polyline([pickupLL, dropoffLL], {dashArray: "6 8", color: "#111"}).addTo(map);
+map.fitBounds([pickupLL, dropoffLL], {padding: [40, 40]});
+let car = null;
+const initialStatus = "{{ ride.status }}";
+const isDriver = {{ is_driver|yesno:"true,false" }};
+
+function showCar(lat, lng) {
+  if (lat == null) return;
+  if (!car) car = L.marker([lat, lng], {icon: ICONS.car}).addTo(map);
+  else car.setLatLng([lat, lng]);
+}
+window.onDriverMoved = showCar;
+if (isDriver && {{ ride.is_active|yesno:"true,false" }}) {
+  map.on("click", e => sendLocation(e.latlng.lat, e.latlng.lng, true));
+}
+
+async function poll() {
+  const r = await (await fetch("{% url 'api_ride_status' ride.pk %}")).json();
+  if (r.status !== initialStatus) { location.reload(); return; }
+  if (r.driver) showCar(r.driver.lat, r.driver.lng);
+  const box = document.getElementById("person");
+  if (isDriver && r.rider) {
+    box.innerHTML = `<b>${esc(r.rider.name)}</b>${r.rider.phone ? ` · <a class="underline" href="tel:${esc(r.rider.phone)}">${esc(r.rider.phone)}</a>` : ""}`;
+  } else if (r.driver) {
+    box.innerHTML = `<b>${esc(r.driver.name)}</b> ${r.driver.rating ? "★ " + esc(r.driver.rating) : ""}<br>${esc(r.driver.vehicle)}` +
+      (r.driver.phone ? `<br><a class="underline" href="tel:${esc(r.driver.phone)}">${esc(r.driver.phone)}</a>` : "");
+  }
+}
+poll();
+{% if ride.is_active %}setInterval(poll, 4000);{% endif %}
+</script>
+{% endblock %}

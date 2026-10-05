@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Earnings{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Earnings</h1>
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+  <div class="bg-white rounded-lg shadow p-4"><p class="text-xs text-slate-500">Trips</p><p class="text-2xl font-bold">{{ totals.trips }}</p></div>
+  <div class="bg-white rounded-lg shadow p-4"><p class="text-xs text-slate-500">Fares</p><p class="text-2xl font-bold">R{{ totals.fares|default:"0.00" }}</p></div>
+  <div class="bg-white rounded-lg shadow p-4"><p class="text-xs text-slate-500">Platform fee</p><p class="text-2xl font-bold">R{{ totals.fees|default:"0.00" }}</p></div>
+  <div class="bg-white rounded-lg shadow p-4"><p class="text-xs text-slate-500">You earned</p><p class="text-2xl font-bold text-green-700">R{{ totals.earnings|default:"0.00" }}</p></div>
+</div>
+<table class="w-full bg-white rounded-lg shadow text-sm">
+  <thead><tr class="text-left text-slate-500"><th class="p-3">Date</th><th>Trip</th><th>Fare</th><th>Fee</th><th>Earned</th></tr></thead>
+  <tbody>
+  {% for r in rides %}
+    <tr class="border-t"><td class="p-3">{{ r.completed_at|default:r.cancelled_at|date:"d M H:i" }}</td>
+      <td><a class="underline" href="{% url 'ride_detail' r.pk %}">{{ r.pickup_address|truncatechars:25 }} → {{ r.dropoff_address|truncatechars:25 }}</a></td>
+      <td>R{{ r.amount_due }}</td><td>R{{ r.platform_fee }}</td><td>R{{ r.driver_earnings }}</td></tr>
+  {% empty %}<tr><td class="p-3" colspan="5">No trips yet.</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endblock %}

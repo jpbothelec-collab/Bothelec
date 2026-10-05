@@ -1,0 +1,15 @@
+{# Sends the driver's position to the server. Real GPS when available; tapping the map simulates a move (handy for demos). #}
+<script>
+let lastSent = 0;
+function sendLocation(lat, lng, force) {
+  const now = Date.now();
+  if (!force && now - lastSent < 4000) return;
+  lastSent = now;
+  postForm("{% url 'api_driver_location' %}", {at_lat: lat, at_lng: lng});
+  if (window.onDriverMoved) window.onDriverMoved(lat, lng);
+}
+if (navigator.geolocation) {
+  navigator.geolocation.watchPosition(p => sendLocation(p.coords.latitude, p.coords.longitude),
+                                      () => {}, {enableHighAccuracy: true});
+}
+</script>
