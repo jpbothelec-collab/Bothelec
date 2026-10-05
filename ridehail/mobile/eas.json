@@ -1,0 +1,31 @@
+{
+  "cli": { "version": ">= 16.0.0", "appVersionSource": "remote" },
+  "build": {
+    "development-rider": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": { "APP_VARIANT": "rider" }
+    },
+    "development-driver": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": { "APP_VARIANT": "driver" }
+    },
+    "preview-rider": {
+      "distribution": "internal",
+      "env": { "APP_VARIANT": "rider", "EXPO_PUBLIC_API_URL": "https://YOUR-SERVER" }
+    },
+    "preview-driver": {
+      "distribution": "internal",
+      "env": { "APP_VARIANT": "driver", "EXPO_PUBLIC_API_URL": "https://YOUR-SERVER" }
+    },
+    "production-rider": {
+      "autoIncrement": true,
+      "env": { "APP_VARIANT": "rider", "EXPO_PUBLIC_API_URL": "https://YOUR-SERVER" }
+    },
+    "production-driver": {
+      "autoIncrement": true,
+      "env": { "APP_VARIANT": "driver", "EXPO_PUBLIC_API_URL": "https://YOUR-SERVER" }
+    }
+  }
+}

@@ -23,7 +23,13 @@ Open two browsers (or one normal + one private window):
 | Driver | `thabo` / `demo12345` | `/drive/` – go online, accept, arrive → start → complete |
 | Ops / admin | `admin` / `admin12345` | `/ops/` live dashboard, `/admin/` approve drivers, refunds etc. |
 
-Run the tests: `python manage.py test` (29 tests: fares, dispatch, race on accept, lifecycle, permissions, views).
+Run the tests: `python manage.py test` (47 tests: fares, dispatch, race on accept, lifecycle, permissions, views, mobile API, push).
+
+## Mobile apps
+
+`mobile/` holds the **Bothelec Rides** (rider) and **Bothelec Driver** apps, one React Native / Expo
+codebase built two ways. They use the token API at `/api/v1/` and get push notifications.
+See [`mobile/README.md`](mobile/README.md).
 
 ## What's in it
 
@@ -40,6 +46,9 @@ Run the tests: `python manage.py test` (29 tests: fares, dispatch, race on accep
 | Final fare from measured km + minutes, 20 % platform commission, driver earnings | `Ride.complete()` |
 | Cancellation fee (R25) if rider cancels after driver arrives | `Ride.cancel()` |
 | Two-way ratings, trip history, driver earnings page, ops dashboard | views/templates |
+| Mobile API: token auth, ride + driver endpoints, push device registration | `api/` |
+| Push notifications (Expo) for new requests and ride updates | `rides/notifications.py` |
+| One ride service layer shared by web and mobile | `rides/services.py` |
 
 ### Fare formula
 
@@ -59,9 +68,8 @@ Edit `TARIFFS` in `rides/fares.py`; commission and dispatch radius are in `setti
 
 The prototype deliberately avoids paid services. To launch for real:
 
-1. **Mobile apps** – rider & driver apps (React Native / Flutter) on top of the JSON API; drivers need
-   background GPS which browsers can't do reliably.
-2. **Real-time** – replace polling with WebSockets (Django Channels + Redis) and push notifications (FCM/APNs).
+1. **Mobile apps** – ✅ built in `mobile/` (background GPS, push). Remaining: store listings, branding, EAS setup.
+2. **Real-time** – replace 4-second polling with WebSockets (Django Channels + Redis). Push notifications ✅ done.
 3. **Routing & geocoding** – OSRM / Google Routes / Mapbox for real road distance, ETAs and turn-by-turn;
    PostGIS for spatial queries at scale.
 4. **Payments** – card tokenisation & in-app charging (PayFast / Peach Payments / Stripe), driver weekly
