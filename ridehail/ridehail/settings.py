@@ -17,10 +17,12 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "accounts",
     "rides",
+    "api",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "api.middleware.ApiCorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -79,3 +81,6 @@ CURRENCY_SYMBOL = "R"
 PLATFORM_COMMISSION = 0.20        # share of each fare kept by the platform
 DISPATCH_RADIUS_KM = 8.0          # drivers only see requests within this distance
 DRIVER_LOCATION_STALE_SECONDS = 120  # drivers silent longer than this count as offline
+
+# Expo push notifications to the mobile apps (set PUSH_NOTIFICATIONS=0 to disable)
+PUSH_NOTIFICATIONS_ENABLED = os.environ.get("PUSH_NOTIFICATIONS", "1") == "1"

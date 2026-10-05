@@ -1,7 +1,6 @@
 from decimal import Decimal
 from functools import wraps
 
-from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Sum
@@ -10,9 +9,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from . import dispatch, fares
-from .geo import estimate_trip, valid_coord
-from .models import InvalidTransition, Ride
+from . import dispatch, fares, services
+from .models import Ride
 
 
 # ---------------------------------------------------------------- helpers
@@ -43,55 +41,11 @@ def driver_required(view):
     return wrapper
 
 
-def _coords(data, prefix):
-    try:
-        lat, lng = float(data[f"{prefix}_lat"]), float(data[f"{prefix}_lng"])
-    except (KeyError, TypeError, ValueError):
-        return None
-    return (lat, lng) if valid_coord(lat, lng) else None
-
-
 def _ride_for_user(request, pk):
     ride = get_object_or_404(Ride, pk=pk)
     if request.user not in (ride.rider, ride.driver) and not request.user.is_staff:
         return None
     return ride
-
-
-def _ride_json(ride, viewer):
-    data = {
-        "id": ride.pk,
-        "status": ride.status,
-        "status_label": ride.get_status_display(),
-        "vehicle_class": ride.vehicle_class,
-        "pickup": {"address": ride.pickup_address, "lat": ride.pickup_lat, "lng": ride.pickup_lng},
-        "dropoff": {"address": ride.dropoff_address, "lat": ride.dropoff_lat, "lng": ride.dropoff_lng},
-        "fare_estimate": str(ride.fare_estimate),
-        "final_fare": str(ride.final_fare) if ride.final_fare is not None else None,
-        "cancellation_fee": str(ride.cancellation_fee),
-        "surge": str(ride.surge),
-        "payment_method": ride.payment_method,
-        "rating_for_driver": ride.rating_for_driver,
-        "rating_for_rider": ride.rating_for_rider,
-    }
-    if ride.driver_id and hasattr(ride.driver, "driver"):
-        d = ride.driver.driver
-        data["driver"] = {
-            "name": ride.driver.first_name or ride.driver.username,
-            "phone": ride.driver.profile.phone if ride.is_active else "",
-            "vehicle": d.vehicle_label,
-            "rating": d.rating,
-            # Only share live location while the driver is heading to / with the rider.
-            "lat": d.lat if ride.is_active else None,
-            "lng": d.lng if ride.is_active else None,
-        }
-    if viewer == ride.driver:
-        data["rider"] = {
-            "name": ride.rider.first_name or ride.rider.username,
-            "phone": ride.rider.profile.phone if ride.is_active else "",
-        }
-        data["driver_earnings"] = str(ride.driver_earnings)
-    return data
 
 
 # ---------------------------------------------------------------- pages
@@ -124,33 +78,11 @@ def rider_home(request):
 @rider_required
 @require_POST
 def request_ride(request):
-    pickup, dropoff = _coords(request.POST, "pickup"), _coords(request.POST, "dropoff")
-    vehicle_class = request.POST.get("vehicle_class", "economy")
-    payment = request.POST.get("payment_method", Ride.CASH)
-    if not pickup or not dropoff:
-        messages.error(request, "Choose a pickup and drop-off on the map.")
+    try:
+        ride = services.request_ride(request.user, request.POST)
+    except services.RideError as e:
+        messages.error(request, str(e))
         return redirect("rider_home")
-    if vehicle_class not in fares.TARIFFS or payment not in dict(Ride.PAYMENT_METHODS):
-        messages.error(request, "Invalid ride option.")
-        return redirect("rider_home")
-    if Ride.objects.filter(rider=request.user, status__in=Ride.ACTIVE_STATUSES).exists():
-        messages.error(request, "You already have an active ride.")
-        return redirect("rider_home")
-
-    km, minutes = estimate_trip(*pickup, *dropoff)
-    if km < 0.3:
-        messages.error(request, "Pickup and drop-off are too close together.")
-        return redirect("rider_home")
-    surge = dispatch.current_surge(*pickup, vehicle_class)
-    ride = Ride.objects.create(
-        rider=request.user, vehicle_class=vehicle_class, payment_method=payment,
-        pickup_address=request.POST.get("pickup_address", "")[:255] or "Pinned location",
-        pickup_lat=pickup[0], pickup_lng=pickup[1],
-        dropoff_address=request.POST.get("dropoff_address", "")[:255] or "Pinned location",
-        dropoff_lat=dropoff[0], dropoff_lng=dropoff[1],
-        est_distance_km=km, est_duration_min=minutes, surge=surge,
-        fare_estimate=fares.calculate_fare(vehicle_class, km, minutes, surge),
-    )
     return redirect("ride_detail", pk=ride.pk)
 
 
@@ -170,13 +102,12 @@ def ride_cancel(request, pk):
     ride = _ride_for_user(request, pk)
     if ride is None:
         return HttpResponseForbidden()
-    by = "driver" if request.user == ride.driver else "rider"
     try:
-        ride.cancel(by=by)
+        services.cancel(ride, request.user)
         messages.info(request, "Ride cancelled.")
-    except InvalidTransition:
-        messages.error(request, "This ride can no longer be cancelled.")
-    if by == "driver":
+    except services.RideError as e:
+        messages.error(request, str(e))
+    if request.user == ride.driver:
         return redirect("driver_dashboard")
     return redirect("ride_detail", pk=pk)
 
@@ -188,19 +119,10 @@ def ride_rate(request, pk):
     if ride is None:
         return HttpResponseForbidden()
     try:
-        stars = int(request.POST["stars"])
-    except (KeyError, ValueError):
-        stars = 0
-    if ride.status != Ride.COMPLETED or not 1 <= stars <= 5:
-        messages.error(request, "Rating not accepted.")
-    elif request.user == ride.rider and ride.rating_for_driver is None:
-        ride.rating_for_driver = stars
-        ride.save(update_fields=["rating_for_driver"])
-        messages.success(request, "Thanks for rating your driver.")
-    elif request.user == ride.driver and ride.rating_for_rider is None:
-        ride.rating_for_rider = stars
-        ride.save(update_fields=["rating_for_rider"])
-        messages.success(request, "Thanks for rating your rider.")
+        services.rate(ride, request.user, request.POST.get("stars"))
+        messages.success(request, "Thanks for your rating.")
+    except services.RideError as e:
+        messages.error(request, str(e))
     return redirect("ride_detail", pk=pk)
 
 
@@ -241,8 +163,8 @@ def driver_toggle_online(request):
 @require_POST
 def driver_accept(request, pk):
     try:
-        dispatch.accept_ride(request.driver, pk)
-    except dispatch.DispatchError as e:
+        services.accept(request.driver, pk)
+    except services.RideError as e:
         messages.error(request, str(e))
         return redirect("driver_dashboard")
     return redirect("ride_detail", pk=pk)
@@ -252,11 +174,10 @@ def driver_accept(request, pk):
 @require_POST
 def driver_advance(request, pk):
     ride = get_object_or_404(Ride, pk=pk, driver=request.user)
-    action = request.POST.get("action")
     try:
-        {"arrive": ride.mark_arrived, "start": ride.start, "complete": ride.complete}[action]()
-    except (KeyError, InvalidTransition):
-        messages.error(request, "That step isn't possible right now.")
+        services.advance(ride, request.POST.get("action"))
+    except services.RideError as e:
+        messages.error(request, str(e))
     return redirect("ride_detail", pk=pk)
 
 
@@ -291,27 +212,15 @@ def ops_dashboard(request):
 
 @login_required
 def api_fare_estimate(request):
-    pickup, dropoff = _coords(request.GET, "pickup"), _coords(request.GET, "dropoff")
+    pickup, dropoff = services.parse_point(request.GET, "pickup"), services.parse_point(request.GET, "dropoff")
     if not pickup or not dropoff:
         return JsonResponse({"error": "pickup and dropoff required"}, status=400)
-    km, minutes = estimate_trip(*pickup, *dropoff)
-    options = []
-    for key, t in fares.TARIFFS.items():
-        surge = dispatch.current_surge(*pickup, key)
-        nearby = dispatch.available_drivers(*pickup, key)
-        eta = round(nearby[0][1] / 30 * 60 + 1) if nearby else None
-        options.append({
-            "vehicle_class": key, "label": t.label, "seats": t.seats,
-            "fare": str(fares.calculate_fare(key, km, minutes, surge)),
-            "surge": str(surge), "eta_min": eta, "drivers_nearby": len(nearby),
-        })
-    return JsonResponse({"distance_km": km, "duration_min": minutes,
-                         "currency": settings.CURRENCY_SYMBOL, "options": options})
+    return JsonResponse(services.quote(pickup, dropoff))
 
 
 @login_required
 def api_nearby_drivers(request):
-    point = _coords(request.GET, "at")
+    point = services.parse_point(request.GET, "at")
     if not point:
         return JsonResponse({"error": "at_lat and at_lng required"}, status=400)
     drivers = dispatch.available_drivers(*point)
@@ -330,13 +239,13 @@ def api_ride_status(request, pk):
     if ride.status == Ride.REQUESTED:
         dispatch.expire_stale_requests()
         ride.refresh_from_db()
-    return JsonResponse(_ride_json(ride, request.user))
+    return JsonResponse(services.ride_to_dict(ride, request.user))
 
 
 @driver_required
 @require_POST
 def api_driver_location(request):
-    point = _coords(request.POST, "at")
+    point = services.parse_point(request.POST, "at")
     if not point:
         return JsonResponse({"error": "at_lat and at_lng required"}, status=400)
     dispatch.record_driver_location(request.driver, *point)
