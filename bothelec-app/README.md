@@ -40,6 +40,7 @@ cp .env.example .env      # leave SMS_PROVIDER=log and EMAIL_PROVIDER=log to jus
 npm start                 # http://localhost:8080
 ```
 
+On first visit an animated **product tour** (9 slides: Back/Next, dots, swipe or arrow keys, Skip) introduces the platform. It can be replayed from the sign-in page or from **Product tour** in the menu.
 Sign in with `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `.env`. With `SEED_DEMO=true` you get a simulated
 demonstration building. Go to **Info Hub → Simulate fault** to watch the full alarm → call → SMS → repair → close flow.
 

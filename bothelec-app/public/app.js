@@ -133,7 +133,7 @@
       }).join('')}</nav>
       ${mod.id === 'bms' && S.bms.ahus.length ? `<div class="side-label">AHU units (${S.bms.ahus.length})</div><nav class="side">${S.bms.ahus.map(a =>
         `<a href="#/bms/ahu/${a.id}" class="${key === 'bms/ahu' && current.arg === a.id ? 'active' : ''}">${ic('wind')}<span>${a.id}</span><span style="margin-left:auto">${dot(a.status)}</span></a>`).join('')}</nav>` : ''}
-      <div class="side-label">Signed in</div><div class="side acct"><a href="#/account">${ic('users')}<span>${esc(S.me.name)}</span></a><a href="#" data-action="logout">${ic('back')}<span>Sign out</span></a></div>`;
+      <div class="side-label">Signed in</div><div class="side acct"><a href="#/account">${ic('users')}<span>${esc(S.me.name)}</span></a><a href="#" data-action="tour">${ic('eye')}<span>Product tour</span></a><a href="#" data-action="logout">${ic('back')}<span>Sign out</span></a></div>`;
     const act = $('#sidebar .side a.active');
     if (act && window.innerWidth <= 900) act.scrollIntoView({ block: 'nearest', inline: 'center' });
   }
@@ -250,7 +250,8 @@
       <div style="display:flex;align-items:center;gap:10px"><img src="icon.svg" width="40" height="40" alt=""><div><h1>Bothelec Aircon Solutions</h1><small>Sign in to continue</small></div></div>
       <div class="field"><label for="le">Email</label><input id="le" name="email" type="email" autocomplete="username" required></div>
       <div class="field"><label for="lp">Password</label><input id="lp" name="password" type="password" autocomplete="current-password" required></div>
-      <button class="btn primary" type="submit">Sign in</button><small id="loginErr" style="color:var(--red)"></small></form>`;
+      <button class="btn primary" type="submit">Sign in</button><small id="loginErr" style="color:var(--red)"></small>
+      <button type="button" class="btn sm" data-action="tour" style="justify-self:center">${ic('eye')}Take the tour</button></form>`;
   }
 
   /* ---------------- SVG visuals ---------------- */
@@ -282,13 +283,13 @@
     }
     return s;
   }
-  function heroScene() {
+  function heroScene(opts = {}) {
     const P = iso(400, 330, 30);
     let city = '';
     [[-9, -6, 2, 2, 4], [6, -8, 2.4, 2, 5], [-10, 3, 2, 2, 3], [8, 2, 2, 2.5, 3.5], [-4, -10, 2, 2, 6], [11, -3, 1.6, 1.6, 2.5], [-13, -2, 1.8, 1.8, 4.5]]
       .forEach(([x, y, w, d, h]) => { city += `<g opacity=".55">${tower(P, x, y, w, d, h, Math.round(h * 2), false)}</g>`; });
     const top = P(0, 0, 9.4);
-    const nodes = [
+    const nodes = opts.nodes || [
       { x: 150, y: 150, small: 'Office', label: 'Service desk', c: 'var(--cyan)' },
       { x: 660, y: 140, small: 'Field', label: 'Technicians', c: 'var(--accent)' },
       { x: 430, y: 40, small: 'Building', label: 'Plant & BMS', c: '#ffd166' },
@@ -311,7 +312,8 @@
     return st === 'High' ? 'rgba(255,90,95,.75)' : st === 'Low' ? 'rgba(91,140,255,.75)' : st === 'Offline' ? 'rgba(127,154,161,.4)' : 'rgba(90,220,235,.5)';
   }
   function bmsBuilding(opts = {}) {
-    const zonesAll = S.bms.zones;
+    const B = opts.bms || S.bms;
+    const zonesAll = B.zones;
     const floors = [...new Set(zonesAll.map(z => z.floor || 1))].sort((a, b) => a - b);
     const F = Math.max(1, Math.min(floors.length, 8));
     const scale = F > 4 ? 32 * 4 / F : 32;
@@ -339,7 +341,7 @@
       for (let c = 0; c < 4; c++) { const a = y0 + c, b = y0 + c + 0.8, z0 = fi * FH + 0.4, z1 = (fi + 1) * FH - 0.15; s += `<polygon points="${pts([P(x0 + W, a + 0.1, z0), P(x0 + W, b, z0), P(x0 + W, b, z1), P(x0 + W, a + 0.1, z1)])}" fill="rgba(70,190,210,.3)"/>`; }
     });
     const roofZ = FH * F + 0.2;
-    S.bms.ahus.slice(0, 6).map((a, i) => ({ a, x: x0 + 0.6 + (i % 3) * 2.9, y: y0 + 0.4 + Math.floor(i / 3) * 1.8 }))
+    B.ahus.slice(0, 6).map((a, i) => ({ a, x: x0 + 0.6 + (i % 3) * 2.9, y: y0 + 0.4 + Math.floor(i / 3) * 1.8 }))
       .sort((p, q) => (p.x + p.y) - (q.x + q.y))
       .forEach(({ a, x, y }) => {
         const col = a.status === 'running' ? ['#cfe07a', '#7f9b2a', '#5f7520'] : a.status === 'tripped' ? ['#ff8a8e', '#c4383d', '#94262a'] : ['#8a9a9e', '#56666a', '#435054'];
@@ -967,6 +969,118 @@
       <button class="btn primary" type="submit">${ic('check')}Save assessment</button></form>`;
   }
 
+  /* ---------------- intro / product tour (click-through) ---------------- */
+  const INTRO_KEY = 'bothelec.introSeen';
+  function introBms(fault) {
+    const zones = [];
+    const t = { 'L1-W': 22.1, 'L1-C': 22.4, 'L1-E': 21.8, 'L2-W': 22.3, 'L2-C': fault ? 26.4 : 22.6, 'L2-E': 22.0, 'L3-W': 21.7, 'L3-C': 22.2, 'L3-E': 22.5 };
+    Object.entries(t).forEach(([id, temp]) => zones.push({ id, floor: +id[1], pos: id.slice(3), temp, setpoint: 22, online: true }));
+    const ahus = [1, 2, 3, 4, 5, 6].map(n => ({ id: 'AHU-0' + n, status: fault && n === 2 ? 'tripped' : n === 5 ? 'off' : 'running' }));
+    return { zones, ahus };
+  }
+  const ivA = (ms, html, cls = '') => `<div class="a ${cls}" style="--d:${ms}ms">${html}</div>`;
+  const phone = (title, body) => `<div class="iv-phone"><div class="iv-notch"></div><div class="iv-phead"><img src="icon.svg" width="20" height="20" alt=""><strong>${title}</strong></div>${body}</div>`;
+  const pfield = (ms, label, val) => ivA(ms, `<div class="iv-pf"><small>${label}</small><span>${val}</span><i>✓</i></div>`);
+  const tstep = (ms, icon, label, detail, time, cls = '') => ivA(ms, `<div class="iv-step ${cls}"><span class="dot">${ic(icon)}</span><div><strong>${label}</strong><small>${detail}</small></div><time>${time}</time></div>`);
+  const notif = (ms, ch, who, text, time) => ivA(ms, `<div class="iv-notif"><div class="iv-nh"><span class="pill ${ch === 'SMS' ? 'info' : 'ok'}">${ch}</span><small>${time}</small></div><strong>${who}</strong><small>${text}</small></div>`);
+
+  const INTRO = [
+    { tag: 'Introduction', caption: 'Welcome to Bothelec Aircon Solutions.',
+      html: () => `<div class="iv-hero">${heroScene({ nodes: [] })}<div class="iv-logo">${ivA(200, '<img src="icon.svg" width="76" height="76" alt="">')}${ivA(500, '<h1>BOTHELEC AIRCON SOLUTIONS</h1>')}${ivA(900, '<p>One connected platform for service and building performance</p>')}</div></div>` },
+    { tag: 'One platform', caption: 'One connected platform for your service requests, our technicians and your building’s plant, so nothing gets lost between the call and the fix.',
+      html: () => `<div class="iv-hero a" style="--d:0ms">${heroScene({ nodes: [{ x: 150, y: 150, small: 'Client', label: 'Service requests', c: 'var(--cyan)' }, { x: 660, y: 140, small: 'Field team', label: 'Technicians', c: 'var(--accent)' }, { x: 430, y: 40, small: 'Building', label: 'Plant & BMS', c: '#ffd166' }] })}</div>` },
+    { tag: 'Service requests', caption: 'Log a call in seconds: choose the building, the equipment and the location, describe the fault and add a photo.',
+      html: () => `<div class="iv-split">${phone('New call-out', pfield(300, 'Building', 'Demonstration Building') + pfield(700, 'Equipment', 'AHU-02 · Air handling unit') + pfield(1100, 'Location', 'Level 2 · Central zone') + pfield(1500, 'Fault', 'Office not cooling, warm air') + pfield(1900, 'Urgency', '<span class="pill warn">High</span>') + pfield(2300, 'Photo', '1 attached') + ivA(2700, '<div class="iv-pbtn">Log call</div>'))}
+        <div class="iv-col">${ivA(3300, `<div class="card glow iv-card"><header><h3>Bothelec service desk</h3><span class="pill ok"><i></i>Live</span></header><strong>New call BA-1048</strong><br><small>Demonstration Building · AHU-02 · High</small></div>`)}
+        ${ivA(3900, `<div class="card iv-card"><header><h3>Routing</h3></header><small>Matched on skills and availability</small><br><strong>J. Mokoena assigned</strong></div>`)}</div></div>` },
+    { tag: 'Live progress', caption: 'Follow every step in real time: call logged, technician assigned, on the way, on site, work completed and report ready.',
+      html: () => `<div class="card iv-wide"><header><h2>Call BA-1048 · live progress</h2></header>${tstep(200, 'phone', 'Call logged', 'BA-1048 received by Bothelec', '08:12')}${tstep(800, 'users', 'Technician assigned', 'J. Mokoena allocated', '08:15')}${tstep(1400, 'route', 'On the way', 'ETA 25 minutes', '08:31')}${tstep(2000, 'pin', 'Arrived on site', 'Technician checked in', '08:56')}${tstep(2600, 'wrench', 'Work completed', 'Fan belt replaced, unit tested', '10:18')}${tstep(3200, 'card', 'Report ready', 'Signed job card available', '10:21')}</div>` },
+    { tag: 'Everyone informed', caption: 'From that moment, everyone stays informed. The building manager and operations manager get an SMS or email at every step.',
+      html: () => `<div class="iv-split">${phone('Building Manager', notif(300, 'SMS', 'BA-1048 · Call logged', 'Office not cooling · High', '08:12') + notif(1000, 'SMS', 'BA-1048 · On the way', 'J. Mokoena, ETA 25 min', '08:31') + notif(1700, 'Email', 'BA-1048 · Work completed', 'Fan belt replaced', '10:18') + notif(2400, 'Email', 'Signed report', 'Report, photos & signature', '10:21'))}
+        ${phone('Operations Manager', notif(600, 'Email', 'BA-1048 · Call logged', 'Demonstration Building', '08:12') + notif(1300, 'Email', 'Technician assigned', 'J. Mokoena', '08:15') + notif(2000, 'Email', 'BA-1048 · Work completed', 'Unit tested', '10:18') + notif(2700, 'Email', 'Signed report', 'Shared automatically', '10:21'))}</div>` },
+    { tag: 'Digital job card', caption: 'On site, the technician records the findings, the work done and photographs, and captures the customer’s signature.',
+      html: () => `<div class="card iv-wide iv-job"><header><h2>Digital job card · BA-1048</h2>${ivA(4200, '<span class="pill ok"><i></i>Signed</span>')}</header>
+        <div class="grid g2"><div>${ivA(200, '<small class="muted">FINDINGS</small><p>Supply fan belt worn and slipping. Low airflow to Level 2.</p>')}${ivA(700, '<small class="muted">WORK COMPLETED</small><p>Fan belt replaced and tensioned. Airflow verified.</p>')}
+        ${ivA(1200, `<small class="muted">PHOTOGRAPHS</small><div class="iv-photos">${[0, 1, 2].map(i => `<span style="--d:${1300 + i * 250}ms" class="a"><svg viewBox="0 0 60 60"><rect width="60" height="60" fill="#132a30"/><circle cx="${18 + i * 8}" cy="20" r="7" fill="#3fd2e3" opacity=".6"/><path d="M0 50 20 30 34 42 44 34 60 48V60H0z" fill="#b6d433" opacity=".5"/></svg></span>`).join('')}</div>`)}</div>
+        <div>${ivA(2200, `<small class="muted">CUSTOMER SIGNATURE</small><div class="iv-sig"><svg viewBox="0 0 300 110"><path class="iv-draw" d="M20 80 C40 20 60 20 62 70 S90 40 100 60 S130 85 140 50 S170 30 180 65 S215 70 230 45 S260 40 280 55"/></svg></div><small>L. Pillay · Building manager</small>`)}
+        ${ivA(4400, '<div class="banner ok" style="margin:12px 0 0"><strong>✓ Signed report shared with the client</strong></div>')}</div></div></div>` },
+    { tag: 'Building monitoring', caption: 'Then there is the building itself: air handling units, chillers, pumps and every zone, monitored live and held within its comfort band.',
+      html: () => `<div class="iv-split iv-bms"><div class="card flush a" style="--d:0ms"><div class="scene">${bmsBuilding({ bms: introBms(false), labels: true })}</div></div>
+        <div class="iv-col iv-kpis">${ivA(600, kpi('thermo', 'Avg temperature', '22.2', '°C'))}${ivA(900, kpi('wind', 'Avg humidity', '54', '%'))}${ivA(1200, kpi('eye', 'CO₂ level', '615', 'ppm'))}${ivA(1500, '<div class="banner ok" style="margin:0"><strong>All zones within comfort band 20–24 °C</strong></div>')}</div></div>` },
+    { tag: 'Automatic response', caption: 'When equipment trips or a zone runs out of control, Bothelec gets the alarm straight away. A call is raised, a technician is dispatched and the managers are notified.',
+      html: () => `<div class="iv-split iv-bms"><div class="card flush alert a" style="--d:0ms"><div class="scene">${bmsBuilding({ bms: introBms(true) })}</div></div>
+        <div class="card iv-col">${tstep(500, 'alert', 'Alarm raised', 'AHU-02 supply fan tripped · L2-C 26.4 °C', '14:32', 'bad')}${tstep(1200, 'phone', 'Call BA-1052 raised automatically', 'Priority: critical', '14:33')}${tstep(1900, 'users', 'Technician dispatched', 'J. Mokoena · ETA 25 min', '14:35')}${tstep(2600, 'bell', 'Managers notified', 'SMS + email, same moment', '14:35')}${tstep(3300, 'check', 'Fixed · alarm closed', 'Back in comfort band · history saved', '15:25')}</div></div>` },
+    { tag: 'Get started', caption: 'Less downtime, faster response and complete transparency, for our clients and our team.',
+      html: () => `<div class="iv-end">${ivA(100, '<img src="icon.svg" width="64" height="64" alt="">')}${ivA(300, '<h1>BOTHELEC AIRCON SOLUTIONS</h1>')}${ivA(500, '<p class="muted">Connected service · Monitored buildings</p>')}
+        <div class="grid g3">${ivA(800, `<div class="card feature">${icS('clock')}<div><strong>Less downtime</strong><p>Faults caught early, before occupants notice</p></div></div>`)}${ivA(1000, `<div class="card feature">${icS('bolt')}<div><strong>Faster response</strong><p>Alerts and calls reach Bothelec instantly</p></div></div>`)}${ivA(1200, `<div class="card feature">${icS('eye')}<div><strong>Complete transparency</strong><p>Every step, every reading, every record</p></div></div>`)}</div>
+        ${ivA(1500, '<button class="btn primary iv-go" data-intro="done">Get started</button>')}</div>` },
+  ];
+  const intro = { i: 0, el: null };
+  function showIntro(start = 0) {
+    intro.i = start;
+    if (!intro.el) {
+      intro.el = document.createElement('div');
+      intro.el.className = 'intro';
+      intro.el.setAttribute('role', 'dialog');
+      intro.el.setAttribute('aria-label', 'Introduction');
+      document.body.appendChild(intro.el);
+      let x0 = null;
+      intro.el.addEventListener('pointerdown', e => { x0 = e.clientX; });
+      intro.el.addEventListener('pointerup', e => { if (x0 != null && Math.abs(e.clientX - x0) > 60 && !e.target.closest('button')) introGo(intro.i + (e.clientX < x0 ? 1 : -1)); x0 = null; });
+      intro.el.addEventListener('click', e => {
+        const b = e.target.closest('[data-intro]'); if (!b) return;
+        const v = b.dataset.intro;
+        if (v === 'next') introGo(intro.i + 1); else if (v === 'back') introGo(intro.i - 1); else if (v === 'done' || v === 'skip') closeIntro(); else introGo(+v);
+      });
+    }
+    document.body.classList.add('intro-open');
+    drawIntro();
+  }
+  function drawIntro() {
+    const s = INTRO[intro.i], n = INTRO.length, last = intro.i === n - 1;
+    intro.el.innerHTML = `<header class="iv-top"><div class="brand"><img src="icon.svg" width="34" height="34" alt=""><span><strong>BOTHELEC</strong><small>Aircon Solutions</small></span></div>
+        <div class="iv-count"><strong>${String(intro.i + 1).padStart(2, '0')} / ${String(n).padStart(2, '0')}</strong><small>${esc(s.tag)}</small></div>
+        <button class="btn sm iv-skip" data-intro="skip">${last ? 'Close' : 'Skip'}</button></header>
+      <div class="iv-bar"><i style="width:${(intro.i + 1) / n * 100}%"></i></div>
+      <section class="iv-stage" aria-live="polite"><div class="iv-fit">${s.html()}</div></section>
+      <p class="iv-caption">${esc(s.caption)}</p>
+      <nav class="iv-nav"><button class="btn" data-intro="back" ${intro.i === 0 ? 'disabled' : ''}>${ic('back')}Back</button>
+        <div class="iv-dots">${INTRO.map((x, k) => `<button data-intro="${k}" class="${k === intro.i ? 'on' : ''}" aria-label="Slide ${k + 1}: ${esc(x.tag)}"></button>`).join('')}</div>
+        <button class="btn primary" data-intro="${last ? 'done' : 'next'}">${last ? 'Get started' : 'Next'}${last ? '' : ic('back').replace('<svg', '<svg style="transform:scaleX(-1)"')}</button></nav>`;
+    fitIntro();
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitIntro);
+  }
+  /* Scale the slide down to fit small screens instead of scrolling. */
+  function fitIntro() {
+    const st = intro.el && intro.el.querySelector('.iv-stage'), f = st && st.firstElementChild;
+    if (!f) return;
+    f.style.transform = ''; f.style.marginBottom = '';
+    const cs = getComputedStyle(st);
+    const avail = st.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const h = f.offsetHeight;
+    if (h > avail && avail > 0) {
+      const k = Math.max(0.55, avail / h);
+      f.style.transform = `scale(${k})`;
+      f.style.marginBottom = `${h * k - h}px`;
+    }
+  }
+  window.addEventListener('resize', () => { if (intro.el) fitIntro(); });
+  function introGo(k) { if (k < 0 || k >= INTRO.length || k === intro.i) return; intro.i = k; drawIntro(); }
+  function closeIntro() {
+    try { localStorage.setItem(INTRO_KEY, '1'); } catch (e) { /* storage blocked */ }
+    if (intro.el) { intro.el.remove(); intro.el = null; }
+    document.body.classList.remove('intro-open');
+    const f = $('#view input'); if (f && !S) f.focus();
+  }
+  document.addEventListener('keydown', e => {
+    if (!intro.el) return;
+    if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); introGo(intro.i + 1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); introGo(intro.i - 1); }
+    else if (e.key === 'Escape') closeIntro();
+    else if (e.key === 'Enter' && intro.i === INTRO.length - 1) closeIntro();
+  });
+  function introSeen() { try { return localStorage.getItem(INTRO_KEY) === '1'; } catch (e) { return true; } }
+
   /* ---------------- router ---------------- */
   const ROUTES = {
     dashboard: viewDashboard,
@@ -1067,6 +1181,7 @@
     sp: el => act('POST', `/api/bms/${encodeURIComponent(ui.site)}/setpoint`, { zones: ui.zoneSel, delta: +el.dataset.v }, ['Set-point adjusted', ui.zoneSel.join(', ')]),
     trip: el => act('POST', `/api/trips/${el.dataset.id}/advance`, {}),
     clearalarm: el => { if (confirm('Clear this alarm manually?')) act('POST', `/api/alarms/${el.dataset.id}/clear`, {}, ['Alarm cleared']); },
+    tour: () => showIntro(0),
     logout: async () => { try { await api('POST', '/api/logout', {}); } catch (e) { /* ignore */ } S = null; ui.bmsCache = {}; showLogin(); },
     retry: async el => { await act('POST', `/api/admin/outbox/${el.dataset.id}/retry`, {}, ['Retrying']); render(true); },
     deluser: async el => { if (confirm('Delete this user?') && await act('DELETE', `/api/admin/users/${el.dataset.id}`)) location.hash = '#/settings/users'; },
@@ -1186,6 +1301,7 @@
   /* ---------------- boot ---------------- */
   clock();
   setInterval(clock, 1000);
+  if (!introSeen()) showIntro(0);
   refresh().then(() => render()).catch(() => { if (!S) showLogin(); });
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
