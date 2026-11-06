@@ -122,7 +122,7 @@ function emailProvider(env) {
     ? { host: 'smtp.gmail.com', port: 465, secure: true, auth: { user: env.GMAIL_USER, pass: (env.GMAIL_APP_PASSWORD || '').replace(/\s/g, '') } }
     : { host: env.SMTP_HOST, port: +(env.SMTP_PORT || 587), secure: env.SMTP_SECURE === 'true', auth: env.SMTP_USER ? { user: env.SMTP_USER, pass: env.SMTP_PASS } : undefined, tls: env.SMTP_INSECURE_TLS === 'true' ? { rejectUnauthorized: false } : undefined };
   const transport = nodemailer.createTransport({ ...opts, connectionTimeout: 20000, greetingTimeout: 20000, socketTimeout: 30000 });
-  const from = env.EMAIL_FROM || (env.GMAIL_USER ? `Trigon Air <${env.GMAIL_USER}>` : env.SMTP_USER);
+  const from = env.EMAIL_FROM || (env.GMAIL_USER ? `Bothelec Aircon Solutions <${env.GMAIL_USER}>` : env.SMTP_USER);
   return {
     name: kind === 'gmail' ? 'Gmail' : 'SMTP',
     configured: kind === 'gmail' ? !!(env.GMAIL_USER && env.GMAIL_APP_PASSWORD) : !!env.SMTP_HOST,

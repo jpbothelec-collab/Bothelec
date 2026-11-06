@@ -1,5 +1,5 @@
 'use strict';
-/* Trigon Air server: REST API + live updates (SSE) + static web app.
+/* Bothelec Aircon Solutions server: REST API + live updates (SSE) + static web app.
  * Start: node --env-file=.env server/index.js   (see deploy/.env.example) */
 const http = require('node:http');
 const fs = require('node:fs');
@@ -216,12 +216,12 @@ function createServer(env = process.env, opts = {}) {
   R('POST', '/api/admin/outbox/:id/retry', (req, res, { p }) => send(res, 200, { ok: !!notifier.retry(p.id) }), { roles: ['admin'] });
   R('POST', '/api/admin/test', async (req, res, { body }) => {
     if (body.channel === 'sms') {
-      const m = notifier.enqueue({ channel: 'sms', to: body.to, text: 'Trigon Air test SMS. If you received this, SMS notifications are working.', meta: { test: true } });
+      const m = notifier.enqueue({ channel: 'sms', to: body.to, text: 'Bothelec Aircon test SMS. If you received this, SMS notifications are working.', meta: { test: true } });
       return send(res, 200, { ok: m.status !== 'failed', id: m.id, error: m.error });
     }
     if (body.channel === 'email') {
       try { await notifier.verifyEmail(); } catch (e) { return fail(res, 400, 'Email login failed: ' + e.message); }
-      const m = notifier.enqueue({ channel: 'email', to: body.to, subject: 'Trigon Air test email', text: 'If you received this, email notifications are working.', html: '<p>If you received this, <b>Trigon Air</b> email notifications are working.</p>', meta: { test: true } });
+      const m = notifier.enqueue({ channel: 'email', to: body.to, subject: 'Bothelec Aircon Solutions test email', text: 'If you received this, email notifications are working.', html: '<p>If you received this, <b>Bothelec Aircon Solutions</b> email notifications are working.</p>', meta: { test: true } });
       return send(res, 200, { ok: m.status !== 'failed', id: m.id, error: m.error });
     }
     fail(res, 400, 'channel must be sms or email');
@@ -274,7 +274,7 @@ function createServer(env = process.env, opts = {}) {
     server, model, notifier, connectors, db, bus,
     start(port = +(env.PORT || 8080)) {
       connectors.startAll();
-      return new Promise(r => server.listen(port, () => { log(`[server] Trigon Air listening on :${port} (public URL ${env.PUBLIC_URL || 'not set'})`); r(server); }));
+      return new Promise(r => server.listen(port, () => { log(`[server] Bothelec Aircon Solutions listening on :${port} (public URL ${env.PUBLIC_URL || 'not set'})`); r(server); }));
     },
     stop() {
       connectors.stopAll(); notifier.stop(); model.stop(); clearInterval(ping);

@@ -1,0 +1,16 @@
+# Alternative to Docker: run directly with systemd.
+#   sudo cp deploy/bothelec.service /etc/systemd/system/ && sudo systemctl enable --now bothelec
+[Unit]
+Description=Bothelec Aircon Solutions server
+After=network-online.target
+
+[Service]
+WorkingDirectory=/opt/bothelec-app
+ExecStart=/usr/bin/node --no-warnings=ExperimentalWarning --env-file=/opt/bothelec-app/.env server/index.js
+Restart=always
+RestartSec=5
+User=bothelec
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

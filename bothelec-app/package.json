@@ -1,8 +1,8 @@
 {
-  "name": "trigon-air",
+  "name": "bothelec-aircon",
   "version": "1.0.0",
   "private": true,
-  "description": "Trigon Air — operations, service desk and building monitoring platform",
+  "description": "Bothelec Aircon Solutions — operations, service desk and building monitoring platform",
   "main": "server/index.js",
   "engines": { "node": ">=22.13" },
   "scripts": {

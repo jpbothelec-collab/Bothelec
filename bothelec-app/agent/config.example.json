@@ -1,5 +1,5 @@
 {
-  "server": "https://trigon.example.co.za",
+  "server": "https://aircon.example.co.za",
   "building": "B1",
   "token": "paste the token from Settings → Buildings → Data upload",
   "intervalSec": 15,

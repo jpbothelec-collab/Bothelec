@@ -14,7 +14,7 @@ const STEPS = [
 ];
 
 /* Who is notified, on which channel, for each job step and alarm priority.
- * Roles: manager (building manager), ops (operations manager), desk (Trigon service desk),
+ * Roles: manager (building manager), ops (operations manager), desk (Bothelec service desk),
  * tech (assigned technician), caller (person who logged the call). Editable in Settings. */
 const DEFAULT_POLICY = {
   jobSteps: {
@@ -116,7 +116,7 @@ function seed(demo) {
     { id: 'T4', name: 'P. Dlamini', skill: 'Refrigeration technician', phone: '+27 82 555 1004', email: '', status: 'off', vehicle: 'V4' },
   ];
   const mk = (n, o, ago) => {
-    const job = Object.assign({ id: 'TR-' + n, source: 'Client app', urgency: 'Medium', photos: [], findings: '', work: '', signature: null, signedBy: '', notifications: [], steps: {} }, o);
+    const job = Object.assign({ id: 'BA-' + n, source: 'Client app', urgency: 'Medium', photos: [], findings: '', work: '', signature: null, signedBy: '', notifications: [], steps: {} }, o);
     ago.forEach((m, i) => { job.steps[STEPS[i].key] = minsAgo(m); });
     job.status = STEPS[ago.length - 1].key;
     s.jobs.push(job);
@@ -125,8 +125,8 @@ function seed(demo) {
   mk(1049, { building: 'B2', equipment: 'Split unit · Server room', location: 'Server room', fault: 'Unit leaking water onto floor', urgency: 'High', tech: 'T2' }, [70, 62, 35]);
   mk(1050, { building: 'B3', equipment: 'Packaged unit PU-02', location: 'Ward A', fault: 'Noisy compressor', urgency: 'Medium', tech: 'T3' }, [40, 31]);
   mk(1051, { building: 'B1', equipment: 'FCU-L2-04 · Fan coil unit', location: 'Level 2 - East zone', fault: 'Thermostat display blank', urgency: 'Low' }, [12]);
-  s.technicians[1].status = 'on job'; s.technicians[1].job = 'TR-1049';
-  s.technicians[2].status = 'on job'; s.technicians[2].job = 'TR-1050';
+  s.technicians[1].status = 'on job'; s.technicians[1].job = 'BA-1049';
+  s.technicians[2].status = 'on job'; s.technicians[2].job = 'BA-1050';
 
   s.bms.B1 = Object.assign(demoBms(), { id: 'B1' });
   s.alarms = [
@@ -134,14 +134,14 @@ function seed(demo) {
     { id: 'A2', building: 'B1', at: minsAgo(250), priority: 'Medium', equip: 'AHU-03', desc: 'Filter ΔP high', status: 'Cleared', history: [] },
   ];
   s.vehicles = [
-    { id: 'V1', reg: 'JM 42 KL GP', model: 'Toyota Hilux 2.4 GD-6', driver: 'T1', status: 'parked', location: 'Trigon depot', odo: 84210, nextService: 90000, fuel: 64 },
+    { id: 'V1', reg: 'JM 42 KL GP', model: 'Toyota Hilux 2.4 GD-6', driver: 'T1', status: 'parked', location: 'Bothelec depot', odo: 84210, nextService: 90000, fuel: 64 },
     { id: 'V2', reg: 'TN 18 PX GP', model: 'Nissan NP200', driver: 'T2', status: 'on site', location: 'Rosebank', odo: 121480, nextService: 125000, fuel: 38 },
     { id: 'V3', reg: 'SV 77 BB GP', model: 'Toyota Hilux 2.4 GD-6', driver: 'T3', status: 'in transit', location: 'N1 → Centurion', odo: 55302, nextService: 60000, fuel: 81 },
-    { id: 'V4', reg: 'PD 09 TR GP', model: 'Isuzu D-Max 250', driver: 'T4', status: 'parked', location: 'Trigon depot', odo: 143900, nextService: 140000, fuel: 22 },
+    { id: 'V4', reg: 'PD 09 TR GP', model: 'Isuzu D-Max 250', driver: 'T4', status: 'parked', location: 'Bothelec depot', odo: 143900, nextService: 140000, fuel: 22 },
   ];
   s.trips = [
-    { id: 'D-301', what: 'Refrigerant R410A × 2 cylinders', from: 'Trigon depot', to: 'Rosebank Office Park — Block C', driver: 'T2', vehicle: 'V2', status: 'Delivered', at: minsAgo(55) },
-    { id: 'D-302', what: 'Replacement V-belts (AHU set)', from: 'Supplier — Isando', to: 'Trigon depot', driver: 'T4', vehicle: 'V4', status: 'Scheduled', at: minsAgo(-90) },
+    { id: 'D-301', what: 'Refrigerant R410A × 2 cylinders', from: 'Bothelec depot', to: 'Rosebank Office Park — Block C', driver: 'T2', vehicle: 'V2', status: 'Delivered', at: minsAgo(55) },
+    { id: 'D-302', what: 'Replacement V-belts (AHU set)', from: 'Supplier — Isando', to: 'Bothelec depot', driver: 'T4', vehicle: 'V4', status: 'Scheduled', at: minsAgo(-90) },
   ];
   s.assessments = [
     { id: 'AS-021', building: 'B1', date: minsAgo(60 * 24 * 6), by: 'T3', type: 'Annual plant condition', score: 82, items: [{ name: 'Chillers', rating: 4 }, { name: 'AHUs', rating: 3 }, { name: 'Pumps', rating: 4 }, { name: 'Cooling towers', rating: 4 }, { name: 'Controls / BMS', rating: 5 }], notes: 'AHU-02 belt wear noted. Recommend 6-monthly belt replacement.' },

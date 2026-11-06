@@ -1,11 +1,11 @@
 'use strict';
-/* Trigon Air edge agent — runs on a small PC / Raspberry Pi at the building, polls the local BMS
+/* Bothelec Aircon Solutions edge agent — runs on a small PC / Raspberry Pi at the building, polls the local BMS
  * (Modbus TCP or BACnet/IP) and pushes readings to the cloud server over HTTPS.
  * Use it when the cloud server cannot reach the controller (no VPN / no port forwarding).
  *
  *   node agent/agent.js agent/config.json
  *
- * config.json: { "server": "https://trigon.example.co.za", "building": "B1", "token": "<ingest token>",
+ * config.json: { "server": "https://aircon.example.co.za", "building": "B1", "token": "<ingest token>",
  *                "intervalSec": 15, "connector": { "type": "modbus", "host": "192.168.1.50", "points": [...] } }
  * The connector block uses the same format as Settings → Buildings → BMS connection. */
 const fs = require('node:fs');
@@ -41,5 +41,5 @@ async function loop() {
   } catch (e) { backoff = Math.min(backoff + 1, 6); log('error:', e.message); }
   setTimeout(loop, ((cfg.intervalSec || c.intervalSec || 15) + backoff * 10) * 1000);
 }
-log(`Trigon agent for ${cfg.building} → ${cfg.server} (${c.type}, ${(c.points || []).length} points)`);
+log(`Bothelec agent for ${cfg.building} → ${cfg.server} (${c.type}, ${(c.points || []).length} points)`);
 loop();

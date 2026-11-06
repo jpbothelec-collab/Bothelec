@@ -1,4 +1,4 @@
-/* Trigon Air — Operations, Service & Building Monitoring web app.
+/* Bothelec Aircon Solutions — Operations, Service & Building Monitoring web app.
  * Vanilla JS single-page app. Hash routing, event delegation, simulated BMS feed. */
 (function () {
   'use strict';
@@ -7,7 +7,7 @@
   let STEPS = [];
   const EMPTY_BMS = { zones: [], ahus: [], chillers: [], pumps: [], towers: [], fans: [], fcus: [], trend: [], fault: null };
   const ui = { jobFilter: 'open', zoneSel: [], pendingPhotos: [], sigDirty: false, unread: 0, site: null, lastFeed: null, bmsCache: {}, pendingRender: false };
-  try { ui.site = localStorage.getItem('trigon.site'); } catch (e) { /* storage blocked */ }
+  try { ui.site = localStorage.getItem('bothelec.site'); } catch (e) { /* storage blocked */ }
 
   /* ---------------- helpers ---------------- */
   const $ = (s, r = document) => r.querySelector(s);
@@ -116,7 +116,6 @@
   function renderNav(mod, key) {
     $('#modules').innerHTML = MODULES.filter(m => !m.roles || m.roles.includes(role())).map(m =>
       `<a href="#/${m.home}" class="${m.id === mod.id ? 'active' : ''}" title="${esc(m.label)}">${ic(m.icon)}<span class="l">${esc(m.label)}</span><span class="s">${esc(m.short || m.label)}</span></a>`).join('');
-    $('#brandSub').textContent = mod.sub;
     const b = site();
     $('#siteName').textContent = b.name || 'No building';
     $('#siteArea').textContent = b.area || '';
@@ -191,7 +190,7 @@
   }
   async function switchSite(id) {
     ui.site = id;
-    try { localStorage.setItem('trigon.site', id); } catch (e) { /* storage blocked */ }
+    try { localStorage.setItem('bothelec.site', id); } catch (e) { /* storage blocked */ }
     await loadBms();
     render(true);
   }
@@ -240,7 +239,7 @@
     const b = site(), type = (b.connector || {}).type || 'none';
     return `<div class="card empty" style="text-align:left"><h2 style="margin-bottom:6px">No live BMS data for ${esc(b.name || 'this building')} yet</h2>
       <p>${type === 'none' ? 'This building has no BMS link configured.' : `The ${esc(type)} link is configured but no readings have arrived yet.`}
-      ${role() === 'admin' ? `Set it up under <a href="#/settings/building/${b.id}">Settings → Buildings</a>: a Modbus or BACnet controller, a 4G router publishing over MQTT or HTTP, or a GSM alarm modem.` : 'Contact Trigon to connect it.'}</p></div>`;
+      ${role() === 'admin' ? `Set it up under <a href="#/settings/building/${b.id}">Settings → Buildings</a>: a Modbus or BACnet controller, a 4G router publishing over MQTT or HTTP, or a GSM alarm modem.` : 'Contact Bothelec to connect it.'}</p></div>`;
   }
 
   /* ---------------- login ---------------- */
@@ -248,7 +247,7 @@
     document.body.classList.add('auth');
     if (es) { es.close(); es = null; }
     $('#view').innerHTML = `<form class="card form login" data-form="login">
-      <div style="display:flex;align-items:center;gap:10px"><img src="icon.svg" width="40" height="40" alt=""><div><h1>Trigon Air</h1><small>Sign in to continue</small></div></div>
+      <div style="display:flex;align-items:center;gap:10px"><img src="icon.svg" width="40" height="40" alt=""><div><h1>Bothelec Aircon Solutions</h1><small>Sign in to continue</small></div></div>
       <div class="field"><label for="le">Email</label><input id="le" name="email" type="email" autocomplete="username" required></div>
       <div class="field"><label for="lp">Password</label><input id="lp" name="password" type="password" autocomplete="current-password" required></div>
       <button class="btn primary" type="submit">Sign in</button><small id="loginErr" style="color:var(--red)"></small></form>`;
@@ -444,7 +443,7 @@
           <div class="card flush"><div class="scene">${heroScene()}</div></div>
           <div class="grid g3">
             <div class="card feature">${icS('clock')}<div><strong>Less downtime</strong><p>Faults caught early, before occupants notice</p></div></div>
-            <div class="card feature">${icS('bolt')}<div><strong>Faster response</strong><p>Alerts and calls reach Trigon instantly</p></div></div>
+            <div class="card feature">${icS('bolt')}<div><strong>Faster response</strong><p>Alerts and calls reach Bothelec instantly</p></div></div>
             <div class="card feature">${icS('eye')}<div><strong>Complete transparency</strong><p>Every step, every reading, every record</p></div></div>
           </div>
         </div>
@@ -474,7 +473,7 @@
     const b = site().id ? site() : (S.buildings[0] || { equipment: [], locations: [] });
     ui.pendingPhotos = [];
     if (!S.buildings.length) return head('New call-out') + '<div class="card empty">No buildings are linked to your account yet.</div>';
-    return head('New call-out', 'Client app → Trigon service desk') +
+    return head('New call-out', 'Client app → Bothelec service desk') +
       `<div class="grid split">
         <form class="card form" data-form="callout">
           <header><h2>New call-out</h2><span class="pill">DRAFT</span></header>
@@ -491,7 +490,7 @@
         <div class="grid" style="align-content:start">
           <div class="card"><header><h2>Routing</h2></header>
             <div class="rows">
-              <div class="row">${icS('bolt')}<div class="grow"><strong>Lands instantly at the Trigon service desk</strong><small>No phone queues — the call is on the live board the moment you submit.</small></div></div>
+              <div class="row">${icS('bolt')}<div class="grow"><strong>Lands instantly at the Bothelec service desk</strong><small>No phone queues — the call is on the live board the moment you submit.</small></div></div>
               <div class="row">${icS('users')}<div class="grow"><strong>Auto-assigned to the best available technician</strong><small>Matched on skills and availability.</small></div></div>
               <div class="row">${icS('bell')}<div class="grow"><strong>Everyone stays informed</strong><small>Building manager and operations manager are notified at every step.</small></div></div>
             </div>
@@ -519,7 +518,7 @@
     const i = stepIdx(j.status), next = STEPS[i + 1];
     const tl = STEPS.map((s, k) => {
       const done = !!j.steps[s.key];
-      const detail = { logged: `${j.id} received by Trigon · ${j.source}`, assigned: t ? `${t.name} allocated` : 'Waiting for routing', enroute: 'ETA ' + ((S.admin && S.admin.settings.etaMinutes) || 25) + ' minutes', onsite: 'Technician checked in', completed: j.work || 'Work recorded on job card', report: 'Signed job card available' }[s.key];
+      const detail = { logged: `${j.id} received by Bothelec · ${j.source}`, assigned: t ? `${t.name} allocated` : 'Waiting for routing', enroute: 'ETA ' + ((S.admin && S.admin.settings.etaMinutes) || 25) + ' minutes', onsite: 'Technician checked in', completed: j.work || 'Work recorded on job card', report: 'Signed job card available' }[s.key];
       return { label: s.label, detail, at: j.steps[s.key], icon: s.icon, cls: done ? 'done' : k === i + 1 ? '' : 'pending' };
     });
     const log = j.notifications.filter(n => n.channel !== 'Live board').slice().reverse();
@@ -567,7 +566,7 @@
     const b = bld(j.building), t = j.tech && tech(j.tech);
     return `<div class="page-head noprint"><a class="btn sm" href="#/service/job/${j.id}">${ic('back')}Back to job</a><button class="btn primary sm" data-action="print">${ic('print')}Print / save PDF</button></div>
       <article class="card report">
-        <header style="display:flex;align-items:center;gap:12px;margin-bottom:16px"><img src="icon.svg" width="44" height="44" alt=""><div><h1>Service report · ${j.id}</h1><small>Trigon Air Conditioning · ${dmy(j.steps.report || nowIso())}</small></div></header>
+        <header style="display:flex;align-items:center;gap:12px;margin-bottom:16px"><img src="icon.svg" width="44" height="44" alt=""><div><h1>Service report · ${j.id}</h1><small>Bothelec Aircon Solutions · ${dmy(j.steps.report || nowIso())}</small></div></header>
         <div class="grid g2">
           <dl class="kv"><dt>Client</dt><dd>${esc(b.client)}</dd><dt>Building</dt><dd>${esc(b.name)}</dd><dt>Location</dt><dd>${esc(j.location)}</dd><dt>Equipment</dt><dd>${esc(j.equipment)}</dd></dl>
           <dl class="kv"><dt>Technician</dt><dd>${t ? esc(t.name) : '—'}</dd><dt>Logged</dt><dd>${hhmm(j.steps.logged)}</dd><dt>Arrived</dt><dd>${hhmm(j.steps.onsite)}</dd><dt>Completed</dt><dd>${hhmm(j.steps.completed)}</dd></dl>
@@ -593,7 +592,7 @@
     ui.unread = 0; updateBell();
     return head('Notifications', 'From the moment a call is logged, everyone stays informed') +
       `<div class="grid split"><div class="card"><header><h2>Activity feed</h2><small>${S.feed.length} events</small></header>${feedList(60)}</div>
-      <div class="card" style="align-self:start"><header><h2>Who gets notified</h2></header><div class="table-wrap"><table><thead><tr><th>Recipient</th><th>Channel</th></tr></thead><tbody>${[['Building Manager', 'SMS + email'], ['Operations Manager', 'SMS + email'], ['Trigon service desk', 'Live board + SMS + email'], ['Technician', 'SMS + app'], ['Caller', 'Email']].map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('')}</tbody></table></div>
+      <div class="card" style="align-self:start"><header><h2>Who gets notified</h2></header><div class="table-wrap"><table><thead><tr><th>Recipient</th><th>Channel</th></tr></thead><tbody>${[['Building Manager', 'SMS + email'], ['Operations Manager', 'SMS + email'], ['Bothelec service desk', 'Live board + SMS + email'], ['Technician', 'SMS + app'], ['Caller', 'Email']].map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('')}</tbody></table></div>
       <p class="muted" style="font-size:12px">Which step goes to whom, by SMS or email, is set by the admin under Settings → SMS & email.</p></div></div>`;
   }
   function viewReports() {
@@ -746,7 +745,7 @@
           <div class="card"><header><h3>Alarm history</h3><small>Full audit trail</small></header>${timeline(a.history.map((h, i) => ({ ...h, icon: i === 0 ? 'alert' : 'check', cls: i === 0 ? 'bad' : 'done' })))}</div>
         </div>
         <div class="grid" style="align-content:start">
-          <div class="card ${closed ? '' : 'alert'}"><header><h3>Alarm sent to Trigon</h3><small class="mono">${hhmm(a.at)}</small></header><dl class="kv"><dt>Building</dt><dd>${esc(bld(a.building).name)}</dd><dt>Unit</dt><dd>${esc(a.unit || a.equip)}</dd><dt>Priority</dt><dd>${esc(a.priority)}</dd>${a.reading ? `<dt>Reading</dt><dd style="color:var(--red)">${esc(a.reading)}</dd>` : ''}${a.impact ? `<dt>Impact</dt><dd>${esc(a.impact)}</dd>` : ''}<dt>Time</dt><dd>${dmy(a.at)} · ${new Date(a.at).toLocaleTimeString('en-GB')}</dd></dl></div>
+          <div class="card ${closed ? '' : 'alert'}"><header><h3>Alarm sent to Bothelec</h3><small class="mono">${hhmm(a.at)}</small></header><dl class="kv"><dt>Building</dt><dd>${esc(bld(a.building).name)}</dd><dt>Unit</dt><dd>${esc(a.unit || a.equip)}</dd><dt>Priority</dt><dd>${esc(a.priority)}</dd>${a.reading ? `<dt>Reading</dt><dd style="color:var(--red)">${esc(a.reading)}</dd>` : ''}${a.impact ? `<dt>Impact</dt><dd>${esc(a.impact)}</dd>` : ''}<dt>Time</dt><dd>${dmy(a.at)} · ${new Date(a.at).toLocaleTimeString('en-GB')}</dd></dl></div>
           ${a.response && a.response.length ? `<div class="card"><header><h3>Automated response</h3></header>${timeline(a.response.map((r, i) => ({ ...r, icon: ['alert', 'phone', 'users'][i] || 'check', cls: i === 0 ? 'bad' : 'done' })))}</div>` : ''}
           ${a.notified && a.notified.length ? `<div class="card"><header><h3>Notifications sent</h3><small>SMS & email</small></header><div class="rows">${a.notified.map(n => `<div class="row">${icS(n.channel === 'SMS' ? 'phone' : 'bell')}<div class="grow"><strong>${esc(n.role)} · ${esc(n.channel)}</strong><small>${esc(n.to || '')}</small></div>${ns(n)}</div>`).join('')}</div></div>` : ''}
         </div>
@@ -756,7 +755,7 @@
     const list = S.alarms.filter(a => a.building === ui.site);
     const act = list.filter(a => a.status === 'Active');
     const fault = S.bms.fault && byId(S.alarms, S.bms.fault.alarm);
-    return head('Alarms', `${esc(site().name || '')} · equipment trips, lost sensors and zones out of control reach Trigon straight away`, faultBtn()) +
+    return head('Alarms', `${esc(site().name || '')} · equipment trips, lost sensors and zones out of control reach Bothelec straight away`, faultBtn()) +
       `<div class="card" style="margin-bottom:14px"><header><h3>${act.length ? act.length + ' active' : 'No active alarms'}</h3></header>${alarmTable(list)}</div>` +
       (fault ? alarmDetail(fault) : '');
   }
@@ -804,7 +803,7 @@
       { path: 'zones.L1-W.temp', objectType: 'analogInput', instance: 1 },
       { path: 'ahus.AHU-01.status', objectType: 'binaryValue', instance: 3, map: { 0: 'off', 1: 'running' } },
       { path: 'chillers.CH-01.chws', objectType: 'analogInput', instance: 20, network: 2, mac: 5 }] },
-    mqtt: { type: 'mqtt', url: 'mqtt://localhost:1883', username: 'site-b1', password: 'change-me', topic: 'trigon/B1/#', staleMinutes: 10,
+    mqtt: { type: 'mqtt', url: 'mqtt://localhost:1883', username: 'site-b1', password: 'change-me', topic: 'bothelec/B1/#', staleMinutes: 10,
       jsonMap: { t_l1w: 'zones.L1-W.temp', ahu1_run: { path: 'ahus.AHU-01.status', map: { 0: 'off', 1: 'running', 2: 'tripped' } } } },
     http: { type: 'http', staleMinutes: 10, keyMap: { t_l1w: 'zones.L1-W.temp', ahu1_run: 'ahus.AHU-01.status' } },
   };
@@ -824,7 +823,7 @@
       </div>
       <p class="muted" style="font-size:12px">Provider accounts and passwords are set in the server's <code>.env</code> file (never in the browser). Queued: ${n.queued || 0} · failed in last 24 h: ${n.failed24h || 0} · <a href="#/settings/outbox">message log</a></p>
       <div class="grid g2" style="margin-top:14px">
-        <form class="card form" data-form="desk"><header><h2>Trigon service desk</h2></header>
+        <form class="card form" data-form="desk"><header><h2>Bothelec service desk</h2></header>
           ${field('Service desk mobile (SMS alerts)', 'phone', st.desk.phone, 'tel')}${field('Service desk email', 'email', st.desk.email, 'email')}${field('Default technician ETA (minutes)', 'etaMinutes', st.etaMinutes, 'number', 'min="5" max="240"')}
           <button class="btn primary">Save</button></form>
         <div class="card"><header><h2>Inbound SMS (GSM alarm modems)</h2></header>
@@ -937,7 +936,7 @@
       ${S.trips.map(t => { const i = TRIP_FLOW.indexOf(t.status); return `<tr><td><strong>${t.id}</strong><br><small class="mono">${hhmm(t.at)}</small></td><td>${esc(t.what)}</td><td class="hide-sm"><small>${esc(t.from)} →<br>${esc(t.to)}</small></td><td>${esc((tech(t.driver) || {}).name || '—')}</td><td>${statusPill(t.status)}</td><td>${i < 2 ? `<button class="btn sm" data-action="trip" data-id="${t.id}">${i === 0 ? 'Depart' : 'Delivered'}</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div></div>`;
   }
   function viewDispatchNew() {
-    const places = ['Trigon depot', ...S.buildings.map(b => b.name), 'Supplier — Isando'];
+    const places = ['Bothelec depot', ...S.buildings.map(b => b.name), 'Supplier — Isando'];
     return head('New trip') + `<form class="card form" data-form="trip" style="max-width:640px">
       <div class="field"><label>Load / description</label><input name="what" required placeholder="e.g. Replacement fan motor"></div>
       <div class="grid g2"><div class="field"><label>From</label><select name="from">${places.map(p => `<option>${esc(p)}</option>`).join('')}</select></div>
@@ -1127,7 +1126,7 @@
           break;
         }
         case 'callout': {
-          const r = await act('POST', '/api/jobs', { building: d.building, equipment: d.equipment, location: d.location, fault: d.fault, urgency: d.urgency, photos: ui.pendingPhotos, contact: d.contact, contactPhone: d.contactPhone, contactEmail: d.contactEmail }, ['Call logged', 'Your request landed at the Trigon service desk']);
+          const r = await act('POST', '/api/jobs', { building: d.building, equipment: d.equipment, location: d.location, fault: d.fault, urgency: d.urgency, photos: ui.pendingPhotos, contact: d.contact, contactPhone: d.contactPhone, contactEmail: d.contactEmail }, ['Call logged', 'Your request landed at the Bothelec service desk']);
           if (r && r.id) { ui.pendingPhotos = []; location.hash = '#/service/job/' + r.id; }
           break;
         }

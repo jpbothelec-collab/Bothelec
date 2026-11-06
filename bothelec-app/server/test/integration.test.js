@@ -128,16 +128,16 @@ before(async () => {
   const Aedes = require('aedes');
   mqttBroker = (Aedes.createBroker ? await Aedes.createBroker() : new Aedes());
   const mqttSrv = net.createServer(mqttBroker.handle); mqttPort = await listen(mqttSrv); ctx.mqttSrv = mqttSrv;
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trigon-test-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bothelec-test-'));
   app = createServer({
-    DATA_DIR: dir, SEED_DEMO: 'true', ADMIN_EMAIL: 'admin@trigon.test', ADMIN_PASSWORD: 'admin-pass-123',
-    SMS_PROVIDER: 'bulksms', BULKSMS_URL: `http://127.0.0.1:${smsPort}/v1`, BULKSMS_TOKEN_ID: 'tid', BULKSMS_TOKEN_SECRET: 'tsecret', BULKSMS_FROM: 'TrigonAir',
-    EMAIL_PROVIDER: 'smtp', SMTP_HOST: '127.0.0.1', SMTP_PORT: String(smtpPort), SMTP_SECURE: 'false', EMAIL_FROM: 'Trigon Air <alerts@trigon.test>',
-    DESK_PHONE: '082 000 0001', DESK_EMAIL: 'desk@trigon.test', WEBHOOK_TOKEN: 'hooktoken', AUTO_ASSIGN_DELAY_MS: '100', PUBLIC_URL: 'https://trigon.test',
+    DATA_DIR: dir, SEED_DEMO: 'true', ADMIN_EMAIL: 'admin@bothelec.test', ADMIN_PASSWORD: 'admin-pass-123',
+    SMS_PROVIDER: 'bulksms', BULKSMS_URL: `http://127.0.0.1:${smsPort}/v1`, BULKSMS_TOKEN_ID: 'tid', BULKSMS_TOKEN_SECRET: 'tsecret', BULKSMS_FROM: 'Bothelec',
+    EMAIL_PROVIDER: 'smtp', SMTP_HOST: '127.0.0.1', SMTP_PORT: String(smtpPort), SMTP_SECURE: 'false', EMAIL_FROM: 'Bothelec Aircon Solutions <alerts@bothelec.test>',
+    DESK_PHONE: '082 000 0001', DESK_EMAIL: 'desk@bothelec.test', WEBHOOK_TOKEN: 'hooktoken', AUTO_ASSIGN_DELAY_MS: '100', PUBLIC_URL: 'https://bothelec.test',
   });
   await app.start(0);
   base = `http://127.0.0.1:${app.server.address().port}`;
-  cookie = await login('admin@trigon.test', 'admin-pass-123');
+  cookie = await login('admin@bothelec.test', 'admin-pass-123');
 });
 after(async () => {
   await app.stop();
@@ -147,7 +147,7 @@ after(async () => {
 
 test('auth: unauthenticated requests are rejected; wrong password fails', async () => {
   assert.equal((await req('GET', '/api/state', undefined, { cookie: '' })).status, 401);
-  assert.equal((await req('POST', '/api/login', { email: 'admin@trigon.test', password: 'nope' }, { cookie: '' })).status, 401);
+  assert.equal((await req('POST', '/api/login', { email: 'admin@bothelec.test', password: 'nope' }, { cookie: '' })).status, 401);
   const st = (await req('GET', '/api/state')).data;
   assert.equal(st.me.role, 'admin');
   assert.ok(st.buildings.length >= 3);
@@ -156,11 +156,11 @@ test('auth: unauthenticated requests are rejected; wrong password fails', async 
 
 test('client call-out → auto-assign → SMS + email → job card → signed report email', async () => {
   // a client user for building B2 only
-  let r = await req('POST', '/api/admin/users', { name: 'Client Two', email: 'client2@trigon.test', phone: '083 111 2222', role: 'client', buildings: ['B2'], password: 'client-pass-1' });
+  let r = await req('POST', '/api/admin/users', { name: 'Client Two', email: 'client2@bothelec.test', phone: '083 111 2222', role: 'client', buildings: ['B2'], password: 'client-pass-1' });
   assert.equal(r.status, 200, JSON.stringify(r.data));
-  r = await req('POST', '/api/admin/buildings', { id: 'B2', name: 'Rosebank Office Park — Block C', managerEmail: 'rosebank.bm@trigon.test', opsEmail: 'rosebank.ops@trigon.test' });
+  r = await req('POST', '/api/admin/buildings', { id: 'B2', name: 'Rosebank Office Park — Block C', managerEmail: 'rosebank.bm@bothelec.test', opsEmail: 'rosebank.ops@bothelec.test' });
   assert.equal(r.status, 200);
-  const clientCookie = await login('client2@trigon.test', 'client-pass-1');
+  const clientCookie = await login('client2@bothelec.test', 'client-pass-1');
 
   // client cannot see other buildings
   const cst = (await req('GET', '/api/state', undefined, { cookie: clientCookie })).data;
@@ -171,7 +171,7 @@ test('client call-out → auto-assign → SMS + email → job card → signed re
 
   const smsBefore = sms.sent.length, mailBefore = smtp.mails.length;
   const tinyJpeg = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==';
-  r = await req('POST', '/api/jobs', { building: 'B2', equipment: 'VRF-01 · Outdoor unit', location: 'Roof', fault: 'No cooling on level 2', urgency: 'High', contactEmail: 'client2@trigon.test', photos: [tinyJpeg] }, { cookie: clientCookie });
+  r = await req('POST', '/api/jobs', { building: 'B2', equipment: 'VRF-01 · Outdoor unit', location: 'Roof', fault: 'No cooling on level 2', urgency: 'High', contactEmail: 'client2@bothelec.test', photos: [tinyJpeg] }, { cookie: clientCookie });
   assert.equal(r.status, 200, JSON.stringify(r.data));
   const id = r.data.id;
   assert.equal((await req('POST', `/api/jobs/${id}/advance`, {}, { cookie: clientCookie })).status, 403);
@@ -188,11 +188,11 @@ test('client call-out → auto-assign → SMS + email → job card → signed re
   const newSms = sms.sent.slice(smsBefore);
   assert.equal(newSms[0].auth, 'Basic ' + Buffer.from('tid:tsecret').toString('base64'));
   assert.ok(newSms.some(m => m.body[0].to === '+27820000001' && /Call logged/.test(m.body[0].body)), 'desk SMS');
-  assert.ok(newSms.some(m => /assigned to you/.test(m.body[0].body) && /https:\/\/trigon\.test\/#\/service\/job\//.test(m.body[0].body)), 'tech SMS with link');
-  assert.equal(newSms[0].body[0].from, 'TrigonAir');
+  assert.ok(newSms.some(m => /assigned to you/.test(m.body[0].body) && /https:\/\/bothelec\.test\/#\/service\/job\//.test(m.body[0].body)), 'tech SMS with link');
+  assert.equal(newSms[0].body[0].from, 'Bothelec');
   await until(() => smtp.mails.length >= mailBefore + 4);
   const rcpts = smtp.mails.slice(mailBefore).flatMap(m => m.to).join(' ');
-  for (const a of ['rosebank.bm@trigon.test', 'rosebank.ops@trigon.test', 'desk@trigon.test', 'client2@trigon.test']) assert.ok(rcpts.includes(a), 'email to ' + a);
+  for (const a of ['rosebank.bm@bothelec.test', 'rosebank.ops@bothelec.test', 'desk@bothelec.test', 'client2@bothelec.test']) assert.ok(rcpts.includes(a), 'email to ' + a);
 
   // technician works the job
   await req('POST', `/api/jobs/${id}/advance`, {}); // on the way
@@ -278,16 +278,16 @@ test('BACnet/IP connector: ReadProperty present-value (real + enumerated), error
 });
 
 test('MQTT connector: JSON payload from a 4G router mapped to the model', async () => {
-  const r = await req('POST', '/api/admin/buildings', { name: 'MQTT Site', connector: { type: 'mqtt', url: `mqtt://127.0.0.1:${mqttPort}`, topic: 'trigon/site9/#',
+  const r = await req('POST', '/api/admin/buildings', { name: 'MQTT Site', connector: { type: 'mqtt', url: `mqtt://127.0.0.1:${mqttPort}`, topic: 'bothelec/site9/#',
     jsonMap: { t1: 'zones.L1-C.temp', ahu: { path: 'ahus.AHU-09.status', map: { 0: 'off', 1: 'running', 2: 'tripped' } } },
-    points: [{ topic: 'trigon/site9/co2', path: 'co2' }] } });
+    points: [{ topic: 'bothelec/site9/co2', path: 'co2' }] } });
   const bid = r.data.building.id;
   await until(async () => (await req('GET', '/api/state')).data.admin.connectors[bid].ok === true);
   const mqtt = require('mqtt');
   const c = mqtt.connect(`mqtt://127.0.0.1:${mqttPort}`);
   await new Promise(res => c.on('connect', res));
-  c.publish('trigon/site9/data', JSON.stringify({ t1: '21.9', ahu: 1 }));
-  c.publish('trigon/site9/co2', '640');
+  c.publish('bothelec/site9/data', JSON.stringify({ t1: '21.9', ahu: 1 }));
+  c.publish('bothelec/site9/co2', '640');
   const bm = await until(async () => { const b = (await req('GET', '/api/bms/' + bid)).data; return b && b.co2 === 640 && b.zones.length && b; });
   assert.equal(bm.zones[0].temp, 21.9);
   assert.equal(bm.ahus[0].status, 'running');
@@ -326,7 +326,7 @@ test('admin test messages and message log', async () => {
   assert.equal(r.status, 200); assert.equal(r.data.ok, true);
   r = await req('POST', '/api/admin/test', { channel: 'sms', to: 'not-a-number' });
   assert.equal(r.data.ok, false);
-  r = await req('POST', '/api/admin/test', { channel: 'email', to: 'someone@trigon.test' });
+  r = await req('POST', '/api/admin/test', { channel: 'email', to: 'someone@bothelec.test' });
   assert.equal(r.data.ok, true);
   await until(async () => (await req('GET', '/api/admin/outbox')).data.filter(m => m.meta && m.meta.test && m.status === 'sent').length >= 2);
   assert.ok(sms.sent.some(m => m.body[0].to === '+27725551234'));

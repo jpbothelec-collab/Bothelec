@@ -1,7 +1,7 @@
-# Trigon Air — Operations, Service & Building Monitoring
+# Bothelec Aircon Solutions — Operations, Service & Building Monitoring
 
 One connected platform for **service requests, technicians and building plant**, built from the
-Trigon Air walkthrough video. It's a mobile-friendly web app (installable on phones) backed by a
+product walkthrough video. It's a mobile-friendly web app (installable on phones) backed by a
 server that runs 24/7 on a cloud VPS. The server:
 
 - runs the service desk: call-outs, auto-assignment, the 6-step job flow, digital job cards with photos and signature, and signed reports
@@ -13,7 +13,7 @@ server that runs 24/7 on a cloud VPS. The server:
  Buildings                                   Cloud VPS (Docker)                      People
  ─────────                                   ──────────────────                      ──────
  BMS controller ── Modbus TCP / BACnet ─┐    ┌──────────────────────────────┐
-   (via VPN / router port-forward)      ├──▶ │  Trigon server (Node.js)     │ ──▶ Web app / phones (HTTPS, live)
+   (via VPN / router port-forward)      ├──▶ │  Bothelec server (Node.js)     │ ──▶ Web app / phones (HTTPS, live)
  4G router ─────── MQTT ────────────────┤    │  • jobs, alarms, rules       │ ──▶ SMS  (BulkSMS)
  Edge agent / gateway ─ HTTPS POST ─────┤    │  • SQLite database           │ ──▶ Email (Gmail)
  GSM alarm modem ── SMS → BulkSMS ──────┘    │  • outbox with retries       │
@@ -34,7 +34,7 @@ server that runs 24/7 on a cloud VPS. The server:
 Requires Node.js 22.13 or newer.
 
 ```bash
-cd trigon-app
+cd bothelec-app
 npm install
 cp .env.example .env      # leave SMS_PROVIDER=log and EMAIL_PROVIDER=log to just print messages
 npm start                 # http://localhost:8080
@@ -50,14 +50,14 @@ npm test                  # end-to-end tests (SMS, email, Modbus, BACnet, MQTT, 
 ## 2. Go live on a VPS
 
 1. **Server:** a small Linux VPS (1 vCPU / 1 GB is plenty), with Docker installed.
-2. **Domain:** point a DNS A record (e.g. `trigon.yourcompany.co.za`) at the VPS IP. Open ports 80 and 443.
+2. **Domain:** point a DNS A record (e.g. `aircon.yourcompany.co.za`) at the VPS IP. Open ports 80 and 443.
 3. **BulkSMS:** create an account at bulksms.com and buy credits. Go to *Settings → API Tokens → Create token*
-   and copy the Token ID and Token Secret. Optional: register a sender ID such as `TrigonAir`.
+   and copy the Token ID and Token Secret. Optional: register a sender ID such as `Bothelec`.
 4. **Gmail / Google Workspace:** on the sending account, turn on 2-Step Verification, then create an
    **App Password** at <https://myaccount.google.com/apppasswords>.
 5. **Configure and start:**
    ```bash
-   git clone <this repo> && cd <repo>/trigon-app/deploy
+   git clone <this repo> && cd <repo>/bothelec-app/deploy
    cp .env.example .env && nano .env      # DOMAIN, PUBLIC_URL, ADMIN_*, BULKSMS_*, GMAIL_*, DESK_*, WEBHOOK_TOKEN
    docker compose up -d --build
    ```
@@ -68,8 +68,8 @@ npm test                  # end-to-end tests (SMS, email, Modbus, BACnet, MQTT, 
    In **Settings → Users**, add staff (service desk), technicians and client logins.
    Set `SEED_DEMO=false` for a clean start, or delete the demo buildings.
 
-Data lives in the `trigon-data` Docker volume (SQLite database + photos/signatures). Back it up, e.g. nightly:
-`docker run --rm -v deploy_trigon-data:/d -v $PWD:/b alpine tar czf /b/trigon-backup.tgz /d`.
+Data lives in the `bothelec-data` Docker volume (SQLite database + photos/signatures). Back it up, e.g. nightly:
+`docker run --rm -v deploy_bothelec-data:/d -v $PWD:/b alpine tar czf /b/bothelec-backup.tgz /d`.
 
 ## 3. Connecting buildings (every building can be different)
 
@@ -99,7 +99,7 @@ A zone outside the building's **comfort band** raises a high alarm.
 
 **MQTT broker user:**
 ```bash
-cd deploy && docker compose run --rm mosquitto mosquitto_passwd -c -b /mosquitto/config/passwd trigon 'strong-password'
+cd deploy && docker compose run --rm mosquitto mosquitto_passwd -c -b /mosquitto/config/passwd bothelec 'strong-password'
 docker compose --profile mqtt up -d
 ```
 For MQTT over the internet, prefer the router's VPN or add TLS to `mosquitto.conf`.

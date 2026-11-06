@@ -6,7 +6,7 @@ const { DatabaseSync } = require('node:sqlite');
 
 function openDb(dir) {
   fs.mkdirSync(dir, { recursive: true });
-  const db = new DatabaseSync(path.join(dir, 'trigon.db'));
+  const db = new DatabaseSync(path.join(dir, 'bothelec.db'));
   db.exec(`PRAGMA journal_mode = WAL;
     CREATE TABLE IF NOT EXISTS docs (coll TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY (coll, id));
     CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires INTEGER NOT NULL);

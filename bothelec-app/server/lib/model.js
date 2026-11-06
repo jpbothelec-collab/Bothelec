@@ -10,7 +10,7 @@ const { hashPassword, isStaff, canBuilding, canJob } = require('./auth');
 const COLLS = ['buildings', 'technicians', 'jobs', 'feed', 'alarms', 'vehicles', 'trips', 'assessments', 'documents', 'users'];
 const stepIdx = k => STEPS.findIndex(s => s.key === k);
 const stepLabel = k => (STEPS[stepIdx(k)] || {}).label || k;
-const ROLE_LABEL = { manager: 'Building Manager', ops: 'Operations Manager', desk: 'Trigon service desk', tech: 'Technician', caller: 'Caller' };
+const ROLE_LABEL = { manager: 'Building Manager', ops: 'Operations Manager', desk: 'Bothelec service desk', tech: 'Technician', caller: 'Caller' };
 const escH = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 function createModel({ db, env, bus, filesDir }) {
@@ -42,7 +42,7 @@ function createModel({ db, env, bus, filesDir }) {
     S.alarms.sort((a, b) => b.at.localeCompare(a.at));
     S.feed.sort((a, b) => b.at.localeCompare(a.at));
     if (!S.users.length) {
-      const email = (env.ADMIN_EMAIL || 'admin@trigon.local').toLowerCase();
+      const email = (env.ADMIN_EMAIL || 'admin@bothelec.local').toLowerCase();
       const pw = env.ADMIN_PASSWORD || rid(9);
       const u = { id: 'U1', name: 'Administrator', email, phone: '', role: 'admin', buildings: [], passwordHash: hashPassword(pw) };
       S.users.push(u); db.put('users', u);
@@ -82,12 +82,12 @@ function createModel({ db, env, bus, filesDir }) {
     return `<!doctype html><html><body style="margin:0;background:#f2f5f6;font-family:Segoe UI,Arial,sans-serif;color:#10242a">
       <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px">
       <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#fff;border-radius:10px;overflow:hidden">
-      <tr><td style="background:#0a1317;padding:16px 22px;color:#b6d433;font-weight:700;letter-spacing:2px">TRIGON AIR</td></tr>
+      <tr><td style="background:#0a1317;padding:16px 22px;color:#b6d433;font-weight:700;letter-spacing:2px">BOTHELEC AIRCON SOLUTIONS</td></tr>
       <tr><td style="padding:22px"><h2 style="margin:0 0 6px;font-size:19px">${escH(title)}</h2><p style="margin:0 0 16px;color:#4a6168">${escH(intro)}</p>
       <table width="100%" cellpadding="6" cellspacing="0" style="font-size:14px;border-collapse:collapse">${rows.map(([k, v]) => `<tr><td style="color:#6b8288;border-bottom:1px solid #e6ecee;width:38%">${escH(k)}</td><td style="border-bottom:1px solid #e6ecee">${escH(v)}</td></tr>`).join('')}</table>
       ${extra}
-      ${link ? `<p style="margin:22px 0 0"><a href="${link}" style="background:#b6d433;color:#0b1a07;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600">Open in Trigon Air</a></p>` : ''}
-      </td></tr><tr><td style="padding:14px 22px;background:#f7f9fa;color:#8aa0a6;font-size:12px">Automated message from the Trigon Air platform.</td></tr></table></td></tr></table></body></html>`;
+      ${link ? `<p style="margin:22px 0 0"><a href="${link}" style="background:#b6d433;color:#0b1a07;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600">Open in Bothelec Aircon Solutions</a></p>` : ''}
+      </td></tr><tr><td style="padding:14px 22px;background:#f7f9fa;color:#8aa0a6;font-size:12px">Automated message from the Bothelec Aircon Solutions platform.</td></tr></table></td></tr></table></body></html>`;
   }
   function jobMessages(job, key, role) {
     const b = bld(job.building), t = tech(job.tech), link = `${publicUrl}/#/service/job/${job.id}`;
@@ -101,7 +101,7 @@ function createModel({ db, env, bus, filesDir }) {
       report: `Signed service report is ready`,
     }[key];
     const eq = job.equipment.split(' · ')[0];
-    const sms = (role === 'tech' && key === 'assigned' ? `Trigon Air ${job.id}: ${line}. Equipment: ${eq}. ${link}` : `Trigon Air ${job.id}: ${line}. ${b.name} - ${eq}.${key === 'report' ? ' ' + link : ''}`).trim();
+    const sms = (role === 'tech' && key === 'assigned' ? `Bothelec Aircon ${job.id}: ${line}. Equipment: ${eq}. ${link}` : `Bothelec Aircon ${job.id}: ${line}. ${b.name} - ${eq}.${key === 'report' ? ' ' + link : ''}`).trim();
     const rows = [['Job', job.id], ['Status', stepLabel(key)], ['Building', b.name], ['Location', job.location], ['Equipment', job.equipment], ['Fault', job.fault], ['Urgency', job.urgency], ['Technician', t ? t.name : 'To be assigned']];
     let extra = '', attachments;
     if (key === 'report' || key === 'completed') {
@@ -116,7 +116,7 @@ function createModel({ db, env, bus, filesDir }) {
     }
     return {
       sms,
-      subject: `[Trigon Air] ${job.id} · ${stepLabel(key)} · ${b.name}`,
+      subject: `[Bothelec Aircon] ${job.id} · ${stepLabel(key)} · ${b.name}`,
       text: `${line}\n\n${rows.map(r => r.join(': ')).join('\n')}\n\n${link}`,
       html: emailShell(`${job.id} · ${stepLabel(key)}`, line, rows, extra, link),
       attachments,
@@ -159,7 +159,7 @@ function createModel({ db, env, bus, filesDir }) {
     job.status = key;
     const b = bld(job.building);
     const entries = dispatch(S.settings.policy.jobSteps[key], { b, job, build: role => jobMessages(job, key, role), meta: { jobId: job.id, step: key }, urgent: /High|Critical/.test(job.urgency) });
-    job.notifications.push({ id: rid(6), step: key, role: 'Trigon service desk', channel: 'Live board', at: job.steps[key], status: 'sent' }, ...entries.map(e => ({ ...e, step: key })));
+    job.notifications.push({ id: rid(6), step: key, role: 'Bothelec service desk', channel: 'Live board', at: job.steps[key], status: 'sent' }, ...entries.map(e => ({ ...e, step: key })));
     feed(`${job.id} · ${stepLabel(key)}`, `${b.name} — ${job.equipment}${actor ? ' · by ' + actor.name : ''}`, '', '#/service/job/' + job.id, job.building);
     save('jobs', job);
     onJobStep(job, key);
@@ -167,7 +167,7 @@ function createModel({ db, env, bus, filesDir }) {
     changed(job.building);
   }
   function newJob(o, actor) {
-    const job = Object.assign({ id: 'TR-' + S.meta.seq++, source: 'Client app', urgency: 'Medium', photos: [], findings: '', work: '', signature: null, signedBy: '', notifications: [], steps: {}, createdBy: actor ? actor.id : null }, o);
+    const job = Object.assign({ id: 'BA-' + S.meta.seq++, source: 'Client app', urgency: 'Medium', photos: [], findings: '', work: '', signature: null, signedBy: '', notifications: [], steps: {}, createdBy: actor ? actor.id : null }, o);
     saveMeta();
     S.jobs.unshift(job);
     setStep(job, 'logged', actor);
@@ -234,8 +234,8 @@ function createModel({ db, env, bus, filesDir }) {
     const rows = [['Building', b.name], ['Equipment', a.equip], ['Alarm', a.desc], ['Priority', a.priority], ['Reading', a.reading || '—'], ['Impact', a.impact || '—'], ['Time', fmtTime(cleared ? a.closedAt : a.at)]];
     if (a.jobId) rows.push(['Service call', a.jobId]);
     return {
-      sms: `Trigon Air ${head}. ${b.name}.${a.jobId && !cleared ? ' Call ' + a.jobId + ' raised.' : ''} ${link}`,
-      subject: `[Trigon Air] ${cleared ? 'CLEARED' : a.priority.toUpperCase()} · ${a.equip} · ${b.name}`,
+      sms: `Bothelec Aircon ${head}. ${b.name}.${a.jobId && !cleared ? ' Call ' + a.jobId + ' raised.' : ''} ${link}`,
+      subject: `[Bothelec Aircon] ${cleared ? 'CLEARED' : a.priority.toUpperCase()} · ${a.equip} · ${b.name}`,
       text: `${head}\n\n${rows.map(r => r.join(': ')).join('\n')}\n\n${link}`,
       html: emailShell(cleared ? 'Alarm cleared' : `${a.priority} alarm`, head, rows, '', link),
     };
@@ -247,7 +247,7 @@ function createModel({ db, env, bus, filesDir }) {
     const a = { id: 'A' + Date.now().toString(36) + rid(3), building: bid, at: nowIso(), status: 'Active', history: [{ at: nowIso(), label: 'Alarm raised', detail: spec.desc }], response: [], notified: [], ...spec };
     S.alarms.unshift(a);
     if (S.alarms.length > 2000) S.alarms.splice(2000).forEach(x => db.del('alarms', x.id));
-    respond(a, 'Fault alert received by Trigon', 'Unit, reading and time logged');
+    respond(a, 'Fault alert received by Bothelec', 'Unit, reading and time logged');
     a.notified = dispatch(S.settings.policy.alarms[a.priority], { b, build: () => alarmMessages(a, false), meta: { alarmId: a.id } });
     feed(`${a.priority}: ${a.equip} — ${a.desc}`, b.name, a.priority === 'Low' ? '' : 'bad', '#/bms/alarm/' + a.id, bid);
     if (a.priority === 'Critical' && b.autoCall !== false) {

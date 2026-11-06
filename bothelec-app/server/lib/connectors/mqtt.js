@@ -2,7 +2,7 @@
 /* MQTT subscriber. For 4G routers / gateways that publish BMS readings (e.g. Teltonika
  * "Modbus TCP/Serial → MQTT", Data to Server, Node-RED, many BMS gateways).
  *
- * Connector config: { type: "mqtt", url: "mqtt://broker:1883", username, password, topic: "trigon/B1/#",
+ * Connector config: { type: "mqtt", url: "mqtt://broker:1883", username, password, topic: "bothelec/B1/#",
  *   jsonMap: { "payloadKey": "zones.L1-W.temp", ... },        // JSON payload {key: value}
  *   points: [ { topic: "site/ahu2/status", path, jsonKey?, scale, map } ] }  // one topic per point
  * Payloads already shaped as { "values": { "<path>": value } } are applied as-is. */
@@ -41,7 +41,7 @@ function start(building, ctx) {
   try { mqtt = require('mqtt'); } catch { ctx.status({ ok: false, error: 'mqtt package not installed' }); return { stop() {} }; }
   const client = mqtt.connect(c.url || process.env.MQTT_URL || 'mqtt://localhost:1883', {
     username: c.username || process.env.MQTT_USERNAME, password: c.password || process.env.MQTT_PASSWORD,
-    reconnectPeriod: 5000, connectTimeout: 15000, clientId: `trigon-${building.id}-${Math.random().toString(16).slice(2, 8)}`,
+    reconnectPeriod: 5000, connectTimeout: 15000, clientId: `bothelec-${building.id}-${Math.random().toString(16).slice(2, 8)}`,
   });
   const topics = [c.topic, ...(c.points || []).map(p => p.topic)].filter(Boolean);
   client.on('connect', () => { client.subscribe([...new Set(topics)], { qos: 1 }); ctx.status({ ok: true, error: null, detail: 'Subscribed: ' + [...new Set(topics)].join(', ') }); });
