@@ -1,0 +1,13 @@
+{
+  "name": "Trigon Air — Operations & Service",
+  "short_name": "Trigon Air",
+  "description": "One connected platform for service requests, technicians and building plant.",
+  "start_url": "./#/dashboard",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#071013",
+  "theme_color": "#0a1317",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

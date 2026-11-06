@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0a1317">
+  <meta name="description" content="One connected platform for service requests, technicians and building plant.">
+  <title>Trigon Air — Operations &amp; Service</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/dashboard" aria-label="Home">
+      <img src="icon.svg" alt="" width="34" height="34">
+      <span><strong id="brandName">TRIGON AIR</strong><small id="brandSub">Operations &amp; Service</small></span>
+    </a>
+    <nav class="modules" id="modules" aria-label="Modules"></nav>
+    <div class="status">
+      <button class="icon-btn" id="bellBtn" aria-label="Notifications">
+        <svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21h4"/></svg>
+        <span class="badge" id="bellBadge" hidden>0</span>
+      </button>
+      <div class="site">
+        <strong>Demonstration Site</strong>
+        <small>Midrand</small>
+      </div>
+      <span class="pill ok" id="bmsPill"><i></i>BMS Online</span>
+      <div class="clock"><strong id="clock">--:--</strong><small id="date"></small></div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar" aria-label="Section navigation"></aside>
+    <main id="view" tabindex="-1"></main>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
