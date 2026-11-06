@@ -1,0 +1,23 @@
+{
+  "name": "trigon-air",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Trigon Air — operations, service desk and building monitoring platform",
+  "main": "server/index.js",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node --no-warnings=ExperimentalWarning --env-file-if-exists=.env server/index.js",
+    "agent": "node --env-file-if-exists=.env agent/agent.js",
+    "test": "node --no-warnings=ExperimentalWarning --test server/test/*.test.js"
+  },
+  "dependencies": {
+    "mqtt": "5.16.1",
+    "nodemailer": "10.3.1"
+  },
+  "optionalDependencies": {
+    "serialport": "13.0.0"
+  },
+  "devDependencies": {
+    "aedes": "0.51.3"
+  }
+}

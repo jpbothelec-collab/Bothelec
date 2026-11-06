@@ -1,0 +1,296 @@
+'use strict';
+/* Trigon Air server: REST API + live updates (SSE) + static web app.
+ * Start: node --env-file=.env server/index.js   (see deploy/.env.example) */
+const http = require('node:http');
+const fs = require('node:fs');
+const path = require('node:path');
+const { EventEmitter } = require('node:events');
+const { openDb } = require('./lib/db');
+const { createModel } = require('./lib/model');
+const { createNotifier } = require('./lib/notify');
+const { createConnectorManager } = require('./lib/connectors');
+const { verifyPassword, isStaff, canBuilding, canJob, rateLimited } = require('./lib/auth');
+const { rid, byId, nowIso, log } = require('./lib/util');
+
+function createServer(env = process.env, opts = {}) {
+  const dataDir = path.resolve(env.DATA_DIR || path.join(__dirname, '..', 'data'));
+  const publicDir = path.resolve(env.PUBLIC_DIR || path.join(__dirname, '..', 'public'));
+  const db = openDb(dataDir);
+  const bus = new EventEmitter(); bus.setMaxListeners(100);
+  const model = createModel({ db, env, bus, filesDir: path.join(dataDir, 'files') });
+  const notifier = createNotifier({ db, env, onStatus: m => model.onOutboxStatus(m), openPort: opts.openPort });
+  model.setNotifier(notifier);
+  const connectors = createConnectorManager({ model, bus });
+  const S = model.S;
+  const secureCookie = /^https:/.test(env.PUBLIC_URL || '') || env.COOKIE_SECURE === 'true';
+  const SESSION_TTL = 30 * 864e5;
+
+  /* ---------------- helpers ---------------- */
+  const send = (res, code, body, headers = {}) => {
+    res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers });
+    res.end(body === undefined ? '' : JSON.stringify(body));
+  };
+  const fail = (res, code, error) => send(res, code, { error });
+  function readBody(req, limit = 20e6) {
+    return new Promise((resolve, reject) => {
+      let size = 0; const chunks = [];
+      req.on('data', c => { size += c.length; if (size > limit) { reject(Object.assign(new Error('Payload too large'), { code: 413 })); req.destroy(); } else chunks.push(c); });
+      req.on('end', () => {
+        const raw = Buffer.concat(chunks).toString('utf8');
+        const ct = req.headers['content-type'] || '';
+        if (!raw) return resolve({});
+        if (ct.includes('application/x-www-form-urlencoded')) return resolve(Object.fromEntries(new URLSearchParams(raw)));
+        try { resolve(JSON.parse(raw)); } catch { ct.includes('json') ? reject(Object.assign(new Error('Invalid JSON'), { code: 400 })) : resolve({ text: raw }); }
+      });
+      req.on('error', reject);
+    });
+  }
+  const cookies = req => Object.fromEntries((req.headers.cookie || '').split(';').map(s => s.trim().split('=')).filter(p => p[0]).map(([k, ...v]) => [k, decodeURIComponent(v.join('='))]));
+  function currentUser(req) {
+    const t = cookies(req).tsid || (req.headers.authorization || '').replace(/^Bearer /, '');
+    const uid = t && db.session.get(t);
+    return uid ? byId(S.users, uid) : null;
+  }
+  const clientIp = req => (env.TRUST_PROXY === 'true' && (req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || req.socket.remoteAddress;
+
+  /* ---------------- live updates (SSE) ---------------- */
+  const streams = new Set();
+  let stateTimer = null; const stateBuildings = new Set(); let stateAll = false;
+  bus.on('state', ({ building }) => {
+    if (building) stateBuildings.add(building); else stateAll = true;
+    if (!stateTimer) stateTimer = setTimeout(() => {
+      stateTimer = null;
+      for (const s of streams) if (stateAll || [...stateBuildings].some(b => canBuilding(s.user, b))) s.res.write(`event: state\ndata: {}\n\n`);
+      stateBuildings.clear(); stateAll = false;
+    }, 300);
+  });
+  const bmsLast = {};
+  bus.on('bms', ({ building }) => {
+    const now = Date.now(); if (bmsLast[building] && now - bmsLast[building] < 900) return; bmsLast[building] = now;
+    const bm = S.bms[building]; if (!bm) return;
+    const { trend, ...rest } = bm;
+    const msg = `event: bms\ndata: ${JSON.stringify({ building, bms: rest, point: trend[trend.length - 1] || null })}\n\n`;
+    for (const s of streams) if (s.building === building && canBuilding(s.user, building)) s.res.write(msg);
+  });
+  const ping = setInterval(() => { for (const s of streams) s.res.write(': ping\n\n'); }, 25000); ping.unref();
+
+  /* ---------------- routes ---------------- */
+  const routes = [];
+  const R = (method, pattern, handler, opts = {}) => routes.push({ method, re: new RegExp('^' + pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)') + '$'), handler, opts });
+  const ALL = ['admin', 'desk', 'tech', 'client'], STAFF = ['admin', 'desk'], FIELD = ['admin', 'desk', 'tech'];
+  const job = (res, u, id) => { const j = byId(S.jobs, id); if (!j || !canJob(u, j)) { fail(res, 404, 'Job not found'); return null; } return j; };
+  const result = (res, r, extra) => r && r.error ? fail(res, 400, r.error) : send(res, 200, { ok: true, ...(extra || {}), ...(r || {}) });
+
+  // auth
+  R('POST', '/api/login', async (req, res, { body }) => {
+    const email = String(body.email || '').trim().toLowerCase();
+    if (rateLimited(clientIp(req) + email)) return fail(res, 429, 'Too many attempts. Try again in 15 minutes.');
+    const u = S.users.find(x => x.email === email);
+    if (!u || !verifyPassword(body.password || '', u.passwordHash)) return fail(res, 401, 'Wrong email or password.');
+    const t = rid(32); db.session.create(t, u.id, SESSION_TTL); db.session.purge();
+    send(res, 200, { ok: true }, { 'Set-Cookie': `tsid=${t}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL / 1000}${secureCookie ? '; Secure' : ''}` });
+  }, { public: true });
+  R('POST', '/api/logout', (req, res) => { const t = cookies(req).tsid; if (t) db.session.del(t); send(res, 200, { ok: true }, { 'Set-Cookie': 'tsid=; HttpOnly; Path=/; Max-Age=0' }); }, { public: true });
+  R('POST', '/api/me/password', (req, res, { u, body }) => {
+    if (!verifyPassword(body.current || '', u.passwordHash)) return fail(res, 400, 'Current password is wrong.');
+    result(res, model.upsertUser({ ...u, password: body.password }));
+  }, { roles: ALL });
+
+  // state
+  R('GET', '/api/state', (req, res, { u }) => send(res, 200, model.stateFor(u)), { roles: ALL });
+  R('GET', '/api/bms/:bid', (req, res, { u, p }) => { if (!canBuilding(u, p.bid)) return fail(res, 404, 'Not found'); send(res, 200, S.bms[p.bid] || null); }, { roles: ALL });
+  R('GET', '/api/events', (req, res, { u, url }) => {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+    res.write('retry: 3000\n\n');
+    const s = { res, user: u, building: url.searchParams.get('building') };
+    streams.add(s); req.on('close', () => streams.delete(s));
+  }, { roles: ALL, raw: true });
+  R('GET', '/api/files/:name', (req, res, { u, p }) => {
+    const j = S.jobs.find(x => x.signature === '/api/files/' + p.name || x.photos.includes('/api/files/' + p.name));
+    if (!j || !canJob(u, j)) return fail(res, 404, 'Not found');
+    const f = model.fileFor('/api/files/' + p.name); if (!f) return fail(res, 404, 'Not found');
+    res.writeHead(200, { 'Content-Type': /\.png$/.test(f) ? 'image/png' : /\.webp$/.test(f) ? 'image/webp' : 'image/jpeg', 'Cache-Control': 'private, max-age=86400' });
+    fs.createReadStream(f).pipe(res);
+  }, { roles: ALL, raw: true });
+
+  // jobs
+  R('POST', '/api/jobs', (req, res, { u, body }) => {
+    if (!canBuilding(u, body.building) || !byId(S.buildings, body.building)) return fail(res, 400, 'Choose a building.');
+    if (!String(body.fault || '').trim()) return fail(res, 400, 'Describe the fault.');
+    const j = model.newJob({
+      building: body.building, equipment: String(body.equipment || 'Other / not sure').slice(0, 120), location: String(body.location || '').slice(0, 120),
+      fault: String(body.fault).trim().slice(0, 1000), urgency: ['Low', 'Medium', 'High', 'Critical'].includes(body.urgency) ? body.urgency : 'Medium',
+      contact: String(body.contact || u.name).slice(0, 80), contactPhone: body.contactPhone || u.phone || '', contactEmail: body.contactEmail || u.email || '',
+      source: u.role === 'client' ? 'Client app' : 'Service desk',
+    }, u);
+    if (Array.isArray(body.photos) && body.photos.length) model.addPhotos(j, body.photos);
+    send(res, 200, { ok: true, id: j.id });
+    // service desk routing: auto-assign shortly after logging (desk can reassign)
+    setTimeout(() => { if (j.status === 'logged') model.autoAssign(j); }, +(env.AUTO_ASSIGN_DELAY_MS || 2000)).unref();
+  }, { roles: ALL });
+  R('POST', '/api/jobs/:id/advance', (req, res, { u, p }) => { const j = job(res, u, p.id); if (j) result(res, model.advance(j, u)); }, { roles: FIELD });
+  R('POST', '/api/jobs/:id/assign', (req, res, { u, p, body }) => { const j = job(res, u, p.id); if (!j) return; if (j.status !== 'logged') return fail(res, 400, 'Job already assigned.'); result(res, model.autoAssign(j, u, body.tech), {}); }, { roles: STAFF });
+  R('PATCH', '/api/jobs/:id', (req, res, { u, p, body }) => {
+    const j = job(res, u, p.id); if (!j) return;
+    if (!['onsite', 'completed'].includes(j.status) && !isStaff(u)) return fail(res, 400, 'The job card can be edited while on site.');
+    ['findings', 'work'].forEach(k => { if (typeof body[k] === 'string') j[k] = body[k].slice(0, 4000); });
+    model.save('jobs', j); model.changed(j.building); send(res, 200, { ok: true });
+  }, { roles: FIELD });
+  R('POST', '/api/jobs/:id/photos', (req, res, { u, p, body }) => { const j = job(res, u, p.id); if (j) send(res, 200, { ok: true, photos: model.addPhotos(j, body.photos) }); }, { roles: ALL });
+  R('POST', '/api/jobs/:id/sign', (req, res, { u, p, body }) => { const j = job(res, u, p.id); if (j) result(res, model.sign(j, body.signature, body.name, u)); }, { roles: FIELD });
+
+  // technicians, trips, assessments
+  R('POST', '/api/techs/:id/duty', (req, res, { u, p }) => {
+    const t = byId(S.technicians, p.id); if (!t) return fail(res, 404, 'Not found');
+    if (!isStaff(u) && u.techId !== t.id) return fail(res, 403, 'Not allowed');
+    if (t.status === 'on job') return fail(res, 400, 'Technician is on a job.');
+    t.status = t.status === 'off' ? 'available' : 'off'; model.save('technicians', t); model.changed(null); send(res, 200, { ok: true });
+  }, { roles: FIELD });
+  R('POST', '/api/trips', (req, res, { body }) => {
+    if (!body.what) return fail(res, 400, 'Describe the load.');
+    const t = model.tech(body.driver);
+    const trip = { id: 'D-' + (300 + S.trips.length + 1) + rid(2), what: String(body.what).slice(0, 200), from: body.from, to: body.to, driver: body.driver, vehicle: t && t.vehicle, status: 'Scheduled', at: body.at || nowIso() };
+    S.trips.unshift(trip); model.save('trips', trip); model.changed(null); send(res, 200, { ok: true, id: trip.id });
+  }, { roles: FIELD });
+  R('POST', '/api/trips/:id/advance', (req, res, { p }) => {
+    const t = byId(S.trips, p.id); if (!t) return fail(res, 404, 'Not found');
+    const flow = ['Scheduled', 'In transit', 'Delivered']; const i = flow.indexOf(t.status);
+    if (i < 0 || i >= 2) return fail(res, 400, 'Trip already delivered.');
+    t.status = flow[i + 1]; t.at = nowIso(); model.save('trips', t); model.changed(null); send(res, 200, { ok: true });
+  }, { roles: FIELD });
+  R('POST', '/api/assessments', (req, res, { u, body }) => {
+    if (!byId(S.buildings, body.building)) return fail(res, 400, 'Choose a building.');
+    const items = (body.items || []).map(x => ({ name: String(x.name).slice(0, 60), rating: Math.max(1, Math.min(5, +x.rating || 3)) }));
+    const score = items.length ? Math.round(items.reduce((s, x) => s + x.rating, 0) / items.length * 20) : 0;
+    const a = { id: 'AS-' + Date.now().toString(36).toUpperCase(), building: body.building, by: body.by || u.techId, type: String(body.type || 'Assessment').slice(0, 100), date: nowIso(), score, items, notes: String(body.notes || '').slice(0, 4000) };
+    S.assessments.unshift(a); model.save('assessments', a); model.changed(a.building); send(res, 200, { ok: true, id: a.id });
+  }, { roles: FIELD });
+
+  // BMS actions
+  R('POST', '/api/bms/:bid/simulate-fault', (req, res, { p }) => {
+    const c = connectors.get(p.bid);
+    if (!c || !c.simulateFault) return fail(res, 400, 'Fault simulation is only available on simulated buildings.');
+    result(res, c.simulateFault());
+  }, { roles: STAFF });
+  R('POST', '/api/bms/:bid/setpoint', (req, res, { p, body }) => {
+    const c = connectors.get(p.bid);
+    if (!c || !c.adjustSetpoint) return fail(res, 400, 'Set-point changes from the app are only enabled on simulated buildings. Real buildings are monitored read-only.');
+    result(res, c.adjustSetpoint(body.zones || [], +body.delta || 0));
+  }, { roles: STAFF });
+  R('POST', '/api/alarms/:id/clear', (req, res, { u, p, body }) => {
+    const a = byId(S.alarms, p.id); if (!a || !canBuilding(u, a.building)) return fail(res, 404, 'Not found');
+    model.clearAlarm(a, 'Cleared manually by ' + u.name + (body.note ? ': ' + body.note : '')); send(res, 200, { ok: true });
+  }, { roles: STAFF });
+
+  // gateway / edge-agent data in (token per building)
+  R('POST', '/api/ingest/:bid', (req, res, { p, body, url }) => {
+    const b = byId(S.buildings, p.bid);
+    const token = (req.headers.authorization || '').replace(/^Bearer /, '') || url.searchParams.get('token');
+    if (!b || !token || token !== b.ingestToken) return fail(res, 401, 'Invalid building or token');
+    let values = body.values;
+    if (!values && body.points) { const map = (b.connector || {}).keyMap || {}; values = {}; for (const [k, v] of Object.entries(body.points)) if (map[k]) values[map[k]] = v; }
+    if (!values) { const map = (b.connector || {}).keyMap; values = {}; for (const [k, v] of Object.entries(body)) values[map && map[k] ? map[k] : k] = v; }
+    result(res, model.applyReadings(b.id, values, body.source || 'http'));
+  }, { public: true, anyType: true });
+
+  // inbound SMS: BulkSMS webhook (JSON array), Teltonika SMS forwarding, or generic {from, text}
+  R('POST', '/api/hooks/sms-inbound', (req, res, { body, url }) => {
+    if (!env.WEBHOOK_TOKEN || url.searchParams.get('token') !== env.WEBHOOK_TOKEN) return fail(res, 401, 'Invalid token');
+    const list = Array.isArray(body) ? body : [body];
+    const out = list.map(m => {
+      const from = (m.from && (m.from.address || m.from)) || m.sender || m.phone || m.number;
+      const text = m.body || m.text || m.message || m.msg || '';
+      if (!from || !text) return { error: 'missing from/text' };
+      return model.gsmInbound(String(from), String(text));
+    });
+    send(res, 200, { ok: true, results: out });
+  }, { public: true, anyType: true });
+
+  // admin
+  R('PUT', '/api/admin/settings', (req, res, { body }) => result(res, model.updateSettings(body)), { roles: ['admin'] });
+  R('POST', '/api/admin/users', (req, res, { body }) => result(res, model.upsertUser(body)), { roles: ['admin'] });
+  R('DELETE', '/api/admin/users/:id', (req, res, { u, p }) => result(res, model.deleteUser(p.id, u)), { roles: ['admin'] });
+  R('POST', '/api/admin/buildings', (req, res, { body }) => result(res, model.upsertBuilding(body)), { roles: ['admin'] });
+  R('DELETE', '/api/admin/buildings/:id', (req, res, { p }) => result(res, model.deleteBuilding(p.id)), { roles: ['admin'] });
+  R('GET', '/api/admin/outbox', (req, res) => send(res, 200, notifier.list(150)), { roles: ['admin'] });
+  R('POST', '/api/admin/outbox/:id/retry', (req, res, { p }) => send(res, 200, { ok: !!notifier.retry(p.id) }), { roles: ['admin'] });
+  R('POST', '/api/admin/test', async (req, res, { body }) => {
+    if (body.channel === 'sms') {
+      const m = notifier.enqueue({ channel: 'sms', to: body.to, text: 'Trigon Air test SMS. If you received this, SMS notifications are working.', meta: { test: true } });
+      return send(res, 200, { ok: m.status !== 'failed', id: m.id, error: m.error });
+    }
+    if (body.channel === 'email') {
+      try { await notifier.verifyEmail(); } catch (e) { return fail(res, 400, 'Email login failed: ' + e.message); }
+      const m = notifier.enqueue({ channel: 'email', to: body.to, subject: 'Trigon Air test email', text: 'If you received this, email notifications are working.', html: '<p>If you received this, <b>Trigon Air</b> email notifications are working.</p>', meta: { test: true } });
+      return send(res, 200, { ok: m.status !== 'failed', id: m.id, error: m.error });
+    }
+    fail(res, 400, 'channel must be sms or email');
+  }, { roles: ['admin'] });
+
+  R('GET', '/api/health', (req, res) => send(res, 200, { ok: true, time: nowIso(), notifier: { queued: notifier.status().queued } }), { public: true });
+
+  /* ---------------- static files ---------------- */
+  const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json' };
+  function serveStatic(req, res, pathname) {
+    let rel = decodeURIComponent(pathname).replace(/^\/+/, '') || 'index.html';
+    const f = path.join(publicDir, rel);
+    if (!f.startsWith(publicDir)) return fail(res, 403, 'Forbidden');
+    const file = fs.existsSync(f) && fs.statSync(f).isFile() ? f : path.join(publicDir, 'index.html');
+    res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Cache-Control': /index\.html$|sw\.js$/.test(file) ? 'no-cache' : 'public, max-age=300' });
+    fs.createReadStream(file).pipe(res);
+  }
+
+  /* ---------------- dispatcher ---------------- */
+  const server = http.createServer(async (req, res) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'same-origin');
+    res.setHeader('X-Frame-Options', 'DENY');
+    const url = new URL(req.url, 'http://x');
+    if (!url.pathname.startsWith('/api/')) return serveStatic(req, res, url.pathname);
+    const route = routes.find(r => r.method === req.method && r.re.test(url.pathname));
+    if (!route) return fail(res, 404, 'Not found');
+    const p = route.re.exec(url.pathname).groups || {};
+    try {
+      const u = currentUser(req);
+      if (!route.opts.public) {
+        if (!u) return fail(res, 401, 'Please sign in.');
+        if (route.opts.roles && !route.opts.roles.includes(u.role)) return fail(res, 403, 'You do not have access to this.');
+      }
+      let body = {};
+      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+        // CSRF guard: browser forms cannot send JSON cross-site without a CORS preflight
+        const hasBody = +(req.headers['content-length'] || 0) > 0 || !!req.headers['transfer-encoding'];
+        if (!route.opts.anyType && hasBody && !(req.headers['content-type'] || '').includes('application/json')) return fail(res, 415, 'Send JSON');
+        body = await readBody(req);
+      }
+      await route.handler(req, res, { u, p, body, url });
+    } catch (e) {
+      log('[api]', req.method, url.pathname, e.stack || e.message);
+      if (!res.headersSent) fail(res, e.code === 413 ? 413 : e.code === 400 ? 400 : 500, e.code ? e.message : 'Server error');
+    }
+  });
+
+  return {
+    server, model, notifier, connectors, db, bus,
+    start(port = +(env.PORT || 8080)) {
+      connectors.startAll();
+      return new Promise(r => server.listen(port, () => { log(`[server] Trigon Air listening on :${port} (public URL ${env.PUBLIC_URL || 'not set'})`); r(server); }));
+    },
+    stop() {
+      connectors.stopAll(); notifier.stop(); model.stop(); clearInterval(ping);
+      for (const s of streams) s.res.end();
+      const done = new Promise(r => server.close(() => r()));
+      server.closeAllConnections();
+      return done;
+    },
+  };
+}
+
+if (require.main === module) {
+  const app = createServer();
+  app.start();
+  const bye = () => { log('[server] shutting down'); app.stop().then(() => process.exit(0)); setTimeout(() => process.exit(0), 3000).unref(); };
+  process.on('SIGTERM', bye); process.on('SIGINT', bye);
+}
+
+module.exports = { createServer };

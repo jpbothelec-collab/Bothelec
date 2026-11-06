@@ -347,3 +347,15 @@ tr.hl td { background: rgba(255, 90, 95, .07); }
   .topbar { backdrop-filter: none; background: #071013; }
   .sidebar .side ~ .side { display: none; }
 }
+
+/* sign-in screen */
+.auth .sidebar, .auth .modules, .auth .status { display: none !important; }
+.auth .layout { display: block; }
+.login { max-width: 380px; margin: 8vh auto; }
+.login h1 { font-size: 20px; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+.field textarea[name=connector], .field textarea[name=gsm], textarea[name=policy] { white-space: pre; overflow-x: auto; }
+@media (max-width: 900px) {
+  .sidebar { display: flex; gap: 6px; }
+  .sidebar .side.acct { display: flex; flex-direction: row; gap: 6px; }
+}

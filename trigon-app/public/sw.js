@@ -1,6 +1,6 @@
 /* Offline cache for the app shell. Bump VERSION when files change. */
-const VERSION = 'trigon-v1';
-const SHELL = ['./', 'index.html', 'styles.css', 'data.js', 'app.js', 'icon.svg', 'manifest.webmanifest'];
+const VERSION = 'trigon-v2';
+const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'icon.svg', 'manifest.webmanifest'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -10,7 +10,8 @@ self.addEventListener('activate', e => {
 });
 // Network first, fall back to cache — so updates show up immediately when online.
 self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
+  const u = new URL(e.request.url);
+  if (e.request.method !== 'GET' || u.origin !== location.origin || u.pathname.startsWith('/api/')) return;
   e.respondWith(
     fetch(e.request).then(res => {
       const copy = res.clone();

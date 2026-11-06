@@ -1,53 +1,151 @@
-# Trigon Air — Operations, Service & Building Monitoring (web + mobile)
+# Trigon Air — Operations, Service & Building Monitoring
 
-A mobile-friendly, installable web app (PWA) built from the Trigon Air product walkthrough video.
-It brings together **client service requests**, **technicians** and the **building plant (BMS)**
-in one place, "so nothing gets lost between the call and the fix".
+One connected platform for **service requests, technicians and building plant**, built from the
+Trigon Air walkthrough video. It's a mobile-friendly web app (installable on phones) backed by a
+server that runs 24/7 on a cloud VPS. The server:
 
-No build step or dependencies: plain HTML, CSS and JavaScript.
+- runs the service desk: call-outs, auto-assignment, the 6-step job flow, digital job cards with photos and signature, and signed reports
+- sends **SMS (BulkSMS)** and **email (Gmail)** at every step and for every alarm, with a retrying outbox and a message log
+- connects to each building's BMS: **Modbus TCP, BACnet/IP, MQTT, HTTP push (gateway or on-site edge agent), or a GSM alarm modem by SMS**
+- raises alarms (equipment tripped, zone out of comfort band, sensor or link lost). For critical alarms it automatically raises a service call, dispatches a technician and notifies the managers.
 
-## Run it
+```
+ Buildings                                   Cloud VPS (Docker)                      People
+ ─────────                                   ──────────────────                      ──────
+ BMS controller ── Modbus TCP / BACnet ─┐    ┌──────────────────────────────┐
+   (via VPN / router port-forward)      ├──▶ │  Trigon server (Node.js)     │ ──▶ Web app / phones (HTTPS, live)
+ 4G router ─────── MQTT ────────────────┤    │  • jobs, alarms, rules       │ ──▶ SMS  (BulkSMS)
+ Edge agent / gateway ─ HTTPS POST ─────┤    │  • SQLite database           │ ──▶ Email (Gmail)
+ GSM alarm modem ── SMS → BulkSMS ──────┘    │  • outbox with retries       │
+                    inbound webhook          └──────────────────────────────┘
+```
+
+## Folder layout
+
+| Path | What |
+|---|---|
+| `public/` | The web app (HTML/CSS/JS, PWA) |
+| `server/` | API server, business rules, notifications, BMS connectors, tests |
+| `agent/` | Edge agent for buildings whose controller can't be reached from the cloud |
+| `deploy/` | Docker Compose (app + HTTPS + optional MQTT broker), `.env.example`, systemd unit |
+
+## 1. Run it locally (try it out)
+
+Requires Node.js 22.13 or newer.
 
 ```bash
 cd trigon-app
-python3 -m http.server 8080
+npm install
+cp .env.example .env      # leave SMS_PROVIDER=log and EMAIL_PROVIDER=log to just print messages
+npm start                 # http://localhost:8080
 ```
 
-Open http://localhost:8080. On a phone, open it on the same network (or host it, see below) and use
-**Add to Home Screen** to install it as an app.
+Sign in with `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `.env`. With `SEED_DEMO=true` you get a simulated
+demonstration building. Go to **Info Hub → Simulate fault** to watch the full alarm → call → SMS → repair → close flow.
 
-### Host it
-Upload the `trigon-app/` folder to any static host: GitHub Pages, Netlify, Vercel, S3 or cPanel.
-It must be served over HTTPS for install and offline support.
+```bash
+npm test                  # end-to-end tests (SMS, email, Modbus, BACnet, MQTT, HTTP, GSM, permissions)
+```
 
-## What's in it (mapped to the video)
+## 2. Go live on a VPS
 
-| Module | Screens |
+1. **Server:** a small Linux VPS (1 vCPU / 1 GB is plenty), with Docker installed.
+2. **Domain:** point a DNS A record (e.g. `trigon.yourcompany.co.za`) at the VPS IP. Open ports 80 and 443.
+3. **BulkSMS:** create an account at bulksms.com and buy credits. Go to *Settings → API Tokens → Create token*
+   and copy the Token ID and Token Secret. Optional: register a sender ID such as `TrigonAir`.
+4. **Gmail / Google Workspace:** on the sending account, turn on 2-Step Verification, then create an
+   **App Password** at <https://myaccount.google.com/apppasswords>.
+5. **Configure and start:**
+   ```bash
+   git clone <this repo> && cd <repo>/trigon-app/deploy
+   cp .env.example .env && nano .env      # DOMAIN, PUBLIC_URL, ADMIN_*, BULKSMS_*, GMAIL_*, DESK_*, WEBHOOK_TOKEN
+   docker compose up -d --build
+   ```
+   Caddy obtains the HTTPS certificate automatically. Then open `https://your-domain`.
+6. **Check it works:** in the app, go to **Settings → SMS & email** and send a test SMS and a test email.
+   Delivery status appears under **Settings → Message log**.
+7. **Set up the business:** in **Settings → Buildings**, enter each building's managers (mobile + email) and its BMS link.
+   In **Settings → Users**, add staff (service desk), technicians and client logins.
+   Set `SEED_DEMO=false` for a clean start, or delete the demo buildings.
+
+Data lives in the `trigon-data` Docker volume (SQLite database + photos/signatures). Back it up, e.g. nightly:
+`docker run --rm -v deploy_trigon-data:/d -v $PWD:/b alpine tar czf /b/trigon-backup.tgz /d`.
+
+## 3. Connecting buildings (every building can be different)
+
+Configure in **Settings → Buildings → BMS connection**. Pick a template, then list the points.
+Each point maps a BMS value to a *path* in the app:
+
+| Path | Meaning |
 |---|---|
-| **Dashboard** | Connected-platform overview (service desk ↔ technicians ↔ plant), KPIs, recent activity, live jobs |
-| **Service & Maintenance** | Live jobs · **Call-outs** (building, equipment, location, fault, urgency, photo) · **Job cards** with the 6-step progress (logged → assigned → on the way → on site → work completed → report ready) · findings, work done, camera photos, **customer signature** · auto-shared signed report (printable / save as PDF) · delivery log to Building Manager, Operations Manager, service desk and technician · Technicians · Notifications · Reports · Clients · Documents |
-| **Info Hub (BMS)** | Site overview (temperature, humidity, CO₂, status) · Chiller plant (compressors, CHW temps, pumps, running/standby/tripped/offline summary) · AHU list and **AHU schematic** (supply/return fans, air temps, CHW valve, damper, filter ΔP, operating modes) · FCUs · Cooling towers · Pumps · Fans · **Zone heat map** with 20–24 °C comfort band · **Alarms** with automated response · Trends · Point register |
-| **Vehicles** | Fleet status, fuel, service schedule |
-| **Driver Dispatch** | Parts and refrigerant trips: schedule → in transit → delivered |
-| **Assessments** | Plant condition assessments with 1–5 ratings and a score |
+| `zones.<id>.temp` | Zone temperature (zone ids like `L2-C` place it on level 2) |
+| `ahus.<id>.status` / `supplyTemp` / `returnTemp` / `supplyHz` / `chwValve` / `damper` / `filterDp` | Air handling units |
+| `chillers.<id>.status` / `load` / `chws` / `chwr` | Chillers |
+| `pumps.<id>.status` / `hz`, `towers.<id>.status` / `fan` / `leaving`, `fans.<id>.status` | Other plant |
+| `humidity`, `co2`, `outside` | Site values |
 
-### Try the automated fault flow (as in the video)
-1. Info Hub → **Simulate fault** (or Dashboard → *Simulate BMS fault*).
-2. AHU-02's supply fan trips and Zone L2-C warms past 24 °C. Trigon receives the alarm, a **critical
-   call is raised automatically**, a technician is dispatched, and the managers are notified at the same moment.
-3. Open the call. Mark *on the way* and *check in on site*, fill in findings and work done, then *Mark work completed*.
-4. The unit restarts, the zone falls back into the comfort band, and the **alarm closes with a full audit trail**.
-   Sign the job card to complete and share the report.
+Use `scale`, `offset`, `decimals` and `map` (e.g. `{"0":"off","1":"running","2":"tripped"}`) to convert raw values.
+A **status of `tripped`** raises a critical alarm and (if enabled) a service call.
+A zone outside the building's **comfort band** raises a high alarm.
+**No data for `staleMinutes`** raises a "BMS link lost" alarm.
 
-## Data / connecting a real backend
-- All data is simulated and saved in the browser (`localStorage`). Use **Reset demo data** on the Dashboard to start over.
-- `data.js` is the data layer (`Store.load/save`). Replace it with API calls to the real service desk database.
-- `tick()` in `app.js` simulates the BMS feed. Replace it with a poll or WebSocket from the BMS gateway (BACnet/Modbus → API).
-- Notifications are recorded in the delivery log only. Wire `setStep()` / `notifyStep()` to email, SMS, WhatsApp or push.
+| Building has… | Use | Notes |
+|---|---|---|
+| BMS controller with Modbus TCP (or RS485 behind a Modbus gateway / Teltonika router) | `modbus` | The server must reach it: VPN, or a port-forward on the site router (restrict to the VPS IP). |
+| BACnet/IP controller | `bacnet` | Needs a VPN to the site. MS/TP devices behind a BACnet router: add `network` + `mac`. |
+| 4G router / gateway that can publish MQTT (e.g. Teltonika Modbus→MQTT, Node-RED) | `mqtt` | Start the bundled broker: `docker compose --profile mqtt up -d`, then create the MQTT user (below). |
+| Router/gateway that can POST HTTP, or **no inbound access at all** | `http` + edge agent | The building pushes out over HTTPS. Nothing needs to be opened at the site. |
+| GSM alarm dialler / modem that texts alarms | GSM (inbound SMS) | See below. Works alongside any of the above. |
 
-## Files
-- `index.html`: app shell
-- `styles.css`: dark theme and responsive layout (desktop top nav + sidebar → phone bottom tab bar + scrolling chips)
-- `data.js`: seed data and persistence
-- `app.js`: router, views, SVG visuals, workflow and BMS simulation
-- `manifest.webmanifest`, `sw.js`, `icon.svg`: PWA install and offline support
+**MQTT broker user:**
+```bash
+cd deploy && docker compose run --rm mosquitto mosquitto_passwd -c -b /mosquitto/config/passwd trigon 'strong-password'
+docker compose --profile mqtt up -d
+```
+For MQTT over the internet, prefer the router's VPN or add TLS to `mosquitto.conf`.
+
+**Edge agent (no VPN / port-forwarding needed):** on a Raspberry Pi or PC at the building:
+```bash
+cp agent/config.example.json agent/config.json   # server URL, building id, token from Settings → Buildings
+node agent/agent.js agent/config.json            # polls Modbus/BACnet locally, pushes over HTTPS
+```
+Set the building's connector to `{ "type": "http" }`.
+
+**GSM alarm modems (inbound SMS):** rent a BulkSMS inbound number (or use a Teltonika router's SMS forwarding).
+Point its webhook at `https://<domain>/api/hooks/sms-inbound?token=<WEBHOOK_TOKEN>`. Then add the modem's
+number and text rules to the building, e.g.
+`{"numbers":["+27821234567"],"rules":[{"match":"CHILLER.*FAIL","priority":"Critical","equip":"CH-01","desc":"Chiller failure"},{"match":"RESTORE|NORMAL","clear":true}]}`.
+
+## 4. Who gets what
+
+Edit under **Settings → SMS & email → Notification policy**. Defaults:
+
+| Event | Email | SMS |
+|---|---|---|
+| Call logged | building manager, ops manager, service desk, caller | service desk (High/Critical only) |
+| Technician assigned | managers | **technician** (with a link to the job) |
+| On the way / on site | building manager | building manager (on the way) |
+| Work completed / report signed | managers, desk, caller (report includes findings, photos and signature) | building manager (report link) |
+| Critical alarm | managers, desk | managers, desk |
+| High alarm | managers, desk | desk |
+| Alarm cleared | managers, desk | — |
+
+Failed messages are retried after 1, 5 and 15 minutes, then shown as failed in the message log, where they can be retried.
+
+## 5. Logins and roles
+
+| Role | Can |
+|---|---|
+| Admin | Everything, including Settings (SMS/email, buildings, BMS links, users) |
+| Service desk | All jobs, alarms, technicians, fleet; clear alarms; simulate faults on demo buildings |
+| Technician | Their own jobs (progress, job card, photos, signature), monitoring, fleet, dispatch |
+| Client | Only their own buildings: log calls, follow jobs, see their monitoring and alarms |
+
+Passwords are stored hashed (scrypt). Sessions use HttpOnly cookies, and logins are rate-limited.
+
+## Limits
+
+- **BMS monitoring is read-only.** Set-points and modes are changed on the BMS itself; set-point buttons only work on simulated buildings.
+- BACnet: ReadProperty polling only (no COV subscriptions or segmented responses). Modbus: TCP; RS485 needs a gateway or router.
+- Reports are sent as a formatted email with the signature and photos attached (no PDF file). The app's report page can be printed or saved as PDF.
+- **Not yet tested against real accounts or hardware.** The tests use stand-ins built to the published protocols and APIs: BulkSMS, SMTP, Modbus, BACnet, MQTT, Teltonika and AT commands. Test each building's link and the BulkSMS and Gmail accounts once on site before relying on them.

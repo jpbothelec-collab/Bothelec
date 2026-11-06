@@ -1,0 +1,44 @@
+# Trigon Air on a VPS:  cd deploy && cp .env.example .env && nano .env && docker compose up -d --build
+services:
+  app:
+    build: ..
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      TRUST_PROXY: "true"
+    volumes:
+      - trigon-data:/data
+    restart: unless-stopped
+
+  # HTTPS with automatic Let's Encrypt certificates for ${DOMAIN}
+  caddy:
+    image: caddy:2.8.4
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [app]
+    restart: unless-stopped
+
+  # Optional MQTT broker for 4G routers / gateways that publish BMS data.
+  # Start with:  docker compose --profile mqtt up -d
+  mosquitto:
+    image: eclipse-mosquitto:2.0.20
+    profiles: ["mqtt"]
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto:/mosquitto/config
+      - mosquitto-data:/mosquitto/data
+    restart: unless-stopped
+
+volumes:
+  trigon-data:
+  caddy-data:
+  caddy-config:
+  mosquitto-data:

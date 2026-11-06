@@ -1,0 +1,16 @@
+# Alternative to Docker: run directly with systemd.
+#   sudo cp deploy/trigon.service /etc/systemd/system/ && sudo systemctl enable --now trigon
+[Unit]
+Description=Trigon Air server
+After=network-online.target
+
+[Service]
+WorkingDirectory=/opt/trigon-app
+ExecStart=/usr/bin/node --no-warnings=ExperimentalWarning --env-file=/opt/trigon-app/.env server/index.js
+Restart=always
+RestartSec=5
+User=trigon
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

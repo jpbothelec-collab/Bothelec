@@ -1,0 +1,17 @@
+{
+  "server": "https://trigon.example.co.za",
+  "building": "B1",
+  "token": "paste the token from Settings → Buildings → Data upload",
+  "intervalSec": 15,
+  "connector": {
+    "type": "modbus",
+    "host": "192.168.1.50",
+    "port": 502,
+    "unitId": 1,
+    "points": [
+      { "path": "ahus.AHU-01.status", "fc": 1, "address": 0, "map": { "true": "running", "false": "off" } },
+      { "path": "ahus.AHU-01.supplyTemp", "fc": 3, "address": 100, "type": "int16", "scale": 0.1 },
+      { "path": "zones.L1-W.temp", "fc": 4, "address": 10, "type": "float32" }
+    ]
+  }
+}
