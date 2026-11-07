@@ -96,7 +96,7 @@
     ['bms/fans', 'Fans & Extracts', 'fan'], ['bms/zones', 'Temperatures', 'thermo'], ['bms/alarms', 'Alarms', 'alert'],
     ['bms/trends', 'Trends', 'trend'], ['bms/points', 'Point Register', 'list'], ['service/documents', 'Documents', 'doc'],
   ];
-  const SETTINGS_SIDE = [['settings', 'SMS & email', 'bell'], ['settings/buildings', 'Buildings & BMS links', 'building'], ['settings/users', 'Users', 'users'], ['settings/outbox', 'Message log', 'list']];
+  const SETTINGS_SIDE = [['settings', 'SMS & email', 'bell'], ['settings/billing', 'Zoho Books & billing', 'doc'], ['settings/buildings', 'Buildings & BMS links', 'building'], ['settings/users', 'Users', 'users'], ['settings/outbox', 'Message log', 'list']];
   const MODULES = [
     { id: 'dashboard', label: 'Dashboard', icon: 'grid', home: 'dashboard', side: SERVICE_SIDE, sub: 'Operations & Service' },
     { id: 'bms', label: 'Info Hub', icon: 'info', home: 'bms/overview', side: BMS_SIDE, sub: 'Building Monitoring Centre' },
@@ -208,7 +208,7 @@
       if (d.building === ui.site) { S.bms = cur; if (isLive()) rerender(); }
     });
   }
-  const NO_AUTO = new Set(['service/callout', 'service/tech', 'service/building', 'service/unitedit', 'service/unit', 'dispatch/new', 'assessments/new', 'settings', 'settings/building', 'settings/user', 'settings/users', 'settings/buildings', 'settings/outbox', 'account', 'bms/points']);
+  const NO_AUTO = new Set(['settings/billing', 'service/svbilling', 'service/callout', 'service/tech', 'service/building', 'service/unitedit', 'service/unit', 'dispatch/new', 'assessments/new', 'settings', 'settings/building', 'settings/user', 'settings/users', 'settings/buildings', 'settings/outbox', 'account', 'bms/points']);
   function rerender() {
     if (!S) return;
     const a = document.activeElement;
@@ -545,6 +545,7 @@
                 <button class="btn primary" data-action="sign" data-id="${j.id}">${ic('check')}Complete &amp; share report</button>` : ''}
               ${j.signature ? `<div class="field"><label>Customer signature · ${esc(j.signedBy)}</label><img class="sig-img" src="${j.signature}" alt="Signature"></div>` : ''}
             </div></div>` : ''}
+          ${i >= 3 || isStaff() || ((j.billing || {}).lines || []).length ? billingCard(j, 'job') : ''}
         </div>
         <div class="grid" style="align-content:start">
           <div class="card"><header><h2>Job ${j.id}</h2><small>${esc(j.equipment.split(' · ')[0])}</small></header>
@@ -579,6 +580,7 @@
         <h2 style="margin:18px 0 6px">Findings</h2><p>${esc(j.findings) || '—'}</p>
         <h2 style="margin:18px 0 6px">Work completed</h2><p>${esc(j.work) || '—'}</p>
         ${j.photos.length ? `<h2 style="margin:18px 0 6px">Photographs</h2><div class="thumbs">${j.photos.map(p => `<img src="${p}" alt="" style="width:140px;height:140px">`).join('')}</div>` : ''}
+        ${((j.billing || {}).lines || []).length ? `<h2 style="margin:18px 0 6px">Parts & labour</h2>${linesTable(j.billing.lines)}` : ''}
         <h2 style="margin:18px 0 6px">Customer sign-off</h2>${j.signature ? `<img class="sig-img" src="${j.signature}" alt="Signature"><p><small>Signed by ${esc(j.signedBy)} · ${hhmm(j.steps.report)}</small></p>` : '<p class="muted">Signed on paper / legacy record.</p>'}
         <h2 style="margin:18px 0 6px">Timeline</h2>${timeline(STEPS.filter(s => j.steps[s.key]).map(s => ({ label: s.label, at: j.steps[s.key], icon: s.icon })))}
       </article>`;
@@ -716,7 +718,7 @@
   const SERVICE_TYPES = ['Planned maintenance', 'Repair', 'Inspection', 'Filter change', 'Refrigerant top-up', 'Other'];
   function historyItem(it) {
     const r = it.rec;
-    if (it.kind === 'service') return `<li class="done"><span class="dot">${ic('wrench')}</span><div class="grow"><strong>${esc(r.type)}</strong><small>${esc(r.work)}</small>${r.notes ? `<small><em>${esc(r.notes)}</em></small>` : ''}<small>${esc(r.techName || 'Unassigned')} · logged by ${esc(r.by || '')}</small></div><time>${dmy(r.date)}</time>${isStaff() ? `<button class="btn sm" data-action="delservice" data-id="${r.id}" aria-label="Delete record" title="Delete record">${ic('x')}</button>` : ''}</li>`;
+    if (it.kind === 'service') return `<li class="done"><span class="dot">${ic('wrench')}</span><div class="grow"><strong>${esc(r.type)}</strong><small>${esc(r.work)}</small>${r.notes ? `<small><em>${esc(r.notes)}</em></small>` : ''}<small>${esc(r.techName || 'Unassigned')} · logged by ${esc(r.by || '')}</small>${(r.billing || {}).lines && r.billing.lines.length ? `<small>${fmtMoney(calcTotals(r.billing.lines).total)} incl. VAT · ${r.invoice && r.invoice.id ? `invoiced ${esc(r.invoice.number || '')}` : 'not invoiced'}</small>` : ''}${isField() ? `<small><a href="#/service/svbilling/${r.id}">${(r.billing || {}).lines && r.billing.lines.length ? 'Parts & labour / invoice' : 'Add parts & labour'}</a></small>` : ''}</div><time>${dmy(r.date)}</time>${isStaff() ? `<button class="btn sm" data-action="delservice" data-id="${r.id}" aria-label="Delete record" title="Delete record">${ic('x')}</button>` : ''}</li>`;
     if (it.kind === 'job') return `<li class="${r.status === 'report' ? 'done' : ''}"><span class="dot">${ic('card')}</span><div class="grow"><strong><a href="#/service/job/${r.id}">${r.id}</a> · ${esc(r.fault)}</strong><small>${jobStatusPill(r)} ${urgPill(r.urgency)} ${esc(r.source || '')}</small>${r.findings ? `<small>Found: ${esc(r.findings)}</small>` : ''}${r.work ? `<small>Done: ${esc(r.work)}</small>` : ''}<small>${esc(techName(r) || 'Unassigned')}${r.status === 'report' ? ` · <a href="#/service/report/${r.id}">signed report</a>` : ''}</small></div><time>${dmy(it.at)}</time></li>`;
     return `<li class="${r.status === 'Active' ? 'bad' : 'done'}"><span class="dot">${ic('alert')}</span><div class="grow"><strong><a href="#/bms/alarm/${r.id}">Alarm</a> · ${esc(r.desc)}</strong><small>${prioPill(r.priority)} ${statusPill(r.status)}${r.jobId ? ` · call ${r.jobId}` : ''}</small></div><time>${dmy(r.at)}</time></li>`;
   }
@@ -744,6 +746,7 @@
             <div class="field"><label>Type</label><select name="type">${SERVICE_TYPES.map(x => `<option>${x}</option>`).join('')}</select></div></div>
             <div class="field"><label>Technician</label><select name="tech"><option value="">—</option>${S.technicians.map(t => `<option value="${t.id}" ${S.me.techId === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></div>
             <div class="field"><label>Work done</label><textarea name="work" required placeholder="e.g. Filters replaced, coil cleaned, drain flushed"></textarea></div>
+            <details><summary class="muted" style="cursor:pointer">Parts & labour (optional, for invoicing)</summary>${linesEditor([])}</details>
             <div class="field"><label>Notes / readings (optional)</label><textarea name="notes" placeholder="e.g. Suction 3.1 bar, discharge 14.8 bar"></textarea></div>
             <button class="btn primary">${ic('check')}Save to history</button></form>` : ''}
         </div></div>`;
@@ -1117,6 +1120,98 @@
       <button class="btn primary" type="submit">${ic('check')}Save assessment</button></form>`;
   }
 
+  /* ---------------- parts & labour, invoicing ---------------- */
+  const LINE_KINDS = ['Call-out', 'Labour', 'Part', 'Other'];
+  const B = () => S.billing || { vatRate: 15, pricesIncludeVat: false, currency: 'ZAR', catalogue: [] };
+  const fmtMoney = n => (B().currency === 'ZAR' ? 'R ' : B().currency + ' ') + (Math.round((+n || 0) * 100) / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  function calcTotals(lines) {
+    const r = n => Math.round(n * 100) / 100, sum = r((lines || []).reduce((a, l) => a + (+l.qty || 0) * (+l.unitPrice || 0), 0)), v = B().vatRate;
+    if (B().pricesIncludeVat) { const vat = r(sum - sum / (1 + v / 100)); return { subtotal: r(sum - vat), vat, total: sum }; }
+    const vat = r(sum * v / 100); return { subtotal: sum, vat, total: r(sum + vat) };
+  }
+  const totalsHtml = lines => { const t = calcTotals(lines); return `<dl class="kv ltotals"><dt>Subtotal${B().pricesIncludeVat ? ' (excl. VAT)' : ''}</dt><dd>${fmtMoney(t.subtotal)}</dd><dt>VAT ${B().vatRate}%</dt><dd>${fmtMoney(t.vat)}</dd><dt><strong>Total</strong></dt><dd><strong>${fmtMoney(t.total)}</strong></dd></dl>`; };
+  const lineRow = (l = {}) => `<div class="lrow" data-line><input type="hidden" name="l_id" value="${esc(l.id || '')}"><input type="hidden" name="l_code" value="${esc(l.code || '')}">
+      <select name="l_kind" aria-label="Type">${LINE_KINDS.map(k => `<option ${l.kind === k ? 'selected' : ''}>${k}</option>`).join('')}</select>
+      <input name="l_desc" list="catalogueList" value="${esc(l.description || '')}" placeholder="Description" aria-label="Description">
+      <input name="l_qty" type="number" step="0.25" min="0" value="${l.qty ?? 1}" aria-label="Quantity">
+      <input name="l_price" type="number" step="0.01" min="0" value="${l.unitPrice ?? ''}" placeholder="0.00" aria-label="Unit price">
+      <span class="ltotal">${fmtMoney((+l.qty || 0) * (+l.unitPrice || 0))}</span>
+      <button type="button" class="btn sm" data-action="rmline" aria-label="Remove line">${ic('x')}</button></div>`;
+  function linesEditor(lines) {
+    return `<div data-lines><div class="lrow lhead"><span>Type</span><span>Item</span><span>Qty</span><span>Unit price</span><span>Total</span><span></span></div>
+      <div class="lbody">${(lines || []).map(lineRow).join('')}</div>
+      <datalist id="catalogueList">${B().catalogue.map(c => `<option value="${esc(c.name)}">`).join('')}</datalist>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0"><select data-change="addcat" aria-label="Add from price list" style="padding:7px 10px;background:var(--bg2);border:1px solid var(--line2);border-radius:8px;max-width:100%"><option value="">+ Add from price list…</option>${B().catalogue.map(c => `<option value="${esc(c.code)}">${esc(c.name)} · ${fmtMoney(c.rate)}/${esc(c.unit)}</option>`).join('')}</select><button type="button" class="btn sm" data-action="addline">${ic('plus')}Blank line</button></div>
+      <div class="ltot">${totalsHtml(lines)}</div></div>`;
+  }
+  function readLines(root) {
+    return [...root.querySelectorAll('[data-line]')].map(r => ({ id: r.querySelector('[name=l_id]').value, code: r.querySelector('[name=l_code]').value, kind: r.querySelector('[name=l_kind]').value, description: r.querySelector('[name=l_desc]').value.trim(), qty: +r.querySelector('[name=l_qty]').value, unitPrice: +r.querySelector('[name=l_price]').value })).filter(l => l.description);
+  }
+  function refreshLineTotals(root) {
+    root.querySelectorAll('[data-line]').forEach(r => { r.querySelector('.ltotal').textContent = fmtMoney((+r.querySelector('[name=l_qty]').value || 0) * (+r.querySelector('[name=l_price]').value || 0)); });
+    root.querySelector('.ltot').innerHTML = totalsHtml(readLines(root));
+  }
+  function linesTable(lines) {
+    if (!lines || !lines.length) return '<p class="muted" style="margin:4px 0">No parts or labour recorded.</p>';
+    return `<div class="table-wrap"><table><thead><tr><th>Item</th><th>Qty</th><th>Unit price</th><th style="text-align:right">Total</th></tr></thead><tbody>${lines.map(l => `<tr><td>${esc(l.description)}<br><small>${esc(l.kind)}</small></td><td class="mono">${l.qty}</td><td class="mono">${fmtMoney(l.unitPrice)}</td><td class="mono" style="text-align:right">${fmtMoney(l.qty * l.unitPrice)}</td></tr>`).join('')}</tbody></table></div>${totalsHtml(lines)}`;
+  }
+  function invoiceLine(rec, kind) {
+    const inv = rec.invoice, lines = (rec.billing || {}).lines || [];
+    if (inv && inv.id) return `<div class="banner ok" style="margin:10px 0 0"><span class="grow">${ic('doc').replace('<svg', '<svg style="width:16px;height:16px;display:inline;vertical-align:-3px;fill:none;stroke:currentColor;stroke-width:1.8"')} Zoho Books draft invoice <strong>${esc(inv.number || '')}</strong> · ${dmy(inv.at)}</span>${isStaff() && inv.url ? `<a class="btn sm" href="${esc(inv.url)}" target="_blank" rel="noopener">Open in Zoho Books</a>` : ''}</div>`;
+    if (!isStaff() || !lines.length) return '';
+    return B().zoho ? `<button class="btn sm" style="margin-top:10px" data-action="invoice" data-kind="${kind}" data-id="${rec.id}">${ic('doc')}Create invoice in Zoho Books</button>${B().autoInvoice && kind === 'job' && rec.status !== 'report' ? '<small class="muted" style="display:block;margin-top:4px">Or wait: a draft invoice is created automatically when the report is signed.</small>' : ''}`
+      : `<p class="muted" style="font-size:12px;margin:10px 0 0">Connect Zoho Books (Settings → Zoho Books & billing) to turn this into an invoice.</p>`;
+  }
+  function billingCard(rec, kind) {
+    const lines = (rec.billing || {}).lines || [];
+    const editable = !(rec.invoice && rec.invoice.id) && (kind === 'job' ? (isStaff() || (isField() && ['onsite', 'completed'].includes(rec.status))) : isField());
+    return `<div class="card"><header><h2>Parts & labour</h2>${rec.invoice && rec.invoice.id ? '<span class="pill ok"><i></i>Invoiced</span>' : lines.length ? `<span class="pill info">${fmtMoney(calcTotals(lines).total)}</span>` : ''}</header>
+      ${editable ? `<form class="form" data-form="billing" data-kind="${kind}" data-id="${rec.id}">${linesEditor(lines.length ? lines : [])}<button class="btn primary">${ic('check')}Save parts & labour</button></form>` : linesTable(lines)}
+      ${invoiceLine(rec, kind)}</div>`;
+  }
+  function viewServiceBilling(id) {
+    const rec = byId(S.services, id);
+    if (!rec) return head('Service record not found');
+    const b = bld(rec.building);
+    return head(`${esc(rec.unit)} · ${esc(rec.type)}`, `${esc(b.name)} · ${dmy(rec.date)} · ${esc(rec.techName || '')}`, `<a class="btn sm" href="#/service/unit/${rec.building}/${encodeURIComponent(rec.unit)}">${ic('back')}Unit history</a>`) +
+      `<div class="grid split"><div>${billingCard(rec, 'service')}</div><div class="card" style="align-self:start"><header><h3>Work done</h3></header><p style="margin:0">${esc(rec.work)}</p>${rec.notes ? `<p class="muted">${esc(rec.notes)}</p>` : ''}</div></div>`;
+  }
+
+  /* ---------------- settings: Zoho Books & billing ---------------- */
+  const catRow = (c = { kind: 'Part', unit: 'each' }) => `<div class="crow cat" data-row>
+      <div class="field"><label>Code</label><input name="k_code" value="${esc(c.code || '')}"></div>
+      <div class="field"><label>Name</label><input name="k_name" value="${esc(c.name || '')}"></div>
+      <div class="field"><label>Type</label><select name="k_kind">${LINE_KINDS.map(k => `<option ${c.kind === k ? 'selected' : ''}>${k}</option>`).join('')}</select></div>
+      <div class="field"><label>Unit</label><input name="k_unit" value="${esc(c.unit || 'each')}"></div>
+      <div class="field"><label>Price (excl. VAT)</label><input name="k_rate" type="number" step="0.01" min="0" value="${c.rate ?? ''}"></div>
+      <div class="field"><label>Zoho item ID (optional)</label><input name="k_zoho" value="${esc(c.zohoItemId || '')}"></div>
+      <button type="button" class="btn sm danger" data-action="rmrow" aria-label="Remove">${ic('x')}</button></div>`;
+  function viewSettingsBilling() {
+    const Z = S.admin.zoho || {}, BS = S.admin.settings.billing;
+    return head('Zoho Books & billing', 'Clients and contacts are pushed to Zoho Books; signed jobs become draft invoices') +
+      `<div class="grid g2">
+        <div class="card"><header><h2>Zoho Books</h2>${Z.configured ? '<span class="pill ok"><i></i>Configured</span>' : '<span class="pill warn"><i></i>Not connected</span>'}</header>
+          ${Z.configured ? `<dl class="kv"><dt>Data centre</dt><dd>zoho.${esc(Z.dc)}</dd><dt>Organisation ID</dt><dd>${esc(Z.org)}</dd><dt>Waiting to sync</dt><dd>${Z.queued}</dd><dt>Failed</dt><dd>${Z.failed}</dd></dl>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn sm" data-action="zohotest">Test connection</button><button class="btn sm" data-action="zohosync">Sync all clients now</button></div>`
+          : `<p style="margin-top:0">Parts & labour are recorded on every job already. To create invoices automatically:</p>
+            <ol style="margin:0;padding-left:20px;line-height:1.6;font-size:13px"><li>Start a Zoho Books organisation (a free trial is fine) and note its <b>Organisation ID</b> (Settings → Organisation profile).</li>
+            <li>Open the Zoho API console for your region (e.g. api-console.zoho.com) → <b>Self Client</b> → create.</li>
+            <li>Generate a code with scope <code>ZohoBooks.fullaccess.all</code>, then exchange it for a <b>refresh token</b> (see README).</li>
+            <li>Put <code>ZOHO_DC</code>, <code>ZOHO_CLIENT_ID</code>, <code>ZOHO_CLIENT_SECRET</code>, <code>ZOHO_REFRESH_TOKEN</code>, <code>ZOHO_ORG_ID</code> in the server's <code>.env</code> and restart.</li></ol>`}</div>
+        <form class="card form" data-form="billingsettings"><header><h2>Invoicing settings</h2></header>
+          <div class="grid g2">${field('VAT rate (%)', 'vatRate', BS.vatRate, 'number', 'step="0.5" min="0" max="50"')}${field('Currency', 'currency', BS.currency, 'text', 'maxlength="3"')}</div>
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="pricesIncludeVat" ${BS.pricesIncludeVat ? 'checked' : ''}> Prices include VAT</label>
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="autoInvoice" ${BS.autoInvoice ? 'checked' : ''}> Create a draft invoice in Zoho Books automatically when a job report is signed</label>
+          ${field('Zoho tax ID for VAT (optional)', 'zohoTaxId', BS.zohoTaxId, 'text', 'placeholder="From Zoho Books → Settings → Taxes"')}
+          <button class="btn primary">${ic('check')}Save</button></form>
+      </div>
+      <form class="card form" data-form="catalogue" style="margin-top:14px"><header><h2>Price list</h2><small>Used by technicians when recording parts & labour</small></header>
+        <div id="crows">${(BS.catalogue || []).map(catRow).join('')}</div>
+        <div><button type="button" class="btn sm" data-action="addcatrow">${ic('plus')}Add item</button></div>
+        <div><button class="btn primary">${ic('check')}Save price list</button></div></form>
+      ${Z.configured ? `<div class="card" style="margin-top:14px"><header><h2>Sync log</h2></header>${(Z.log || []).length ? `<div class="table-wrap"><table><thead><tr><th>Time</th><th>What</th><th>Status</th></tr></thead><tbody>${Z.log.map(x => `<tr><td class="mono">${hhmm(x.createdAt)}<br><small>${dmy(x.createdAt)}</small></td><td>${x.kind === 'contact' ? 'Client ' + esc(bld(x.ref).name) : 'Invoice ' + esc(x.ref.split(':')[1])}${x.error ? `<br><small style="color:var(--red)">${esc(x.error)}</small>` : ''}${x.result && x.result.number ? `<br><small>${esc(x.result.number)}</small>` : ''}</td><td>${x.status === 'done' ? '<span class="pill ok">Done</span>' : x.status === 'queued' ? `<span class="pill warn">Waiting${x.attempts ? ' · retry ' + x.attempts : ''}</span>` : `<span class="pill bad">Failed</span> <button class="btn sm" data-action="zohoretry" data-id="${x.id}">Retry</button>`}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Nothing synced yet.</div>'}</div>` : ''}`;
+  }
+
   /* ---------------- intro / product tour (click-through) ---------------- */
   const INTRO_KEY = 'bothelec.introSeen';
   function introBms(fault) {
@@ -1238,7 +1333,7 @@
     'bms/pumps': viewPumps, 'bms/fans': viewFans, 'bms/zones': viewZones, 'bms/alarms': viewAlarms, 'bms/alarm': viewAlarm, 'bms/trends': viewTrends, 'bms/points': viewPoints,
     vehicles: viewVehicles, dispatch: viewDispatch, 'dispatch/new': viewDispatchNew,
     assessments: viewAssessments, 'assessments/new': viewAssessNew,
-    settings: viewSettings, 'settings/buildings': viewSettingsBuildings, 'settings/building': viewSettingsBuilding, 'settings/users': viewSettingsUsers, 'settings/user': viewSettingsUser, 'settings/outbox': viewOutbox,
+    settings: viewSettings, 'settings/buildings': viewSettingsBuildings, 'settings/building': viewSettingsBuilding, 'settings/users': viewSettingsUsers, 'settings/user': viewSettingsUser, 'settings/outbox': viewOutbox, 'settings/billing': viewSettingsBilling, 'service/svbilling': viewServiceBilling,
     account: viewAccount,
     'service/equipment': viewEquipment, 'service/unit': viewUnit, 'service/unitedit': viewUnitEdit, 'service/tech': viewTechEdit, 'service/building': viewBuildingContacts,
   };
@@ -1331,6 +1426,13 @@
     trip: el => act('POST', `/api/trips/${el.dataset.id}/advance`, {}),
     clearalarm: el => { if (confirm('Clear this alarm manually?')) act('POST', `/api/alarms/${el.dataset.id}/clear`, {}, ['Alarm cleared']); },
     tour: () => showIntro(0),
+    addline: el => { const root = el.closest('[data-lines]'); root.querySelector('.lbody').insertAdjacentHTML('beforeend', lineRow({ kind: 'Part', qty: 1 })); root.querySelector('.lbody').lastElementChild.querySelector('[name=l_desc]').focus(); },
+    rmline: el => { const root = el.closest('[data-lines]'); el.closest('[data-line]').remove(); refreshLineTotals(root); },
+    invoice: async el => { el.disabled = true; await act('POST', `/api/${el.dataset.kind === 'job' ? 'jobs' : 'services'}/${el.dataset.id}/invoice`, {}, ['Sending to Zoho Books', 'The draft invoice appears here in a few seconds']); },
+    zohotest: async () => { try { const r = await api('POST', '/api/admin/zoho/test', {}); toast('Connected to Zoho Books', `${r.organisation.name} · ${r.organisation.currency}`); } catch (e) { toast('Zoho Books connection failed', e.message, 'bad'); } },
+    zohosync: async () => { if (await act('POST', '/api/admin/zoho/sync', {}, ['Syncing clients to Zoho Books'])) render(true); },
+    zohoretry: async el => { if (await act('POST', `/api/admin/zoho/${el.dataset.id}/retry`, {}, ['Retrying'])) render(true); },
+    addcatrow: () => { $('#crows').insertAdjacentHTML('beforeend', catRow()); $('#crows').lastElementChild.querySelector('input[name=k_code]').focus(); },
     deltech: async el => { const t = tech(el.dataset.id); if (t && confirm(`Remove ${t.name} from the technicians list? Their past jobs stay in the history.`) && await act('DELETE', `/api/techs/${t.id}`, undefined, ['Technician removed'])) { location.hash = '#/service/techs'; render(true); } },
     addrow: el => { $('#crows').insertAdjacentHTML('beforeend', contactRow({ role: el.dataset.role, notify: true })); const r = $('#crows').lastElementChild; r.querySelector('input[name=c_name]').focus(); },
     rmrow: el => el.closest('[data-row]').remove(),
@@ -1358,11 +1460,21 @@
       clearTimeout(bindTimers[el.dataset.bind]);
       bindTimers[el.dataset.bind] = setTimeout(() => api('PATCH', `/api/jobs/${el.dataset.id}`, { [el.dataset.bind]: el.value }).catch(err => toast('Not saved', err.message, 'bad')), 600);
     }
+    const lroot = el.closest && el.closest('[data-lines]');
+    if (lroot) {
+      if (el.name === 'l_desc') { const c = B().catalogue.find(x => x.name === el.value); const row = el.closest('[data-line]'); if (c && row) { row.querySelector('[name=l_price]').value = c.rate; row.querySelector('[name=l_kind]').value = c.kind; row.querySelector('[name=l_code]').value = c.code; } }
+      refreshLineTotals(lroot);
+    }
     if (el.dataset.filter === 'points') { const q = el.value.toLowerCase(); document.querySelectorAll('#points tbody tr').forEach(tr => { tr.hidden = !tr.textContent.toLowerCase().includes(q); }); }
   });
   document.addEventListener('change', e => {
     const el = e.target;
     if (el.dataset.change === 'site') switchSite(el.value);
+    if (el.dataset.change === 'addcat' && el.value) {
+      const c = B().catalogue.find(x => x.code === el.value), root = el.closest('[data-lines]');
+      if (c) { root.querySelector('.lbody').insertAdjacentHTML('beforeend', lineRow({ kind: c.kind, code: c.code, description: c.name, qty: 1, unitPrice: c.rate })); refreshLineTotals(root); }
+      el.value = '';
+    }
     if (el.dataset.change === 'eqsite') location.hash = '#/service/equipment/' + el.value;
     if (el.dataset.change === 'building') {
       const b = bld(el.value), f = el.form;
@@ -1437,6 +1549,17 @@
           if (r) location.hash = '#/settings/users';
           break;
         }
+        case 'billing': {
+          const r = await act('PUT', `/api/${f.dataset.kind === 'job' ? 'jobs' : 'services'}/${f.dataset.id}/billing`, { lines: readLines(f) }, ['Parts & labour saved']);
+          if (r) render(true);
+          break;
+        }
+        case 'billingsettings': if (await act('PUT', '/api/admin/settings', { billing: { vatRate: +d.vatRate, currency: d.currency, pricesIncludeVat: !!d.pricesIncludeVat, autoInvoice: !!d.autoInvoice, zohoTaxId: d.zohoTaxId } }, ['Invoicing settings saved'])) render(true); break;
+        case 'catalogue': {
+          const catalogue = [...f.querySelectorAll('[data-row]')].map(r => ({ code: r.querySelector('[name=k_code]').value, name: r.querySelector('[name=k_name]').value, kind: r.querySelector('[name=k_kind]').value, unit: r.querySelector('[name=k_unit]').value, rate: +r.querySelector('[name=k_rate]').value, zohoItemId: r.querySelector('[name=k_zoho]').value }));
+          if (await act('PUT', '/api/admin/settings', { billing: { catalogue } }, ['Price list saved'])) render(true);
+          break;
+        }
         case 'tech': {
           const r = await act('POST', '/api/techs', { id: f.dataset.id || undefined, name: d.name, skill: d.skill, phone: d.phone, email: d.email, vehicle: d.vehicle, status: d.status }, ['Technician saved']);
           if (r) location.hash = '#/service/techs';
@@ -1453,7 +1576,7 @@
           break;
         }
         case 'service': {
-          if (await act('POST', '/api/services', { building: f.dataset.bid, unit: f.dataset.uid, date: d.date, type: d.type, tech: d.tech, work: d.work, notes: d.notes }, ['Saved to service history'])) render(true);
+          if (await act('POST', '/api/services', { building: f.dataset.bid, unit: f.dataset.uid, date: d.date, type: d.type, tech: d.tech, work: d.work, notes: d.notes, billing: { lines: readLines(f) } }, ['Saved to service history'])) render(true);
           break;
         }
         case 'password': if (await act('POST', '/api/me/password', { current: d.current, password: d.password }, ['Password changed', 'Sign in again on your other devices.'])) f.reset(); break;

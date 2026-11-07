@@ -9,6 +9,7 @@ const { openDb } = require('./lib/db');
 const { createModel } = require('./lib/model');
 const { createNotifier } = require('./lib/notify');
 const { createConnectorManager } = require('./lib/connectors');
+const { createZohoClient } = require('./lib/zoho');
 const { verifyPassword, isStaff, canBuilding, canJob, rateLimited } = require('./lib/auth');
 const { rid, byId, nowIso, log } = require('./lib/util');
 
@@ -20,6 +21,8 @@ function createServer(env = process.env, opts = {}) {
   const model = createModel({ db, env, bus, filesDir: path.join(dataDir, 'files') });
   const notifier = createNotifier({ db, env, onStatus: m => model.onOutboxStatus(m), openPort: opts.openPort });
   model.setNotifier(notifier);
+  const zoho = createZohoClient(env);
+  model.setZoho(zoho);
   const connectors = createConnectorManager({ model, bus });
   const S = model.S;
   const secureCookie = /^https:/.test(env.PUBLIC_URL || '') || env.COOKIE_SECURE === 'true';
@@ -144,6 +147,21 @@ function createServer(env = process.env, opts = {}) {
   R('POST', '/api/buildings/:bid/units/:uid/removed', (req, res, { p, body }) => result(res, model.setUnitRemoved(p.bid, decodeURIComponent(p.uid), !!body.removed)), { roles: STAFF });
   R('POST', '/api/services', (req, res, { u, body }) => { if (!canBuilding(u, body.building)) return fail(res, 404, 'Not found'); result(res, model.addService(body, u)); }, { roles: FIELD });
   R('DELETE', '/api/services/:id', (req, res, { p }) => result(res, model.deleteService(p.id)), { roles: STAFF });
+
+  // parts & labour, invoicing
+  R('PUT', '/api/jobs/:id/billing', (req, res, { u, p, body }) => { const j = job(res, u, p.id); if (j) result(res, model.setJobBilling(j, body, u)); }, { roles: FIELD });
+  R('PUT', '/api/services/:id/billing', (req, res, { u, p, body }) => {
+    const rec = model.S.services.find(x => x.id === p.id); if (!rec || !canBuilding(u, rec.building)) return fail(res, 404, 'Not found');
+    result(res, model.setServiceBilling(p.id, body, u));
+  }, { roles: FIELD });
+  R('POST', '/api/jobs/:id/invoice', (req, res, { u, p }) => { const j = job(res, u, p.id); if (j) result(res, model.requestInvoice('job:' + j.id)); }, { roles: STAFF });
+  R('POST', '/api/services/:id/invoice', (req, res, { p }) => result(res, model.requestInvoice('service:' + p.id)), { roles: STAFF });
+  R('POST', '/api/admin/zoho/test', async (req, res) => {
+    if (!zoho.configured) return fail(res, 400, 'Zoho Books is not configured: set ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET, ZOHO_REFRESH_TOKEN and ZOHO_ORG_ID in .env, then restart.');
+    try { send(res, 200, { ok: true, organisation: await zoho.test() }); } catch (e) { fail(res, 400, e.message); }
+  }, { roles: ['admin'] });
+  R('POST', '/api/admin/zoho/sync', (req, res) => result(res, model.zSyncAll()), { roles: ['admin'] });
+  R('POST', '/api/admin/zoho/:id/retry', (req, res, { p }) => result(res, model.zRetry(p.id)), { roles: ['admin'] });
 
   // technicians
   R('POST', '/api/techs', (req, res, { body }) => result(res, model.upsertTech(body)), { roles: STAFF });

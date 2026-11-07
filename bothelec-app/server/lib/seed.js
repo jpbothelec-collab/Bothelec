@@ -141,7 +141,7 @@ function seed(demo) {
     job.status = STEPS[ago.length - 1].key;
     s.jobs.push(job);
   };
-  mk(1048, { building: 'B1', unit: 'AHU-02', techName: 'J. Mokoena', equipment: 'AHU-02 · Air handling unit', location: 'Level 2 - Central zone', fault: 'Office not cooling, warm air', urgency: 'High', tech: 'T1', findings: 'Supply fan belt worn and slipping. Low airflow to Level 2.', work: 'Fan belt replaced and tensioned. Airflow and set-point verified.', signedBy: 'L. Pillay' }, [1450, 1443, 1427, 1402, 1324, 1321]);
+  mk(1048, { building: 'B1', unit: 'AHU-02', techName: 'J. Mokoena', equipment: 'AHU-02 · Air handling unit', location: 'Level 2 - Central zone', fault: 'Office not cooling, warm air', urgency: 'High', tech: 'T1', findings: 'Supply fan belt worn and slipping. Low airflow to Level 2.', work: 'Fan belt replaced and tensioned. Airflow and set-point verified.', signedBy: 'L. Pillay', billing: { lines: [{ id: 'l1', kind: 'Call-out', code: 'CALLOUT', description: 'Call-out fee', qty: 1, unitPrice: 650 }, { id: 'l2', kind: 'Labour', code: 'LAB-HR', description: 'Labour (technician)', qty: 1.5, unitPrice: 550 }, { id: 'l3', kind: 'Part', code: 'BELT-A', description: 'V-belt (A section)', qty: 2, unitPrice: 260 }], notes: '' } }, [1450, 1443, 1427, 1402, 1324, 1321]);
   mk(1049, { building: 'B2', equipment: 'SPL-SR1 · Split unit (server room)', location: 'Server room', fault: 'Unit leaking water onto floor', urgency: 'High', tech: 'T2' }, [70, 62, 35]);
   mk(1050, { building: 'B3', equipment: 'PU-02 · Packaged unit', location: 'Ward A', fault: 'Noisy compressor', urgency: 'Medium', tech: 'T3' }, [40, 31]);
   mk(1051, { building: 'B1', equipment: 'FCU-L2-04 · Fan coil unit', location: 'Level 2 - East zone', fault: 'Thermostat display blank', urgency: 'Low' }, [12]);
@@ -191,4 +191,21 @@ function seed(demo) {
   return s;
 }
 
-module.exports = { seed, STEPS, DEFAULT_POLICY };
+/* Price list for parts & labour (edit in Settings → Zoho Books & billing). Prices exclude VAT. */
+const DEFAULT_BILLING = () => ({
+  currency: 'ZAR', vatRate: 15, pricesIncludeVat: false, autoInvoice: true, zohoTaxId: '',
+  catalogue: [
+    { code: 'CALLOUT', name: 'Call-out fee', kind: 'Call-out', unit: 'each', rate: 650, zohoItemId: '' },
+    { code: 'LAB-HR', name: 'Labour (technician)', kind: 'Labour', unit: 'hour', rate: 550, zohoItemId: '' },
+    { code: 'LAB-AH', name: 'Labour after hours', kind: 'Labour', unit: 'hour', rate: 825, zohoItemId: '' },
+    { code: 'PM-SPLIT', name: 'Planned service: split unit', kind: 'Labour', unit: 'each', rate: 750, zohoItemId: '' },
+    { code: 'PM-AHU', name: 'Planned service: AHU', kind: 'Labour', unit: 'each', rate: 2400, zohoItemId: '' },
+    { code: 'FLT-G4', name: 'Filter G4 panel', kind: 'Part', unit: 'each', rate: 180, zohoItemId: '' },
+    { code: 'BELT-A', name: 'V-belt (A section)', kind: 'Part', unit: 'each', rate: 260, zohoItemId: '' },
+    { code: 'GAS-R410A', name: 'Refrigerant R410A', kind: 'Part', unit: 'kg', rate: 420, zohoItemId: '' },
+    { code: 'GAS-R32', name: 'Refrigerant R32', kind: 'Part', unit: 'kg', rate: 380, zohoItemId: '' },
+    { code: 'CAP-35', name: 'Run capacitor 35 µF', kind: 'Part', unit: 'each', rate: 310, zohoItemId: '' },
+  ],
+});
+
+module.exports = { seed, STEPS, DEFAULT_POLICY, DEFAULT_BILLING };

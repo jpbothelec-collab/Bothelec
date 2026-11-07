@@ -146,7 +146,34 @@ Failed messages are retried after 1, 5 and 15 minutes, then shown as failed in t
   Next service due is worked out from the interval, and overdue units are flagged. *Decommission* hides a unit from call-outs
   but keeps its history.
 
-## 6. Logins and roles
+## 6. Parts & labour and Zoho Books
+
+The platform is the master for clients, contacts and jobs. Zoho Books is used for invoicing only.
+
+- **Parts & labour:** on every job (from "on site", or any time for the service desk) and on logged services.
+  Pick items from the **price list** (Settings → Zoho Books & billing) or type your own. VAT and totals are worked out
+  automatically and shown on the signed report and in the report email.
+- **Zoho Books:** when connected, each building's client (and its managers as contact persons) is created in Zoho Books.
+  When a job report is signed, a **draft invoice** is created with the parts & labour lines and the job number as
+  reference. Logged services can be invoiced with one click. Your office reviews and sends invoices from Zoho Books.
+  Sync runs in the background with retries; see Settings → Zoho Books & billing → Sync log.
+
+**Connecting Zoho Books** (about 10 minutes):
+1. In Zoho Books, open Settings → Organisation profile and copy the **Organisation ID**. Note your Zoho domain: `zoho.com`, `zoho.eu`, `zoho.in` and so on. That is your data centre.
+2. Open the API console for that data centre (e.g. <https://api-console.zoho.com> or `api-console.zoho.eu`). Choose **Self Client**, then Create, and copy the Client ID and Client Secret.
+3. In the Self Client, open **Generate Code** and enter scope `ZohoBooks.fullaccess.all` with a 10-minute duration. Copy the code, then run (replace `com` with your data centre):
+   ```bash
+   curl -X POST "https://accounts.zoho.com/oauth/v2/token?grant_type=authorization_code&client_id=CLIENT_ID&client_secret=CLIENT_SECRET&code=CODE"
+   ```
+   Copy the `refresh_token` from the reply.
+4. In `.env` set `ZOHO_DC`, `ZOHO_CLIENT_ID`, `ZOHO_CLIENT_SECRET`, `ZOHO_REFRESH_TOKEN` and `ZOHO_ORG_ID`, then restart.
+5. In Settings → Zoho Books & billing, click **Test connection**, then **Sync all clients now**.
+6. Optional: in Zoho Books → Settings → Taxes, copy the ID of your 15% VAT tax into *Zoho tax ID*. You can also add Zoho item IDs to the price list so invoice lines link to your Zoho items.
+
+The connector was built and tested against a stand-in for the Zoho Books API (v3). Before relying on it, test it once against
+a Zoho Books trial organisation: create a test job with parts & labour, sign it off, and check the draft invoice in Zoho.
+
+## 7. Logins and roles
 
 | Role | Can |
 |---|---|

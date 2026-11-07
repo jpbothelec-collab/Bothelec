@@ -4,7 +4,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { nowIso, rid, byId, log, setPath, emptyBms, COLLECTIONS, normalizePhone, clamp } = require('./util');
-const { seed, STEPS, DEFAULT_POLICY } = require('./seed');
+const { seed, STEPS, DEFAULT_POLICY, DEFAULT_BILLING } = require('./seed');
 const { hashPassword, isStaff, canBuilding, canJob } = require('./auth');
 
 const COLLS = ['buildings', 'technicians', 'jobs', 'services', 'feed', 'alarms', 'vehicles', 'trips', 'assessments', 'documents', 'users'];
@@ -37,6 +37,8 @@ function createModel({ db, env, bus, filesDir }) {
       log(`[model] initialised ${env.SEED_DEMO === 'true' ? 'with demo data' : 'empty'}`);
     }
     if (!S.settings) { S.settings = { policy: DEFAULT_POLICY, desk: { phone: env.DESK_PHONE || '', email: env.DESK_EMAIL || '' }, etaMinutes: 25 }; db.setKv('settings', S.settings); }
+    if (!S.settings.billing) { S.settings.billing = DEFAULT_BILLING(); db.setKv('settings', S.settings); }
+    S.zohoq = db.all('zohoq').sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     S.buildings.forEach(b => { if (!b.ingestToken) { b.ingestToken = rid(18); db.put('buildings', b); } migrateBuilding(b); });
     S.services.sort((a, b) => (b.date + b.at).localeCompare(a.date + a.at));
     S.jobs.sort((a, b) => (b.steps.logged || '').localeCompare(a.steps.logged || ''));
@@ -109,6 +111,7 @@ function createModel({ db, env, bus, filesDir }) {
       if (c.phone && !normalizePhone(c.phone)) return { error: `The mobile number for ${c.name} looks wrong.` };
     }
     b.contacts = out; save('buildings', b); changed(bid);
+    if (b.zoho && b.zoho.contactId) zEnqueue('contact', bid);
     return { ok: true, contacts: out };
   }
   function upsertUnit(bid, data, originalId) {
@@ -147,6 +150,7 @@ function createModel({ db, env, bus, filesDir }) {
     if (date > nowIso().slice(0, 10)) return { error: 'The service date cannot be in the future.' };
     const t = tech(data.tech) || tech(actor.techId);
     const rec = { id: 'SV' + Date.now().toString(36) + rid(2), building: b.id, unit: u.id, date, type: SERVICE_TYPES.includes(data.type) ? data.type : 'Other', tech: t ? t.id : null, techName: t ? t.name : '', work: str(data.work, 2000), notes: str(data.notes, 2000), by: actor.name, at: nowIso() };
+    if (data.billing && Array.isArray(data.billing.lines)) { const r = cleanLines(data.billing.lines); if (r.error) return r; if (r.lines.length) rec.billing = { lines: r.lines, notes: '', updatedBy: actor.name, updatedAt: nowIso() }; }
     S.services.unshift(rec); S.services.sort((a, c) => (c.date + c.at).localeCompare(a.date + a.at));
     save('services', rec);
     feed(`${u.id} · ${rec.type} logged`, `${b.name} — ${rec.work.slice(0, 90)}`, '', `#/service/unit/${b.id}/${encodeURIComponent(u.id)}`, b.id);
@@ -229,6 +233,11 @@ function createModel({ db, env, bus, filesDir }) {
         if (sig) { attachments.push({ filename: 'signature.png', path: sig, cid: 'sig' }); extra += `<h3 style="margin:16px 0 6px;font-size:15px">Customer sign-off</h3><img src="cid:sig" width="260" alt="Signature" style="border:1px solid #e6ecee;border-radius:6px"><p style="margin:4px 0 0;color:#6b8288;font-size:13px">Signed by ${escH(job.signedBy)}</p>`; }
         job.photos.forEach((p, i) => { const f = fileFor(p); if (f) attachments.push({ filename: `${job.id}-photo-${i + 1}.jpg`, path: f }); });
         rows.push(['Arrived', fmtTime(job.steps.onsite)], ['Completed', fmtTime(job.steps.completed)]);
+        const bl = (job.billing && job.billing.lines) || [];
+        if (bl.length) {
+          const t = totals(bl), cur = S.settings.billing.currency, fm = n => cur + ' ' + n.toFixed(2);
+          extra += `<h3 style="margin:16px 0 6px;font-size:15px">Parts & labour</h3><table width="100%" cellpadding="5" cellspacing="0" style="font-size:13px;border-collapse:collapse">${bl.map(l => `<tr><td style="border-bottom:1px solid #e6ecee">${escH(l.description)}</td><td align="right" style="border-bottom:1px solid #e6ecee">${l.qty} × ${fm(l.unitPrice)}</td><td align="right" style="border-bottom:1px solid #e6ecee">${fm(l.qty * l.unitPrice)}</td></tr>`).join('')}<tr><td colspan="2" align="right">Subtotal</td><td align="right">${fm(t.subtotal)}</td></tr><tr><td colspan="2" align="right">VAT ${S.settings.billing.vatRate}%</td><td align="right">${fm(t.vat)}</td></tr><tr><td colspan="2" align="right"><b>Total</b></td><td align="right"><b>${fm(t.total)}</b></td></tr></table>`;
+        }
       }
     }
     return {
@@ -279,6 +288,7 @@ function createModel({ db, env, bus, filesDir }) {
     feed(`${job.id} · ${stepLabel(key)}`, `${b.name} — ${job.equipment}${actor ? ' · by ' + actor.name : ''}`, '', '#/service/job/' + job.id, job.building);
     save('jobs', job);
     onJobStep(job, key);
+    if (key === 'report' && S.settings.billing.autoInvoice && job.billing && job.billing.lines && job.billing.lines.length) zEnqueue('invoice', 'job:' + job.id);
     bus.emit('job:step', { job, key });
     changed(job.building);
   }
@@ -529,7 +539,8 @@ function createModel({ db, env, bus, filesDir }) {
       assessments: S.assessments.filter(a => bOk(a.building)),
       documents: S.documents,
       bmsSummary: Object.fromEntries(buildings.map(b => [b.id, S.bms[b.id] ? { fault: S.bms[b.id].fault, updatedAt: S.bms[b.id].updatedAt, hasData: true } : { hasData: false }])),
-      admin: u.role === 'admin' ? { users: S.users.map(publicUser), settings: S.settings, connectors: connStatus, notifier: notifier && notifier.status() } : undefined,
+      admin: u.role === 'admin' ? { users: S.users.map(publicUser), settings: S.settings, connectors: connStatus, notifier: notifier && notifier.status(), zoho: zStatus() } : undefined,
+      billing: { vatRate: S.settings.billing.vatRate, pricesIncludeVat: S.settings.billing.pricesIncludeVat, currency: S.settings.billing.currency, catalogue: u.role === 'client' ? [] : S.settings.billing.catalogue, zoho: !!(zoho && zoho.configured), autoInvoice: S.settings.billing.autoInvoice },
     };
   }
 
@@ -573,6 +584,7 @@ function createModel({ db, env, bus, filesDir }) {
     if (Array.isArray(data.contacts)) { const r = setContacts(b.id, data.contacts); if (r.error) return r; }
     syncEquipment(b);
     if (data.regenToken) b.ingestToken = rid(18);
+    if (b.zoho && b.zoho.contactId) zEnqueue('contact', b.id);
     save('buildings', b); changed(b.id);
     bus.emit('building:changed', b);
     return { ok: true, building: b };
@@ -583,7 +595,143 @@ function createModel({ db, env, bus, filesDir }) {
     bus.emit('building:changed', { id, deleted: true, connector: { type: 'none' } }); changed(null);
     return { ok: true, building: b };
   }
+  /* ---------------- billing: parts & labour ---------------- */
+  const LINE_KINDS = ['Call-out', 'Labour', 'Part', 'Other'];
+  const money = n => Math.round(n * 100) / 100;
+  function cleanLines(lines) {
+    if (!Array.isArray(lines)) return { error: 'Lines must be a list.' };
+    const out = [];
+    for (const l of lines.slice(0, 60)) {
+      const description = str(l.description, 160); if (!description) continue;
+      const qty = +l.qty, unitPrice = +l.unitPrice;
+      if (!(qty > 0) || qty > 100000) return { error: `Quantity for "${description}" must be more than 0.` };
+      if (!(unitPrice >= 0) || unitPrice > 1e7) return { error: `Price for "${description}" is not valid.` };
+      out.push({ id: str(l.id, 20) || rid(5), kind: LINE_KINDS.includes(l.kind) ? l.kind : 'Other', code: str(l.code, 30), description, qty: Math.round(qty * 100) / 100, unitPrice: money(unitPrice) });
+    }
+    return { lines: out };
+  }
+  function totals(lines) {
+    const B = S.settings.billing, sum = money((lines || []).reduce((a, l) => a + l.qty * l.unitPrice, 0));
+    const vat = B.pricesIncludeVat ? money(sum - sum / (1 + B.vatRate / 100)) : money(sum * B.vatRate / 100);
+    return B.pricesIncludeVat ? { subtotal: money(sum - vat), vat, total: sum } : { subtotal: sum, vat, total: money(sum + vat) };
+  }
+  function setBilling(target, data, actor, coll) {
+    if (target.invoice && target.invoice.id) return { error: `Already invoiced (${target.invoice.number || target.invoice.id}). Change it in Zoho Books.` };
+    const r = cleanLines(data.lines); if (r.error) return r;
+    target.billing = { lines: r.lines, notes: str(data.notes, 1000), updatedBy: actor.name, updatedAt: nowIso() };
+    save(coll, target); changed(target.building);
+    return { ok: true, billing: target.billing, totals: totals(r.lines) };
+  }
+  function setJobBilling(job, data, actor) {
+    if (!isStaff(actor) && !['onsite', 'completed'].includes(job.status)) return { error: 'Parts & labour can be recorded while on site.' };
+    return setBilling(job, data, actor, 'jobs');
+  }
+  function setServiceBilling(id, data, actor) {
+    const rec = byId(S.services, id); if (!rec) return { error: 'Service record not found.' };
+    return setBilling(rec, data, actor, 'services');
+  }
+
+  /* ---------------- Zoho Books sync (platform is the master) ---------------- */
+  let zoho = null, zBusy = false;
+  const zTimer = setInterval(() => zWork(), 10000); zTimer.unref();
+  function zEnqueue(kind, ref) {
+    if (!zoho || !zoho.configured) return null;
+    const dup = S.zohoq.find(x => x.kind === kind && x.ref === ref && x.status === 'queued'); if (dup) return dup;
+    const item = { id: 'Z' + Date.now().toString(36) + rid(3), kind, ref, status: 'queued', attempts: 0, nextAt: 0, createdAt: nowIso(), error: null };
+    S.zohoq.unshift(item); db.put('zohoq', item);
+    if (S.zohoq.length > 500) S.zohoq.splice(500).forEach(x => db.del('zohoq', x.id));
+    setImmediate(zWork);
+    return item;
+  }
+  async function zWork() {
+    if (zBusy || !zoho || !zoho.configured) return;
+    zBusy = true;
+    try {
+      for (const it of S.zohoq.filter(x => x.status === 'queued' && x.nextAt <= Date.now()).reverse()) {
+        it.attempts++;
+        try { it.result = it.kind === 'contact' ? await zSyncContact(it.ref) : await zInvoice(it.ref); it.status = 'done'; it.error = null; it.doneAt = nowIso(); }
+        catch (e) {
+          it.error = String(e.message || e).slice(0, 300);
+          if (it.attempts >= 5 || e.retry === false || (!e.retry && /not found|nothing to invoice|no client/i.test(it.error))) it.status = 'failed';
+          else it.nextAt = Date.now() + [60e3, 5 * 60e3, 15 * 60e3, 60 * 60e3][it.attempts - 1];
+          log('[zoho]', it.kind, it.ref, it.error);
+          if (it.status === 'failed') feed('Zoho Books sync failed', `${it.kind} ${it.ref}: ${it.error}`, 'bad', '#/settings/billing', null);
+        }
+        db.put('zohoq', it); changed(null);
+      }
+    } finally { zBusy = false; }
+  }
+  function splitName(n) { const p = String(n || '').trim().split(/\s+/); return { first_name: p.length > 1 ? p.slice(0, -1).join(' ') : p[0] || 'Contact', last_name: p.length > 1 ? p[p.length - 1] : '-' }; }
+  async function zSyncContact(bid) {
+    const b = byId(S.buildings, bid); if (!b) throw Object.assign(new Error('Building not found'), { retry: false });
+    const name = str(b.client || b.name, 100);
+    b.zoho = b.zoho || {};
+    let id = b.zoho.contactId || (S.buildings.find(x => x !== b && (x.client || x.name) === (b.client || b.name) && x.zoho && x.zoho.contactId) || {}).zoho?.contactId;
+    const persons = (b.contacts || []).filter(c => c.email || c.phone);
+    const person = c => ({ ...splitName(c.name), email: c.email || undefined, mobile: c.phone || undefined });
+    if (!id) { const found = await zoho.findContact(name); if (found) id = found.contact_id; }
+    if (!id) {
+      const created = await zoho.createContact({ contact_name: name, company_name: name, contact_type: 'customer', contact_persons: persons.slice(0, 10).map((c, i) => ({ ...person(c), is_primary_contact: i === 0 })) });
+      id = created.contact_id;
+      b.zoho.syncedPersons = persons.slice(0, 10).map(c => c.email || c.phone);
+    } else {
+      const synced = new Set(b.zoho.syncedPersons || []);
+      for (const c of persons) { const key = c.email || c.phone; if (synced.has(key)) continue; await zoho.addContactPerson({ contact_id: id, ...person(c) }); synced.add(key); }
+      b.zoho.syncedPersons = [...synced];
+    }
+    b.zoho.contactId = id; b.zoho.syncedAt = nowIso(); b.zoho.url = zoho.contactUrl(id);
+    save('buildings', b); changed(bid);
+    return { contactId: id };
+  }
+  async function zInvoice(ref) {
+    const [type, id] = String(ref).split(':');
+    const rec = type === 'job' ? byId(S.jobs, id) : byId(S.services, id);
+    if (!rec) throw Object.assign(new Error('Record not found'), { retry: false });
+    if (rec.invoice && rec.invoice.id) return { invoiceId: rec.invoice.id };
+    const lines = (rec.billing && rec.billing.lines) || [];
+    if (!lines.length) throw Object.assign(new Error('Nothing to invoice: no parts or labour recorded'), { retry: false });
+    const b = byId(S.buildings, rec.building); if (!b) throw Object.assign(new Error('Building not found'), { retry: false });
+    if (!(b.zoho && b.zoho.contactId)) await zSyncContact(b.id);
+    const reference = type === 'job' ? rec.id : `SV-${rec.unit}-${rec.date}`;
+    let inv = await zoho.findInvoiceByReference(type === 'job' ? rec.id : rec.id);
+    if (!inv) {
+      const B = S.settings.billing, cat = B.catalogue || [];
+      const what = type === 'job' ? `Service call ${rec.id} · ${rec.equipment} · ${b.name}${rec.work ? '\nWork done: ' + rec.work : ''}` : `${rec.type} · ${rec.unit} · ${b.name} (${rec.date})\n${rec.work}`;
+      inv = await zoho.createInvoice({
+        customer_id: b.zoho.contactId,
+        reference_number: type === 'job' ? rec.id : rec.id,
+        date: nowIso().slice(0, 10),
+        is_inclusive_tax: !!B.pricesIncludeVat,
+        line_items: lines.map(l => { const c = cat.find(x => x.code && x.code === l.code); return { ...(c && c.zohoItemId ? { item_id: c.zohoItemId } : {}), name: l.description.slice(0, 100), description: [l.kind, rec.unit || ''].filter(Boolean).join(' · '), rate: l.unitPrice, quantity: l.qty, ...(B.zohoTaxId ? { tax_id: B.zohoTaxId } : {}) }; }),
+        notes: what.slice(0, 2000),
+      });
+    }
+    rec.invoice = { provider: 'zoho', id: inv.invoice_id, number: inv.invoice_number || '', status: inv.status || 'draft', at: nowIso(), url: zoho.invoiceUrl(inv.invoice_id), reference };
+    save(type === 'job' ? 'jobs' : 'services', rec);
+    feed(`Draft invoice ${rec.invoice.number || ''} created in Zoho Books`, `${type === 'job' ? rec.id : rec.unit + ' · ' + rec.type} — ${b.name}`, '', type === 'job' ? '#/service/job/' + rec.id : `#/service/unit/${b.id}/${encodeURIComponent(rec.unit)}`, b.id);
+    changed(b.id);
+    return { invoiceId: inv.invoice_id, number: rec.invoice.number };
+  }
+  function requestInvoice(ref) {
+    if (!zoho || !zoho.configured) return { error: 'Zoho Books is not connected yet. See Settings → Zoho Books & billing.' };
+    const [type, id] = ref.split(':');
+    const rec = type === 'job' ? byId(S.jobs, id) : byId(S.services, id);
+    if (!rec) return { error: 'Not found.' };
+    if (rec.invoice && rec.invoice.id) return { error: 'Already invoiced.' };
+    if (!(rec.billing && rec.billing.lines && rec.billing.lines.length)) return { error: 'Record the parts & labour first.' };
+    return { ok: true, queued: zEnqueue('invoice', ref).id };
+  }
+  function zRetry(id) { const it = S.zohoq.find(x => x.id === id); if (it && it.status === 'failed') { Object.assign(it, { status: 'queued', attempts: 0, nextAt: 0, error: null }); db.put('zohoq', it); setImmediate(zWork); } return { ok: !!it }; }
+  function zSyncAll() { if (!zoho || !zoho.configured) return { error: 'Zoho Books is not connected yet.' }; S.buildings.forEach(b => zEnqueue('contact', b.id)); return { ok: true, queued: S.buildings.length }; }
+  function zStatus() { return { configured: !!(zoho && zoho.configured), dc: zoho && zoho.dc, org: zoho && zoho.org, queued: S.zohoq.filter(x => x.status === 'queued').length, failed: S.zohoq.filter(x => x.status === 'failed').length, log: S.zohoq.slice(0, 40) }; }
+
   function updateSettings(data) {
+    if (data.billing) {
+      const B = data.billing, cur = S.settings.billing;
+      const vatRate = +B.vatRate; if (B.vatRate !== undefined && !(vatRate >= 0 && vatRate <= 50)) return { error: 'VAT rate must be between 0 and 50 %.' };
+      const catalogue = Array.isArray(B.catalogue) ? B.catalogue.map(c => ({ code: str(c.code, 30), name: str(c.name, 100), kind: LINE_KINDS.includes(c.kind) ? c.kind : 'Part', unit: str(c.unit, 20) || 'each', rate: money(Math.max(0, +c.rate || 0)), zohoItemId: str(c.zohoItemId, 40) })).filter(c => c.name) : cur.catalogue;
+      S.settings.billing = { ...cur, vatRate: B.vatRate !== undefined ? vatRate : cur.vatRate, pricesIncludeVat: B.pricesIncludeVat !== undefined ? !!B.pricesIncludeVat : cur.pricesIncludeVat, autoInvoice: B.autoInvoice !== undefined ? !!B.autoInvoice : cur.autoInvoice, currency: str(B.currency || cur.currency, 3).toUpperCase() || 'ZAR', zohoTaxId: B.zohoTaxId !== undefined ? str(B.zohoTaxId, 40) : cur.zohoTaxId, catalogue };
+    }
     if (data.policy) S.settings.policy = data.policy;
     if (data.desk) S.settings.desk = { phone: data.desk.phone || '', email: data.desk.email || '' };
     if (data.etaMinutes) S.settings.etaMinutes = +data.etaMinutes || 25;
@@ -595,11 +743,12 @@ function createModel({ db, env, bus, filesDir }) {
   return {
     S, STEPS, stepLabel, bld, tech, feed, save, changed, saveMeta, flushBms,
     setNotifier: n => { notifier = n; }, onOutboxStatus,
+    setZoho: z => { zoho = z; }, zWork, zEnqueue, zRetry, zSyncAll, zStatus, requestInvoice, setJobBilling, setServiceBilling, totals,
     newJob, setStep, advance, autoAssign, sign, addPhotos, fileFor, saveDataUrl,
     raiseAlarm, clearAlarm, evaluate, applyReadings, setConnStatus, connStatus, gsmInbound,
     stateFor, upsertUser, deleteUser, upsertBuilding, deleteBuilding, updateSettings,
     setContacts, upsertUnit, setUnitRemoved, addService, deleteService, upsertTech, deleteTech, SERVICE_TYPES,
-    stop() { clearInterval(bmsTimer); clearInterval(wd); flushBms(); },
+    stop() { clearInterval(bmsTimer); clearInterval(wd); clearInterval(zTimer); flushBms(); },
   };
 }
 

@@ -108,8 +108,32 @@ function bacnetDevice(objects) {
   return sock;
 }
 
+/* Zoho Books stand-in: OAuth token endpoint + the Books v3 endpoints the connector uses. */
+function zohoMock() {
+  const z = { calls: [], contacts: [], invoices: [], persons: [], tokens: 0, expireNext: false };
+  z.srv = http.createServer((req, res) => {
+    let b = ''; req.on('data', d => { b += d; }); req.on('end', () => {
+      const u = new URL(req.url, 'http://x'), body = b ? JSON.parse(b) : null;
+      const out = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+      z.calls.push({ method: req.method, path: u.pathname, q: Object.fromEntries(u.searchParams), auth: req.headers.authorization, body });
+      if (u.pathname === '/oauth/v2/token') { z.tokens++; return u.searchParams.get('refresh_token') === 'rt' ? out(200, { access_token: 'at' + z.tokens, expires_in: 3600 }) : out(400, { error: 'invalid_code' }); }
+      if (z.expireNext) { z.expireNext = false; return out(401, { code: 57, message: 'You are not authorized to perform this operation' }); }
+      if (req.headers.authorization !== 'Zoho-oauthtoken at' + z.tokens) return out(401, { code: 57, message: 'bad token' });
+      if (u.pathname !== '/books/v3/organizations' && u.searchParams.get('organization_id') !== 'org1') return out(400, { code: 6041, message: 'org missing' });
+      if (u.pathname === '/books/v3/organizations') return out(200, { code: 0, organizations: [{ organization_id: 'org1', name: 'Bothelec Aircon Solutions', currency_code: 'ZAR' }] });
+      if (u.pathname === '/books/v3/contacts' && req.method === 'GET') return out(200, { code: 0, contacts: z.contacts.filter(c => c.contact_name === u.searchParams.get('contact_name')) });
+      if (u.pathname === '/books/v3/contacts' && req.method === 'POST') { const c = { contact_id: 'c' + (z.contacts.length + 1), ...body }; z.contacts.push(c); return out(201, { code: 0, contact: c }); }
+      if (u.pathname === '/books/v3/contacts/contactpersons') { z.persons.push(body); return out(201, { code: 0, contact_person: { contact_person_id: 'p' + z.persons.length } }); }
+      if (u.pathname === '/books/v3/invoices' && req.method === 'GET') return out(200, { code: 0, invoices: z.invoices.filter(i => i.reference_number === u.searchParams.get('reference_number')) });
+      if (u.pathname === '/books/v3/invoices' && req.method === 'POST') { const i = { invoice_id: 'i' + (z.invoices.length + 1), invoice_number: 'INV-' + String(z.invoices.length + 1).padStart(6, '0'), status: 'draft', ...body }; z.invoices.push(i); return out(201, { code: 0, invoice: i }); }
+      out(404, { code: 404, message: 'not found' });
+    });
+  });
+  return z;
+}
+
 /* ---------- harness ---------- */
-let app, base, cookie = '', sms, smtp, smsPort, mqttBroker, mqttPort;
+let app, base, cookie = '', sms, smtp, smsPort, mqttBroker, mqttPort, zoho;
 const ctx = {};
 async function req(method, url, body, opts = {}) {
   const res = await fetch(base + url, { method, headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(opts.cookie !== undefined ? (opts.cookie ? { Cookie: opts.cookie } : {}) : (cookie ? { Cookie: cookie } : {})), ...(opts.headers || {}) }, body: body !== undefined ? JSON.stringify(body) : undefined });
@@ -125,6 +149,7 @@ async function login(email, password) {
 before(async () => {
   sms = bulkSmsMock(); smsPort = await listen(sms.srv);
   smtp = smtpSink(); const smtpPort = await listen(smtp.srv);
+  zoho = zohoMock(); const zohoPort = await listen(zoho.srv);
   const Aedes = require('aedes');
   mqttBroker = (Aedes.createBroker ? await Aedes.createBroker() : new Aedes());
   const mqttSrv = net.createServer(mqttBroker.handle); mqttPort = await listen(mqttSrv); ctx.mqttSrv = mqttSrv;
@@ -134,6 +159,7 @@ before(async () => {
     SMS_PROVIDER: 'bulksms', BULKSMS_URL: `http://127.0.0.1:${smsPort}/v1`, BULKSMS_TOKEN_ID: 'tid', BULKSMS_TOKEN_SECRET: 'tsecret', BULKSMS_FROM: 'Bothelec',
     EMAIL_PROVIDER: 'smtp', SMTP_HOST: '127.0.0.1', SMTP_PORT: String(smtpPort), SMTP_SECURE: 'false', EMAIL_FROM: 'Bothelec Aircon Solutions <alerts@bothelec.test>',
     DESK_PHONE: '082 000 0001', DESK_EMAIL: 'desk@bothelec.test', WEBHOOK_TOKEN: 'hooktoken', AUTO_ASSIGN_DELAY_MS: '100', PUBLIC_URL: 'https://bothelec.test',
+    ZOHO_CLIENT_ID: 'cid', ZOHO_CLIENT_SECRET: 'cs', ZOHO_REFRESH_TOKEN: 'rt', ZOHO_ORG_ID: 'org1', ZOHO_ACCOUNTS_URL: `http://127.0.0.1:${zohoPort}`, ZOHO_API_URL: `http://127.0.0.1:${zohoPort}/books/v3`,
   });
   await app.start(0);
   base = `http://127.0.0.1:${app.server.address().port}`;
@@ -141,7 +167,7 @@ before(async () => {
 });
 after(async () => {
   await app.stop();
-  sms.srv.close(); smtp.srv.close(); ctx.mqttSrv.close(); mqttBroker.close();
+  sms.srv.close(); smtp.srv.close(); zoho.srv.close(); ctx.mqttSrv.close(); mqttBroker.close();
   ctx.modbus && ctx.modbus.close(); ctx.bacnet && ctx.bacnet.close();
 });
 
@@ -442,4 +468,75 @@ test('older data is converted: single manager/ops fields become contacts, equipm
   assert.equal(b.units[0].id, 'AHU-9');
   assert.equal(b.manager, undefined);
   m.stop();
+});
+
+test('parts & labour on a job → signed report → draft invoice in Zoho Books (client + contacts pushed)', async () => {
+  // a fresh job on B1
+  const t = (await req('POST', '/api/techs', { name: 'Billing Tech', phone: '084 999 0000' })).data.tech; // earlier tests leave everyone busy
+  let r = await req('POST', '/api/jobs', { building: 'B1', equipment: 'AHU-03 · Air handling unit', fault: 'Noisy fan', urgency: 'Medium' });
+  const id = r.data.id;
+  await until(async () => (await req('GET', '/api/state')).data.jobs.find(j => j.id === id).status === 'assigned');
+  assert.ok(t.id);
+  const lines = [{ kind: 'Call-out', code: 'CALLOUT', description: 'Call-out fee', qty: 1, unitPrice: 650 }, { kind: 'Labour', code: 'LAB-HR', description: 'Labour (technician)', qty: 2, unitPrice: 550 }, { kind: 'Part', description: 'Fan bearing', qty: 2, unitPrice: 199.99 }];
+  // a client cannot edit billing
+  const cc = await login('client2@bothelec.test', 'client-pass-1');
+  assert.equal((await req('PUT', `/api/jobs/${id}/billing`, { lines }, { cookie: cc })).status, 403);
+  assert.equal((await req('PUT', `/api/jobs/${id}/billing`, { lines: [{ description: 'x', qty: 0, unitPrice: 5 }] })).status, 400, 'qty must be > 0');
+  r = await req('PUT', `/api/jobs/${id}/billing`, { lines });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.deepEqual(r.data.totals, { subtotal: 2149.98, vat: 322.5, total: 2472.48 });
+  for (let k = 0; k < 2; k++) await req('POST', `/api/jobs/${id}/advance`, {});
+  await req('PATCH', `/api/jobs/${id}`, { findings: 'Bearing worn', work: 'Bearings replaced' });
+  await req('POST', `/api/jobs/${id}/advance`, {});
+  const mailsBefore = smtp.mails.length;
+  await req('POST', `/api/jobs/${id}/sign`, { signature: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', name: 'L. Pillay' });
+  const job = await until(async () => { const j = (await req('GET', '/api/state')).data.jobs.find(x => x.id === id); return j.invoice && j; }, 15000);
+  assert.equal(job.invoice.number, 'INV-000001');
+  assert.match(job.invoice.url, /#\/invoices\/i1$/);
+  const inv = zoho.invoices[0];
+  assert.equal(inv.reference_number, id);
+  assert.equal(inv.customer_id, 'c1');
+  assert.deepEqual(inv.line_items.map(l => [l.name, l.quantity, l.rate]), [['Call-out fee', 1, 650], ['Labour (technician)', 2, 550], ['Fan bearing', 2, 199.99]]);
+  const contact = zoho.contacts[0];
+  assert.equal(contact.contact_name, 'Demonstration Site');
+  assert.equal(contact.contact_type, 'customer');
+  assert.ok(contact.contact_persons.some(p => p.email === 'building.manager@example.com'));
+  assert.ok(zoho.calls.filter(c => c.path.startsWith('/books')).every(c => c.auth === 'Zoho-oauthtoken at1' || c.auth.startsWith('Zoho-oauthtoken at')));
+  // report email carries the parts & labour table
+  await until(() => smtp.mails.slice(mailsBefore).some(m => /Parts &(amp;)? labour/.test(m.data)));
+  // already invoiced: billing locked, second request refused
+  assert.equal((await req('PUT', `/api/jobs/${id}/billing`, { lines })).status, 400);
+  assert.equal((await req('POST', `/api/jobs/${id}/invoice`, {})).status, 400);
+});
+
+test('Zoho: new building contact is added as a contact person; expired token is refreshed; retries do not duplicate invoices', async () => {
+  let st = (await req('GET', '/api/state')).data;
+  const b1 = st.buildings.find(b => b.id === 'B1');
+  await req('PUT', '/api/buildings/B1/contacts', { contacts: [...b1.contacts, { name: 'New Person', role: 'Building Manager', email: 'new.person@bothelec.test' }] });
+  await until(() => zoho.persons.some(p => p.email === 'new.person@bothelec.test' && p.contact_id === 'c1' && p.first_name === 'New' && p.last_name === 'Person'));
+  // logged planned service with lines → manual invoice; token expires first
+  let r = await req('POST', '/api/services', { building: 'B1', unit: 'CT-01', date: '2026-11-01', type: 'Planned maintenance', tech: 'T3', work: 'Basin cleaned', billing: { lines: [{ kind: 'Labour', description: 'Planned service: cooling tower', qty: 1, unitPrice: 1800 }] } });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const svId = r.data.service.id;
+  // simulate an invoice that already exists in Zoho for this reference (e.g. created before a timeout)
+  zoho.invoices.push({ invoice_id: 'iX', invoice_number: 'INV-EXISTING', reference_number: svId, status: 'draft' });
+  zoho.expireNext = true;
+  const tokensBefore = zoho.tokens;
+  r = await req('POST', `/api/services/${svId}/invoice`, {});
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const sv = await until(async () => { const x = (await req('GET', '/api/state')).data.services.find(y => y.id === svId); return x.invoice && x; });
+  assert.equal(sv.invoice.number, 'INV-EXISTING', 'linked to the existing invoice instead of creating a duplicate');
+  assert.equal(zoho.invoices.filter(i => i.reference_number === svId).length, 1);
+  assert.ok(zoho.tokens > tokensBefore, 'token refreshed after 401');
+  // connection test + sync log
+  r = await req('POST', '/api/admin/zoho/test', {});
+  assert.equal(r.data.organisation.name, 'Bothelec Aircon Solutions');
+  st = (await req('GET', '/api/state')).data;
+  assert.ok(st.admin.zoho.configured);
+  assert.ok(st.admin.zoho.log.some(x => x.kind === 'invoice' && x.status === 'done'));
+  // price list & VAT settings
+  r = await req('PUT', '/api/admin/settings', { billing: { vatRate: 60 } });
+  assert.equal(r.status, 400);
+  r = await req('PUT', '/api/admin/settings', { billing: { catalogue: [{ code: 'X1', name: 'Test item', kind: 'Part', unit: 'each', rate: 10 }] } });
+  assert.equal((await req('GET', '/api/state')).data.billing.catalogue[0].name, 'Test item');
 });

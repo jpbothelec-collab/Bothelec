@@ -1,0 +1,60 @@
+'use strict';
+/* Zoho Books API client (v3). All Zoho-specific URLs and field names live in this file.
+ *
+ * Setup (see README → Zoho Books): create a "Self Client" in the Zoho API console for your data centre,
+ * generate a refresh token with scope ZohoBooks.fullaccess.all, and set in .env:
+ *   ZOHO_DC=com|eu|in|com.au|jp|ca|sa   ZOHO_CLIENT_ID  ZOHO_CLIENT_SECRET  ZOHO_REFRESH_TOKEN  ZOHO_ORG_ID
+ * ZOHO_ACCOUNTS_URL / ZOHO_API_URL override the URLs (used by the tests). */
+
+function createZohoClient(env) {
+  const dc = (env.ZOHO_DC || 'com').replace(/^\./, '');
+  const accountsUrl = (env.ZOHO_ACCOUNTS_URL || `https://accounts.zoho.${dc}`).replace(/\/$/, '');
+  const apiUrl = (env.ZOHO_API_URL || `https://www.zohoapis.${dc}/books/v3`).replace(/\/$/, '');
+  const appUrl = (env.ZOHO_APP_URL || `https://books.zoho.${dc}`).replace(/\/$/, '');
+  const org = env.ZOHO_ORG_ID || '';
+  const configured = !!(env.ZOHO_CLIENT_ID && env.ZOHO_CLIENT_SECRET && env.ZOHO_REFRESH_TOKEN && org);
+  let token = null, tokenExp = 0;
+
+  async function accessToken(force) {
+    if (!force && token && Date.now() < tokenExp - 60e3) return token;
+    const q = new URLSearchParams({ refresh_token: env.ZOHO_REFRESH_TOKEN, client_id: env.ZOHO_CLIENT_ID, client_secret: env.ZOHO_CLIENT_SECRET, grant_type: 'refresh_token' });
+    const res = await fetch(`${accountsUrl}/oauth/v2/token?${q}`, { method: 'POST', signal: AbortSignal.timeout(20000) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.access_token) throw new Error('Zoho sign-in failed: ' + (data.error || res.status) + ' (check ZOHO_DC, client id/secret and refresh token)');
+    token = data.access_token; tokenExp = Date.now() + (+data.expires_in || 3600) * 1000;
+    return token;
+  }
+
+  async function call(method, path, body, retried) {
+    const sep = path.includes('?') ? '&' : '?';
+    const res = await fetch(`${apiUrl}${path}${sep}organization_id=${encodeURIComponent(org)}`, {
+      method,
+      headers: { Authorization: 'Zoho-oauthtoken ' + await accessToken(), ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(30000),
+    });
+    if (res.status === 401 && !retried) { await accessToken(true); return call(method, path, body, true); }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || (data.code !== undefined && data.code !== 0)) {
+      const err = new Error(`Zoho Books ${res.status}: ${data.message || 'request failed'}`);
+      err.retry = res.status === 429 || res.status >= 500;
+      throw err;
+    }
+    return data;
+  }
+
+  return {
+    configured, dc, org,
+    invoiceUrl: id => `${appUrl}/app/${org}#/invoices/${id}`,
+    contactUrl: id => `${appUrl}/app/${org}#/contacts/${id}`,
+    async test() { const d = await call('GET', '/organizations'); const o = (d.organizations || []).find(x => String(x.organization_id) === String(org)); if (!o) throw new Error(`Connected, but organisation ${org} was not found on this account`); return { name: o.name, currency: o.currency_code }; },
+    async findContact(name) { const d = await call('GET', `/contacts?contact_name=${encodeURIComponent(name)}`); return (d.contacts || []).find(c => c.contact_name === name) || null; },
+    async createContact(payload) { const d = await call('POST', '/contacts', payload); return d.contact; },
+    async updateContact(id, payload) { const d = await call('PUT', `/contacts/${id}`, payload); return d.contact; },
+    async addContactPerson(payload) { const d = await call('POST', '/contacts/contactpersons', payload); return d.contact_person; },
+    async findInvoiceByReference(ref) { const d = await call('GET', `/invoices?reference_number=${encodeURIComponent(ref)}`); return (d.invoices || []).find(i => i.reference_number === ref) || null; },
+    async createInvoice(payload) { const d = await call('POST', '/invoices', payload); return d.invoice; },
+  };
+}
+
+module.exports = { createZohoClient };
