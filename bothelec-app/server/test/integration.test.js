@@ -158,8 +158,14 @@ test('client call-out → auto-assign → SMS + email → job card → signed re
   // a client user for building B2 only
   let r = await req('POST', '/api/admin/users', { name: 'Client Two', email: 'client2@bothelec.test', phone: '083 111 2222', role: 'client', buildings: ['B2'], password: 'client-pass-1' });
   assert.equal(r.status, 200, JSON.stringify(r.data));
-  r = await req('POST', '/api/admin/buildings', { id: 'B2', name: 'Rosebank Office Park — Block C', managerEmail: 'rosebank.bm@bothelec.test', opsEmail: 'rosebank.ops@bothelec.test' });
-  assert.equal(r.status, 200);
+  // two building managers + an ops manager; one contact opted out of notifications
+  r = await req('PUT', '/api/buildings/B2/contacts', { contacts: [
+    { name: 'M. Khumalo', role: 'Building Manager', phone: '083 200 0001', email: 'rosebank.bm@bothelec.test' },
+    { name: 'S. Nkosi', role: 'Building Manager', phone: '083 200 0002', email: 'rosebank.bm2@bothelec.test' },
+    { name: 'D. Smith', role: 'Operations Manager', email: 'rosebank.ops@bothelec.test' },
+    { name: 'Quiet Person', role: 'Building Manager', email: 'quiet@bothelec.test', notify: false }] });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal((await req('PUT', '/api/buildings/B2/contacts', { contacts: [{ name: 'X', role: 'Building Manager', email: 'not-an-email' }] })).status, 400);
   const clientCookie = await login('client2@bothelec.test', 'client-pass-1');
 
   // client cannot see other buildings
@@ -192,7 +198,8 @@ test('client call-out → auto-assign → SMS + email → job card → signed re
   assert.equal(newSms[0].body[0].from, 'Bothelec');
   await until(() => smtp.mails.length >= mailBefore + 4);
   const rcpts = smtp.mails.slice(mailBefore).flatMap(m => m.to).join(' ');
-  for (const a of ['rosebank.bm@bothelec.test', 'rosebank.ops@bothelec.test', 'desk@bothelec.test', 'client2@bothelec.test']) assert.ok(rcpts.includes(a), 'email to ' + a);
+  assert.ok(!rcpts.includes('quiet@bothelec.test'), 'opted-out contact not emailed');
+  for (const a of ['rosebank.bm@bothelec.test', 'rosebank.bm2@bothelec.test', 'rosebank.ops@bothelec.test', 'desk@bothelec.test', 'client2@bothelec.test']) assert.ok(rcpts.includes(a), 'email to ' + a);
 
   // technician works the job
   await req('POST', `/api/jobs/${id}/advance`, {}); // on the way
@@ -357,4 +364,82 @@ test('GSM modem driver (AT commands)', async () => {
   assert.equal(r.providerId, 'CMGS 17');
   assert.deepEqual(written.slice(0, 3), ['AT\r', 'AT+CMGF=1\r', 'AT+CMGS="+27821112222"\r']);
   assert.equal(written[3], 'Test 1\x1A');
+});
+
+test('technicians: add, edit, reassign a job, remove', async () => {
+  let r = await req('POST', '/api/techs', { name: 'N. Sithole', skill: 'Refrigeration', phone: '084 123 4567', email: 'nsithole@bothelec.test' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const id = r.data.tech.id;
+  assert.equal((await req('POST', '/api/techs', { name: 'Bad', phone: 'abc' })).status, 400);
+  r = await req('POST', '/api/techs', { id, name: 'N. Sithole', skill: 'Refrigeration & VRF', phone: '084 123 4567', vehicle: 'V4' });
+  let st = (await req('GET', '/api/state')).data;
+  assert.equal(st.technicians.find(t => t.id === id).skill, 'Refrigeration & VRF');
+  assert.equal(st.vehicles.find(v => v.id === 'V4').driver, id);
+  // assign an open job to the new technician (SMS to them), then removal is blocked while it is open
+  const job = st.jobs.find(j => j.status === 'logged') || (await (async () => { const x = await req('POST', '/api/jobs', { building: 'B1', fault: 'Test fault', equipment: 'AHU-01 · Air handling unit' }); return { id: x.data.id }; })());
+  await until(async () => ['logged', 'assigned'].includes((await req('GET', '/api/state')).data.jobs.find(j => j.id === job.id).status));
+  const smsBefore = sms.sent.length;
+  r = await req('POST', `/api/jobs/${job.id}/assign`, { tech: id });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  await until(() => sms.sent.slice(smsBefore).some(m => m.body[0].to === '+27841234567'));
+  r = await req('DELETE', `/api/techs/${id}`);
+  assert.equal(r.status, 400); assert.match(r.data.error, /open job/);
+  // finish the job, then remove
+  for (let k = 0; k < 2; k++) await req('POST', `/api/jobs/${job.id}/advance`, {});
+  await req('PATCH', `/api/jobs/${job.id}`, { findings: 'x', work: 'y' });
+  await req('POST', `/api/jobs/${job.id}/advance`, {});
+  await req('POST', `/api/jobs/${job.id}/sign`, { signature: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', name: 'Z' });
+  r = await req('DELETE', `/api/techs/${id}`);
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  st = (await req('GET', '/api/state')).data;
+  assert.ok(!st.technicians.some(t => t.id === id));
+  assert.equal(st.jobs.find(j => j.id === job.id).techName, 'N. Sithole', 'history keeps the name');
+});
+
+test('equipment register and unit service history', async () => {
+  let r = await req('POST', '/api/buildings/B1/units', { unit: { id: 'SPL-77', type: 'Split unit', location: 'Level 1 - West zone', make: 'LG', model: 'S12', serial: 'LG-1', installed: '2024-01-10', refrigerant: 'R32', intervalMonths: 6 } });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal((await req('POST', '/api/buildings/B1/units', { unit: { id: 'SPL-77' } })).status, 400, 'duplicate id');
+  let st = (await req('GET', '/api/state')).data;
+  assert.ok(st.buildings.find(b => b.id === 'B1').equipment.includes('SPL-77 · Split unit'), 'unit offered in call-outs');
+  r = await req('POST', '/api/services', { building: 'B1', unit: 'SPL-77', date: '2026-01-05', type: 'Planned maintenance', tech: 'T1', work: 'Filters cleaned', notes: 'All good' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal((await req('POST', '/api/services', { building: 'B1', unit: 'SPL-77', work: '' })).status, 400);
+  assert.equal((await req('POST', '/api/services', { building: 'B1', unit: 'SPL-77', date: '2999-01-01', work: 'x' })).status, 400, 'future date');
+  // a call on the unit is linked to it
+  r = await req('POST', '/api/jobs', { building: 'B1', equipment: 'SPL-77 · Split unit', fault: 'Dripping water' });
+  st = (await req('GET', '/api/state')).data;
+  assert.equal(st.jobs.find(j => j.id === r.data.id).unit, 'SPL-77');
+  assert.equal(st.services.filter(x => x.unit === 'SPL-77').length, 1);
+  assert.equal(st.services.find(x => x.unit === 'SPL-77').techName, 'J. Mokoena');
+  // rename keeps history attached
+  await req('POST', '/api/buildings/B1/units', { originalId: 'SPL-77', unit: { id: 'SPL-78', type: 'Split unit', intervalMonths: 6 } });
+  st = (await req('GET', '/api/state')).data;
+  assert.equal(st.services.filter(x => x.unit === 'SPL-78').length, 1);
+  assert.equal(st.jobs.find(j => j.id === r.data.id).unit, 'SPL-78');
+  // decommission hides it from call-outs but keeps the record
+  await req('POST', '/api/buildings/B1/units/SPL-78/removed', { removed: true });
+  st = (await req('GET', '/api/state')).data;
+  const b1 = st.buildings.find(b => b.id === 'B1');
+  assert.ok(!b1.equipment.includes('SPL-78 · Split unit'));
+  assert.ok(b1.units.find(u => u.id === 'SPL-78').removed);
+  // a client can read but not write
+  const cc = await login('client2@bothelec.test', 'client-pass-1');
+  assert.equal((await req('POST', '/api/services', { building: 'B2', unit: 'VRF-01', work: 'x' }, { cookie: cc })).status, 403);
+  assert.ok((await req('GET', '/api/state', undefined, { cookie: cc })).data.services.every(x => x.building === 'B2'));
+});
+
+test('older data is converted: single manager/ops fields become contacts, equipment text becomes units', () => {
+  const { createModel } = require('../lib/model');
+  const { openDb } = require('../lib/db');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bothelec-mig-'));
+  const db = openDb(dir);
+  db.setKv('meta', { id: 'meta', seq: 1 });
+  db.put('buildings', { id: 'BX', name: 'Old', manager: 'A', managerPhone: '0821111111', managerEmail: 'a@x.co', ops: 'B', opsEmail: 'b@x.co', equipment: ['AHU-9 · Air handling unit', 'Other / not sure'] });
+  const m = createModel({ db, env: { ADMIN_PASSWORD: 'password123' }, bus: new EventEmitter(), filesDir: path.join(dir, 'f') });
+  const b = m.S.buildings[0];
+  assert.deepEqual(b.contacts.map(c => [c.name, c.role]), [['A', 'Building Manager'], ['B', 'Operations Manager']]);
+  assert.equal(b.units[0].id, 'AHU-9');
+  assert.equal(b.manager, undefined);
+  m.stop();
 });

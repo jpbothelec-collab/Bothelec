@@ -79,36 +79,56 @@ function demoBms() {
 function seed(demo) {
   const s = {
     meta: { id: 'meta', seq: 1048 },
-    buildings: [], technicians: [], jobs: [], feed: [], alarms: [], vehicles: [], trips: [], assessments: [], documents: [], bms: {},
+    buildings: [], technicians: [], jobs: [], services: [], feed: [], alarms: [], vehicles: [], trips: [], assessments: [], documents: [], bms: {},
   };
   if (!demo) return s;
 
   s.meta.seq = 1052;
+  const unit = (id, type, location, make, model, serial, installed, refrigerant, intervalMonths = 3) => ({ id, type, location, make, model, serial, installed, refrigerant, capacity: '', intervalMonths, notes: '', removed: false });
+  const contact = (name, role, phone, email) => ({ id: 'C' + Math.random().toString(36).slice(2, 7), name, role, phone, email, notify: true });
   s.buildings = [
     {
       id: 'B1', name: 'Demonstration Building', client: 'Demonstration Site', area: 'Midrand',
-      manager: 'L. Pillay', managerPhone: '+27 11 555 0101', managerEmail: 'building.manager@example.com',
-      ops: 'R. Botha', opsPhone: '+27 11 555 0102', opsEmail: 'operations.manager@example.com',
-      equipment: ['AHU-01 · Air handling unit', 'AHU-02 · Air handling unit', 'AHU-03 · Air handling unit', 'CH-01 · Air-cooled chiller', 'CH-02 · Air-cooled chiller', 'CHWP-01 · Chilled water pump', 'CT-01 · Cooling tower', 'FCU-L2-04 · Fan coil unit', 'Other / not sure'],
+      contacts: [contact('L. Pillay', 'Building Manager', '+27 11 555 0101', 'building.manager@example.com'), contact('R. Botha', 'Operations Manager', '+27 11 555 0102', 'operations.manager@example.com')],
+      units: [
+        unit('AHU-01', 'Air handling unit', 'Roof plant', 'Carrier', '39HQ-12', 'C39-110233', '2019-03-14', ''),
+        unit('AHU-02', 'Air handling unit', 'Roof plant', 'Carrier', '39HQ-12', 'C39-110234', '2019-03-14', ''),
+        unit('AHU-03', 'Air handling unit', 'Roof plant', 'Carrier', '39HQ-10', 'C39-110298', '2019-03-14', ''),
+        unit('CH-01', 'Air-cooled chiller', 'Roof plant', 'Daikin', 'EWAD-TZ 400', 'DK-4471902', '2019-02-20', 'R134a', 6),
+        unit('CH-02', 'Air-cooled chiller', 'Roof plant', 'Daikin', 'EWAD-TZ 400', 'DK-4471903', '2019-02-20', 'R134a', 6),
+        unit('CHWP-01', 'Chilled water pump', 'Basement plant room', 'Grundfos', 'NBG 80-65', 'GF-88231', '2019-02-20', '', 6),
+        unit('CT-01', 'Cooling tower', 'Roof plant', 'BAC', 'VTL-150', 'BAC-77410', '2019-02-25', '', 3),
+        unit('FCU-L2-04', 'Fan coil unit', 'Level 2 - East zone', 'Samsung', 'AM071', 'SM-2201-04', '2021-07-08', 'R410A', 6),
+      ],
       locations: ['Roof plant', 'Basement plant room', 'Level 1 - West zone', 'Level 1 - Central zone', 'Level 2 - Central zone', 'Level 2 - East zone', 'Level 3 - West zone', 'Level 3 - East zone'],
       autoCall: true, comfort: [20, 24],
       connector: { type: 'simulator' },
     },
     {
       id: 'B2', name: 'Rosebank Office Park — Block C', client: 'Rosebank Properties', area: 'Rosebank',
-      manager: 'M. Khumalo', managerPhone: '+27 11 555 0201', managerEmail: '', ops: 'D. Smith', opsPhone: '+27 11 555 0202', opsEmail: '',
-      equipment: ['VRF-01 · Outdoor unit', 'VRF-02 · Outdoor unit', 'Split unit · Server room', 'Extract fan EF-01', 'Other / not sure'],
+      contacts: [contact('M. Khumalo', 'Building Manager', '+27 11 555 0201', ''), contact('D. Smith', 'Operations Manager', '+27 11 555 0202', '')],
+      units: [
+        unit('VRF-01', 'VRF outdoor unit', 'Roof', 'Daikin', 'RXYQ20U', 'DV-301122', '2020-11-02', 'R410A'),
+        unit('VRF-02', 'VRF outdoor unit', 'Roof', 'Daikin', 'RXYQ20U', 'DV-301123', '2020-11-02', 'R410A'),
+        unit('SPL-SR1', 'Split unit (server room)', 'Server room', 'Mitsubishi Electric', 'MSZ-LN35', 'ME-55871', '2022-04-19', 'R32'),
+        unit('EF-01', 'Extract fan', 'Roof', 'Systemair', 'MUB 042', 'SA-10042', '2020-11-02', '', 12),
+      ],
       locations: ['Roof', 'Ground floor', 'Level 1', 'Level 2', 'Server room'], autoCall: true, comfort: [20, 24],
       connector: { type: 'none' },
     },
     {
       id: 'B3', name: 'Centurion Medical Suites', client: 'CMS Holdings', area: 'Centurion',
-      manager: 'A. Govender', managerPhone: '+27 12 555 0301', managerEmail: '', ops: 'K. Mahlangu', opsPhone: '+27 12 555 0302', opsEmail: '',
-      equipment: ['AHU-T1 · Theatre AHU', 'Chiller CH-A', 'Packaged unit PU-02', 'Other / not sure'],
+      contacts: [contact('A. Govender', 'Building Manager', '+27 12 555 0301', ''), contact('K. Mahlangu', 'Operations Manager', '+27 12 555 0302', '')],
+      units: [
+        unit('AHU-T1', 'Theatre AHU', 'Roof plant', 'Trane', 'CLCF 14', 'TR-998812', '2018-09-01', '', 1),
+        unit('CH-A', 'Chiller', 'Roof plant', 'Carrier', '30RB 262', 'CR-30RB-4410', '2018-09-01', 'R410A', 6),
+        unit('PU-02', 'Packaged unit', 'Ward A', 'York', 'YPAL 060', 'YK-602210', '2020-01-15', 'R410A'),
+      ],
       locations: ['Theatre 1', 'Theatre 2', 'Ward A', 'Roof plant'], autoCall: true, comfort: [20, 24],
       connector: { type: 'none' },
     },
   ];
+  s.buildings.forEach(b => { b.equipment = [...b.units.map(u => `${u.id} · ${u.type}`), 'Other / not sure']; });
   s.technicians = [
     { id: 'T1', name: 'J. Mokoena', skill: 'HVAC senior · Chillers & AHUs', phone: '+27 82 555 1001', email: '', status: 'available', vehicle: 'V1' },
     { id: 'T2', name: 'T. Naidoo', skill: 'HVAC technician · VRF & splits', phone: '+27 82 555 1002', email: '', status: 'available', vehicle: 'V2' },
@@ -121,10 +141,27 @@ function seed(demo) {
     job.status = STEPS[ago.length - 1].key;
     s.jobs.push(job);
   };
-  mk(1048, { building: 'B1', equipment: 'AHU-02 · Air handling unit', location: 'Level 2 - Central zone', fault: 'Office not cooling, warm air', urgency: 'High', tech: 'T1', findings: 'Supply fan belt worn and slipping. Low airflow to Level 2.', work: 'Fan belt replaced and tensioned. Airflow and set-point verified.', signedBy: 'L. Pillay' }, [1450, 1443, 1427, 1402, 1324, 1321]);
-  mk(1049, { building: 'B2', equipment: 'Split unit · Server room', location: 'Server room', fault: 'Unit leaking water onto floor', urgency: 'High', tech: 'T2' }, [70, 62, 35]);
-  mk(1050, { building: 'B3', equipment: 'Packaged unit PU-02', location: 'Ward A', fault: 'Noisy compressor', urgency: 'Medium', tech: 'T3' }, [40, 31]);
+  mk(1048, { building: 'B1', unit: 'AHU-02', techName: 'J. Mokoena', equipment: 'AHU-02 · Air handling unit', location: 'Level 2 - Central zone', fault: 'Office not cooling, warm air', urgency: 'High', tech: 'T1', findings: 'Supply fan belt worn and slipping. Low airflow to Level 2.', work: 'Fan belt replaced and tensioned. Airflow and set-point verified.', signedBy: 'L. Pillay' }, [1450, 1443, 1427, 1402, 1324, 1321]);
+  mk(1049, { building: 'B2', equipment: 'SPL-SR1 · Split unit (server room)', location: 'Server room', fault: 'Unit leaking water onto floor', urgency: 'High', tech: 'T2' }, [70, 62, 35]);
+  mk(1050, { building: 'B3', equipment: 'PU-02 · Packaged unit', location: 'Ward A', fault: 'Noisy compressor', urgency: 'Medium', tech: 'T3' }, [40, 31]);
   mk(1051, { building: 'B1', equipment: 'FCU-L2-04 · Fan coil unit', location: 'Level 2 - East zone', fault: 'Thermostat display blank', urgency: 'Low' }, [12]);
+  const daysAgo = d => new Date(Date.now() - d * 864e5).toISOString().slice(0, 10);
+  const sv = (n, building, unit, d, type, tech, work, notes = '') => s.services.push({ id: 'SV' + n, building, unit, date: daysAgo(d), type, tech, techName: (s.technicians.find(t => t.id === tech) || {}).name || '', work, notes, by: 'Seed', at: new Date(Date.now() - d * 864e5).toISOString() });
+  sv(1, 'B1', 'AHU-02', 182, 'Planned maintenance', 'T1', 'Quarterly service: filters replaced, belts checked, coil cleaned, drain flushed.', 'Belt showing early wear.');
+  sv(2, 'B1', 'AHU-02', 92, 'Planned maintenance', 'T1', 'Quarterly service: filters replaced, bearings greased, belt re-tensioned.');
+  sv(3, 'B1', 'AHU-01', 95, 'Planned maintenance', 'T1', 'Quarterly service: filters replaced, coil cleaned.');
+  sv(4, 'B1', 'AHU-03', 40, 'Filter change', 'T3', 'Pre-filters and bag filters replaced after filter ΔP alarm.');
+  sv(5, 'B1', 'CH-01', 150, 'Planned maintenance', 'T1', '6-monthly service: refrigerant pressures logged, condenser coils washed, oil checked.', 'Suction 3.1 bar / discharge 14.8 bar.');
+  sv(6, 'B1', 'CT-01', 30, 'Inspection', 'T3', 'Basin cleaned, water treatment dosing verified, fan belt checked.');
+  sv(7, 'B2', 'SPL-SR1', 120, 'Planned maintenance', 'T2', 'Indoor unit cleaned, drain line flushed, gas pressures checked.');
+  sv(9, 'B1', 'CH-02', 160, 'Planned maintenance', 'T1', '6-monthly service on standby chiller: run test, pressures logged, coils washed.');
+  sv(10, 'B1', 'CHWP-01', 75, 'Inspection', 'T3', 'Pump vibration and bearing temperature checked, mechanical seal inspected.');
+  sv(11, 'B1', 'FCU-L2-04', 200, 'Planned maintenance', 'T2', 'Filter cleaned, condensate tray treated, fan speed checked.');
+  sv(12, 'B2', 'VRF-01', 60, 'Planned maintenance', 'T2', 'Outdoor coil cleaned, operating pressures and error log checked.');
+  sv(13, 'B2', 'VRF-02', 60, 'Planned maintenance', 'T2', 'Outdoor coil cleaned, operating pressures and error log checked.');
+  sv(14, 'B3', 'CH-A', 100, 'Refrigerant top-up', 'T4', 'Small leak found on service valve and repaired; 1.2 kg R410A added.', 'Leak test passed.');
+  sv(15, 'B3', 'PU-02', 45, 'Repair', 'T3', 'Compressor contactor replaced.');
+  sv(8, 'B3', 'AHU-T1', 20, 'Planned maintenance', 'T1', 'Monthly theatre AHU service: HEPA ΔP logged, pressure cascade verified.');
   s.technicians[1].status = 'on job'; s.technicians[1].job = 'BA-1049';
   s.technicians[2].status = 'on job'; s.technicians[2].job = 'BA-1050';
 
@@ -134,10 +171,10 @@ function seed(demo) {
     { id: 'A2', building: 'B1', at: minsAgo(250), priority: 'Medium', equip: 'AHU-03', desc: 'Filter ΔP high', status: 'Cleared', history: [] },
   ];
   s.vehicles = [
-    { id: 'V1', reg: 'JM 42 KL GP', model: 'Toyota Hilux 2.4 GD-6', driver: 'T1', status: 'parked', location: 'Bothelec depot', odo: 84210, nextService: 90000, fuel: 64 },
-    { id: 'V2', reg: 'TN 18 PX GP', model: 'Nissan NP200', driver: 'T2', status: 'on site', location: 'Rosebank', odo: 121480, nextService: 125000, fuel: 38 },
-    { id: 'V3', reg: 'SV 77 BB GP', model: 'Toyota Hilux 2.4 GD-6', driver: 'T3', status: 'in transit', location: 'N1 → Centurion', odo: 55302, nextService: 60000, fuel: 81 },
-    { id: 'V4', reg: 'PD 09 TR GP', model: 'Isuzu D-Max 250', driver: 'T4', status: 'parked', location: 'Bothelec depot', odo: 143900, nextService: 140000, fuel: 22 },
+    { id: 'V1', reg: 'JM 42 KL GP', model: 'Toyota Hilux 2.4 GD-6', driver: 'T1', status: 'parked', location: 'Bothelec depot', odo: 84210, fuel: 64 },
+    { id: 'V2', reg: 'TN 18 PX GP', model: 'Nissan NP200', driver: 'T2', status: 'on site', location: 'Rosebank', odo: 121480, fuel: 38 },
+    { id: 'V3', reg: 'SV 77 BB GP', model: 'Toyota Hilux 2.4 GD-6', driver: 'T3', status: 'in transit', location: 'N1 → Centurion', odo: 55302, fuel: 81 },
+    { id: 'V4', reg: 'PD 09 TR GP', model: 'Isuzu D-Max 250', driver: 'T4', status: 'parked', location: 'Bothelec depot', odo: 143900, fuel: 22 },
   ];
   s.trips = [
     { id: 'D-301', what: 'Refrigerant R410A × 2 cylinders', from: 'Bothelec depot', to: 'Rosebank Office Park — Block C', driver: 'T2', vehicle: 'V2', status: 'Delivered', at: minsAgo(55) },

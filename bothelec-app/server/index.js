@@ -129,7 +129,25 @@ function createServer(env = process.env, opts = {}) {
     setTimeout(() => { if (j.status === 'logged') model.autoAssign(j); }, +(env.AUTO_ASSIGN_DELAY_MS || 2000)).unref();
   }, { roles: ALL });
   R('POST', '/api/jobs/:id/advance', (req, res, { u, p }) => { const j = job(res, u, p.id); if (j) result(res, model.advance(j, u)); }, { roles: FIELD });
-  R('POST', '/api/jobs/:id/assign', (req, res, { u, p, body }) => { const j = job(res, u, p.id); if (!j) return; if (j.status !== 'logged') return fail(res, 400, 'Job already assigned.'); result(res, model.autoAssign(j, u, body.tech), {}); }, { roles: STAFF });
+  R('POST', '/api/jobs/:id/assign', (req, res, { u, p, body }) => {
+    const j = job(res, u, p.id); if (!j) return;
+    if (!['logged', 'assigned', 'enroute'].includes(j.status)) return fail(res, 400, 'Jobs can only be (re)assigned before the technician is on site.');
+    if (body.tech && !model.tech(body.tech)) return fail(res, 400, 'Technician not found.');
+    if (body.tech && body.tech === j.tech) return fail(res, 400, 'Already assigned to that technician.');
+    if (body.tech && model.tech(body.tech).status !== 'available') return fail(res, 400, model.tech(body.tech).name + ' is not available.');
+    result(res, model.autoAssign(j, u, body.tech), {});
+  }, { roles: STAFF });
+
+  // building contacts & equipment register / service history
+  R('PUT', '/api/buildings/:bid/contacts', (req, res, { p, body }) => result(res, model.setContacts(p.bid, body.contacts)), { roles: STAFF });
+  R('POST', '/api/buildings/:bid/units', (req, res, { p, body }) => result(res, model.upsertUnit(p.bid, body.unit || {}, body.originalId)), { roles: STAFF });
+  R('POST', '/api/buildings/:bid/units/:uid/removed', (req, res, { p, body }) => result(res, model.setUnitRemoved(p.bid, decodeURIComponent(p.uid), !!body.removed)), { roles: STAFF });
+  R('POST', '/api/services', (req, res, { u, body }) => { if (!canBuilding(u, body.building)) return fail(res, 404, 'Not found'); result(res, model.addService(body, u)); }, { roles: FIELD });
+  R('DELETE', '/api/services/:id', (req, res, { p }) => result(res, model.deleteService(p.id)), { roles: STAFF });
+
+  // technicians
+  R('POST', '/api/techs', (req, res, { body }) => result(res, model.upsertTech(body)), { roles: STAFF });
+  R('DELETE', '/api/techs/:id', (req, res, { p }) => result(res, model.deleteTech(p.id)), { roles: STAFF });
   R('PATCH', '/api/jobs/:id', (req, res, { u, p, body }) => {
     const j = job(res, u, p.id); if (!j) return;
     if (!['onsite', 'completed'].includes(j.status) && !isStaff(u)) return fail(res, 400, 'The job card can be edited while on site.');

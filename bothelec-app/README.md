@@ -133,7 +133,20 @@ Edit under **Settings → SMS & email → Notification policy**. Defaults:
 
 Failed messages are retried after 1, 5 and 15 minutes, then shown as failed in the message log, where they can be retried.
 
-## 5. Logins and roles
+## 5. Buildings, contacts, technicians and equipment
+
+- **Contacts** (Service → Clients → *Manage contacts*): each building can have any number of **building managers** and
+  **operations managers** (plus other contacts). Everyone with *Notify* ticked receives the SMS/email updates for their role.
+- **Technicians** (Service → Technicians): service desk staff add, edit and remove technicians (mobile for job SMS, email, vehicle).
+  A technician with open jobs can't be removed until those jobs are reassigned (job page → *Reassign*). Past jobs keep their name.
+  To let a technician sign in, add a user with the Technician role and link it to their record.
+- **Equipment & service history** (Service → Equipment & history): the register of aircon units per building
+  (make, model, serial, install date, refrigerant, service interval). Each unit's page shows its full **service history**:
+  planned services logged by technicians, every service call with findings, work done and signed report, and every alarm.
+  Next service due is worked out from the interval, and overdue units are flagged. *Decommission* hides a unit from call-outs
+  but keeps its history.
+
+## 6. Logins and roles
 
 | Role | Can |
 |---|---|

@@ -86,7 +86,7 @@
   }
   /* ---------------- navigation ---------------- */
   const SERVICE_SIDE = [
-    ['service/live', 'Live Jobs', 'grid'], ['service/callout', 'Call-outs', 'phone'], ['service/jobcards', 'Job Cards', 'card'],
+    ['service/live', 'Live Jobs', 'grid'], ['service/callout', 'Call-outs', 'phone'], ['service/jobcards', 'Job Cards', 'card'], ['service/equipment', 'Equipment & history', 'fcu'],
     ['service/techs', 'Technicians', 'users', 'staff'], ['service/notifications', 'Notifications', 'bell'], ['assessments', 'Assessments', 'clipboard', 'field'],
     ['service/reports', 'Reports', 'chart'], ['service/clients', 'Clients', 'building', 'staff'], ['service/documents', 'Documents', 'doc'],
   ];
@@ -101,7 +101,7 @@
     { id: 'dashboard', label: 'Dashboard', icon: 'grid', home: 'dashboard', side: SERVICE_SIDE, sub: 'Operations & Service' },
     { id: 'bms', label: 'Info Hub', icon: 'info', home: 'bms/overview', side: BMS_SIDE, sub: 'Building Monitoring Centre' },
     { id: 'service', label: 'Service & Maintenance', short: 'Service', icon: 'wrench', home: 'service/live', side: SERVICE_SIDE, sub: 'Operations & Service' },
-    { id: 'vehicles', label: 'Vehicles', icon: 'truck', home: 'vehicles', side: [['vehicles', 'Fleet', 'truck'], ['vehicles/service', 'Service schedule', 'wrench']], sub: 'Fleet', roles: ['admin', 'desk', 'tech'] },
+    { id: 'vehicles', label: 'Vehicles', icon: 'truck', home: 'vehicles', side: [['vehicles', 'Fleet', 'truck']], sub: 'Fleet', roles: ['admin', 'desk', 'tech'] },
     { id: 'dispatch', label: 'Driver Dispatch', short: 'Dispatch', icon: 'pin', home: 'dispatch', side: [['dispatch', 'Trips & deliveries', 'route'], ['dispatch/new', 'New trip', 'plus']], sub: 'Logistics', roles: ['admin', 'desk', 'tech'] },
     { id: 'assessments', label: 'Assessments', short: 'Assess', icon: 'clipboard', home: 'assessments', side: [['assessments', 'All assessments', 'clipboard'], ['assessments/new', 'New assessment', 'plus']], sub: 'Site assessments', roles: ['admin', 'desk', 'tech'] },
     { id: 'settings', label: 'Settings', icon: 'gear', home: 'settings', side: SETTINGS_SIDE, sub: 'Administration', roles: ['admin'] },
@@ -127,7 +127,7 @@
         : `<strong>${esc(b.name || '—')}</strong>`}<small>${esc(b.area || '')}</small>
         <span class="pill ${conn === 'none' ? 'off' : 'ok'}" style="margin-top:3px;width:max-content"><i></i>${conn === 'none' ? 'No BMS link' : conn === 'simulator' ? 'Simulated' : 'BMS ' + conn}</span></div></div>
       <nav class="side">${mod.side.filter(sideAllowed).map(([href, label, icon]) => {
-        const on = key === href || (key.startsWith(href + '/') && href.includes('/')) || (href === 'bms/ahus' && key === 'bms/ahu') || (href === 'service/jobcards' && (key === 'service/job' || key === 'service/report')) || (href === 'bms/alarms' && key === 'bms/alarm') || (href === 'settings/buildings' && key === 'settings/building') || (href === 'settings/users' && key === 'settings/user');
+        const on = key === href || (key.startsWith(href + '/') && href.includes('/')) || (href === 'bms/ahus' && key === 'bms/ahu') || (href === 'service/jobcards' && (key === 'service/job' || key === 'service/report')) || (href === 'bms/alarms' && key === 'bms/alarm') || (href === 'settings/buildings' && key === 'settings/building') || (href === 'settings/users' && key === 'settings/user') || (href === 'service/equipment' && (key === 'service/unit' || key === 'service/unitedit')) || (href === 'service/techs' && key === 'service/tech') || (href === 'service/clients' && key === 'service/building');
         const count = href === 'bms/alarms' && activeAlarms ? `<span class="count">${activeAlarms}</span>` : '';
         return `<a href="#/${href}" class="${on ? 'active' : ''}">${ic(icon)}<span>${esc(label)}</span>${count}</a>`;
       }).join('')}</nav>
@@ -208,7 +208,7 @@
       if (d.building === ui.site) { S.bms = cur; if (isLive()) rerender(); }
     });
   }
-  const NO_AUTO = new Set(['service/callout', 'dispatch/new', 'assessments/new', 'settings', 'settings/building', 'settings/user', 'settings/users', 'settings/buildings', 'settings/outbox', 'account', 'bms/points']);
+  const NO_AUTO = new Set(['service/callout', 'service/tech', 'service/building', 'service/unitedit', 'service/unit', 'dispatch/new', 'assessments/new', 'settings', 'settings/building', 'settings/user', 'settings/users', 'settings/buildings', 'settings/outbox', 'account', 'bms/points']);
   function rerender() {
     if (!S) return;
     const a = document.activeElement;
@@ -421,7 +421,7 @@
   function jobsTable(list, compact) {
     if (!list.length) return `<div class="empty">No jobs here.</div>`;
     return `<div class="table-wrap"><table><thead><tr><th>Job</th><th>Building</th>${compact ? '' : '<th class="hide-sm">Equipment</th>'}<th>Urgency</th><th>Status</th><th class="hide-sm">Technician</th><th>Logged</th></tr></thead><tbody>
-      ${list.map(j => `<tr class="click" data-href="#/service/job/${j.id}"><td><strong>${j.id}</strong></td><td>${esc(bld(j.building).name)}<br><small>${esc(j.location)}</small></td>${compact ? '' : `<td class="hide-sm">${esc(j.equipment)}</td>`}<td>${urgPill(j.urgency)}</td><td>${jobStatusPill(j)}</td><td class="hide-sm">${j.tech ? esc(tech(j.tech).name) : '<small>Unassigned</small>'}</td><td class="mono">${hhmm(j.steps.logged)}</td></tr>`).join('')}
+      ${list.map(j => `<tr class="click" data-href="#/service/job/${j.id}"><td><strong>${j.id}</strong></td><td>${esc(bld(j.building).name)}<br><small>${esc(j.location)}</small></td>${compact ? '' : `<td class="hide-sm">${esc(j.equipment)}</td>`}<td>${urgPill(j.urgency)}</td><td>${jobStatusPill(j)}</td><td class="hide-sm">${techName(j) ? esc(techName(j)) : '<small>Unassigned</small>'}</td><td class="mono">${hhmm(j.steps.logged)}</td></tr>`).join('')}
     </tbody></table></div>`;
   }
   function timeline(items) {
@@ -472,7 +472,8 @@
       <div class="card"><header><h2>Jobs</h2><div class="seg">${[['open', 'Open'], ['all', 'All'], ['done', 'Completed']].map(([k, l]) => `<button data-action="jobfilter" data-v="${k}" class="${ui.jobFilter === k ? 'on' : ''}">${l}</button>`).join('')}</div></header>${jobsTable(list)}</div>`;
   }
   function viewCallout() {
-    const b = site().id ? site() : (S.buildings[0] || { equipment: [], locations: [] });
+    const pf = ui.prefill; ui.prefill = null;
+    const b = (pf && bld(pf.building).id ? bld(pf.building) : null) || (site().id ? site() : (S.buildings[0] || { equipment: [], locations: [] }));
     ui.pendingPhotos = [];
     if (!S.buildings.length) return head('New call-out') + '<div class="card empty">No buildings are linked to your account yet.</div>';
     return head('New call-out', 'Client app → Bothelec service desk') +
@@ -480,7 +481,7 @@
         <form class="card form" data-form="callout">
           <header><h2>New call-out</h2><span class="pill">DRAFT</span></header>
           <div class="field"><label for="f-b">Building</label><select id="f-b" name="building" data-change="building">${S.buildings.map(x => `<option value="${x.id}" ${x.id === b.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div>
-          <div class="field"><label for="f-e">Equipment</label><select id="f-e" name="equipment">${(b.equipment || []).map(e => `<option>${esc(e)}</option>`).join('')}</select></div>
+          <div class="field"><label for="f-e">Equipment</label><select id="f-e" name="equipment">${(b.equipment || []).map(e => `<option ${pf && pf.equipment === e ? 'selected' : ''}>${esc(e)}</option>`).join('')}</select></div>
           <div class="field"><label for="f-l">Location</label><select id="f-l" name="location">${(b.locations || []).map(e => `<option>${esc(e)}</option>`).join('')}</select></div>
           <div class="field"><label for="f-f">Fault</label><textarea id="f-f" name="fault" required placeholder="e.g. Office not cooling, warm air"></textarea></div>
           <div class="field"><label>Urgency</label><div class="radio-row">${['Low', 'Medium', 'High', 'Critical'].map(u => `<label><input type="radio" name="urgency" value="${u}" ${u === 'Medium' ? 'checked' : ''}><span>${u}</span></label>`).join('')}</div></div>
@@ -509,7 +510,7 @@
           <div><strong>${esc(bld(j.building).name)}</strong><br><small>${esc(j.equipment)} · ${esc(j.location)}</small></div>
           <p style="margin:8px 0;font-size:13px">${esc(j.fault)}</p>
           <div class="bar"><i style="width:${(i + 1) / STEPS.length * 100}%;${i >= 5 ? 'background:var(--accent)' : ''}"></i></div>
-          <div style="display:flex;justify-content:space-between;margin-top:8px">${jobStatusPill(j)}<small>${j.tech ? esc(tech(j.tech).name) : 'Unassigned'}</small></div></a>`;
+          <div style="display:flex;justify-content:space-between;margin-top:8px">${jobStatusPill(j)}<small>${techName(j) ? esc(techName(j)) : 'Unassigned'}</small></div></a>`;
       }).join('')}</div>`;
   }
   function viewJob(id) {
@@ -540,7 +541,7 @@
               <div class="field"><label>Photographs (${j.photos.length})</label><div class="thumbs" id="thumbs">${j.photos.map(p => `<img src="${p}" alt="Job photo">`).join('')}</div>
                 ${canEdit ? `<label class="btn sm" style="width:max-content">${ic('camera')}Add photo<input type="file" accept="image/*" capture="environment" multiple hidden data-photos="${j.id}"></label>` : ''}</div>
               ${j.status === 'completed' && isField() ? `<div class="field"><label>Customer signature</label><canvas class="sig" id="sig"></canvas>
-                <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="signedBy" placeholder="Signed by (name)" value="${esc(b.manager || '')}" style="flex:1;min-width:160px;padding:9px 12px;background:var(--bg2);border:1px solid var(--line2);border-radius:8px;font-size:16px"><button class="btn sm" type="button" data-action="sigclear">Clear</button></div></div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap"><input id="signedBy" placeholder="Signed by (name)" value="${esc((contactsOf(b, 'Building Manager')[0] || {}).name || '')}" style="flex:1;min-width:160px;padding:9px 12px;background:var(--bg2);border:1px solid var(--line2);border-radius:8px;font-size:16px"><button class="btn sm" type="button" data-action="sigclear">Clear</button></div></div>
                 <button class="btn primary" data-action="sign" data-id="${j.id}">${ic('check')}Complete &amp; share report</button>` : ''}
               ${j.signature ? `<div class="field"><label>Customer signature · ${esc(j.signedBy)}</label><img class="sig-img" src="${j.signature}" alt="Signature"></div>` : ''}
             </div></div>` : ''}
@@ -548,10 +549,11 @@
         <div class="grid" style="align-content:start">
           <div class="card"><header><h2>Job ${j.id}</h2><small>${esc(j.equipment.split(' · ')[0])}</small></header>
             <dl class="kv"><dt>Client</dt><dd>${esc(b.client)}</dd><dt>Fault</dt><dd>${esc(j.fault)}</dd><dt>Source</dt><dd>${esc(j.source)}</dd>
-            <dt>Technician</dt><dd>${t ? esc(t.name) : '—'}</dd><dt>Arrived</dt><dd>${hhmm(j.steps.onsite)}</dd><dt>Completed</dt><dd>${hhmm(j.steps.completed)}</dd>
+            <dt>Technician</dt><dd>${esc(techName(j) || '—')}</dd><dt>Arrived</dt><dd>${hhmm(j.steps.onsite)}</dd><dt>Completed</dt><dd>${hhmm(j.steps.completed)}</dd>
             <dt>Time on site</dt><dd>${dur(onSiteMin)}</dd><dt>Photos</dt><dd>${j.photos.length ? j.photos.length + ' attached' : '—'}</dd>
             <dt>Signature</dt><dd>${j.signature || j.status === 'report' ? '<span style="color:var(--accent)">Captured ✓</span>' : '<span style="color:var(--amber)">Pending</span>'}</dd></dl>
-            <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">${t && t.phone ? `<a class="btn sm" href="tel:${t.phone.replace(/\s/g, '')}">${ic('phone')}Call technician</a>` : ''}<a class="btn sm" href="tel:${(b.managerPhone || '').replace(/\s/g, '')}">${ic('phone')}Building manager</a></div>
+            ${isStaff() && ['logged', 'assigned', 'enroute'].includes(j.status) ? `<div class="field" style="margin-top:12px"><label for="reassignTech">${j.tech ? 'Reassign to' : 'Assign to'}</label><div style="display:flex;gap:8px"><select id="reassignTech" style="flex:1">${S.technicians.filter(x => x.status === 'available').map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('') || '<option value="">No technician available</option>'}</select><button class="btn sm" data-action="reassign" data-id="${j.id}">${j.tech ? 'Reassign' : 'Assign'}</button></div></div>` : ''}
+            <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">${t && t.phone ? `<a class="btn sm" href="tel:${t.phone.replace(/\s/g, '')}">${ic('phone')}Call technician</a>` : ''}${(contactsOf(b, 'Building Manager')[0] || {}).phone ? `<a class="btn sm" href="tel:${contactsOf(b, 'Building Manager')[0].phone.replace(/\s/g, '')}">${ic('phone')}Building manager</a>` : ''}${j.unit ? `<a class="btn sm" href="#/service/unit/${j.building}/${encodeURIComponent(j.unit)}">${ic('fcu')}Unit history</a>` : ''}</div>
           </div>
           <div class="card"><header><h2>Delivery log</h2><small>${log.filter(n => n.status === 'sent').length} sent · SMS & email</small></header>
             ${log.length ? `<div class="table-wrap"><table><thead><tr><th>Step</th><th>Recipient</th><th>Status</th></tr></thead><tbody>
@@ -581,15 +583,6 @@
         <h2 style="margin:18px 0 6px">Timeline</h2>${timeline(STEPS.filter(s => j.steps[s.key]).map(s => ({ label: s.label, at: j.steps[s.key], icon: s.icon })))}
       </article>`;
   }
-  function viewTechs() {
-    return head('Technicians', 'Field team status') + `<div class="grid g2">${S.technicians.map(t => {
-      const v = byId(S.vehicles, t.vehicle), j = t.job && byId(S.jobs, t.job);
-      return `<div class="card"><header><h2>${esc(t.name)}</h2>${statusPill(t.status)}</header><small>${esc(t.skill)}</small>
-        <dl class="kv" style="margin-top:10px"><dt>Current job</dt><dd>${j && t.status === 'on job' ? `<a href="#/service/job/${j.id}">${j.id} · ${esc(stepLabel(j.status))}</a>` : '—'}</dd><dt>Vehicle</dt><dd>${v ? esc(v.reg) : '—'}</dd><dt>Location</dt><dd>${v ? esc(v.location) : '—'}</dd></dl>
-        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">${t.phone ? `<a class="btn sm" href="tel:${t.phone.replace(/\s/g, '')}">${ic('phone')}Call</a>` : ''}
-        ${t.status !== 'on job' && (isStaff() || S.me.techId === t.id) ? `<button class="btn sm" data-action="duty" data-id="${t.id}">${t.status === 'off' ? 'Set on duty' : 'Set off duty'}</button>` : ''}</div></div>`;
-    }).join('')}</div>`;
-  }
   function viewNotifs() {
     ui.unread = 0; updateBell();
     return head('Notifications', 'From the moment a call is logged, everyone stays informed') +
@@ -605,14 +598,174 @@
     return head('Reports', 'Signed service reports and performance') +
       `<div class="grid g4" style="margin-bottom:14px">${kpi('doc', 'Signed reports', done.length)}${kpi('clock', 'Avg. response', dur(resp))}${kpi('wrench', 'Avg. time on site', dur(site))}${kpi('check', 'First-time fix', '100', '%')}</div>
       <div class="card"><div class="table-wrap"><table><thead><tr><th>Report</th><th>Building</th><th class="hide-sm">Equipment</th><th>Technician</th><th>Date</th></tr></thead><tbody>
-      ${done.map(j => `<tr class="click" data-href="#/service/report/${j.id}"><td><strong>${j.id}</strong></td><td>${esc(bld(j.building).name)}</td><td class="hide-sm">${esc(j.equipment)}</td><td>${j.tech ? esc(tech(j.tech).name) : '—'}</td><td>${dmy(j.steps.report)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">No signed reports yet.</td></tr>'}
+      ${done.map(j => `<tr class="click" data-href="#/service/report/${j.id}"><td><strong>${j.id}</strong></td><td>${esc(bld(j.building).name)}</td><td class="hide-sm">${esc(j.equipment)}</td><td>${esc(techName(j) || '—')}</td><td>${dmy(j.steps.report)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">No signed reports yet.</td></tr>'}
       </tbody></table></div></div>`;
   }
-  function viewClients() {
-    return head('Clients', 'Buildings under service') + `<div class="grid g3">${S.buildings.map(b => `<div class="card"><header><h2>${esc(b.name)}</h2></header><small>${esc(b.client)} · ${esc(b.area)}</small>
-      <dl class="kv" style="margin-top:10px"><dt>Building manager</dt><dd><a href="tel:${(b.managerPhone || "").replace(/\s/g, '')}">${esc(b.manager)}</a></dd><dt>Operations manager</dt><dd><a href="tel:${(b.opsPhone || "").replace(/\s/g, '')}">${esc(b.ops)}</a></dd>
-      <dt>Open jobs</dt><dd>${openJobs().filter(j => j.building === b.id).length}</dd><dt>Assets</dt><dd>${b.equipment.length - 1}</dd></dl></div>`).join('')}</div>`;
+  /* ---------------- views: technicians ---------------- */
+  const techName = j => ((j && tech(j.tech)) || {}).name || (j && j.techName) || '';
+  function viewTechs() {
+    return head('Technicians', `${S.technicians.length} in the field team`, isStaff() ? `<a class="btn primary sm" href="#/service/tech/new">${ic('plus')}Add technician</a>` : '') +
+      (S.technicians.length ? '' : '<div class="card empty">No technicians yet.</div>') +
+      `<div class="grid g2">${S.technicians.map(t => {
+      const v = byId(S.vehicles, t.vehicle), j = t.job && byId(S.jobs, t.job);
+      const done = S.jobs.filter(x => x.tech === t.id && x.status === 'report').length;
+      return `<div class="card"><header><h2>${esc(t.name)}</h2>${statusPill(t.status)}</header><small>${esc(t.skill || '')}</small>
+        <dl class="kv" style="margin-top:10px"><dt>Current job</dt><dd>${j && t.status === 'on job' ? `<a href="#/service/job/${j.id}">${j.id} · ${esc(stepLabel(j.status))}</a>` : '—'}</dd>
+        <dt>Mobile</dt><dd>${esc(t.phone || '—')}</dd><dt>Email</dt><dd>${esc(t.email || '—')}</dd><dt>Vehicle</dt><dd>${v ? esc(v.reg) : '—'}</dd><dt>Jobs completed</dt><dd>${done}</dd></dl>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">${t.phone ? `<a class="btn sm" href="tel:${t.phone.replace(/\s/g, '')}">${ic('phone')}Call</a>` : ''}
+        ${t.status !== 'on job' && (isStaff() || S.me.techId === t.id) ? `<button class="btn sm" data-action="duty" data-id="${t.id}">${t.status === 'off' ? 'Set on duty' : 'Set off duty'}</button>` : ''}
+        ${isStaff() ? `<a class="btn sm" href="#/service/tech/${t.id}">Edit</a><button class="btn sm danger" data-action="deltech" data-id="${t.id}">Remove</button>` : ''}</div></div>`;
+    }).join('')}</div>`;
   }
+  function viewTechEdit(id) {
+    const t = id === 'new' ? { status: 'available' } : tech(id);
+    if (!t || !isStaff()) return head('Technician not found');
+    return head(id === 'new' ? 'Add technician' : 'Edit ' + esc(t.name), 'Technicians receive job SMS on this mobile number', `<a class="btn sm" href="#/service/techs">${ic('back')}All technicians</a>`) +
+      `<form class="card form" data-form="tech" data-id="${id === 'new' ? '' : t.id}" style="max-width:640px">
+        ${field('Full name', 'name', t.name, 'text', 'required')}${field('Skills / role', 'skill', t.skill, 'text', 'placeholder="e.g. HVAC technician · VRF & splits"')}
+        <div class="grid g2">${field('Mobile (for job SMS)', 'phone', t.phone, 'tel', 'placeholder="082 123 4567"')}${field('Email', 'email', t.email, 'email')}</div>
+        <div class="grid g2"><div class="field"><label>Vehicle</label><select name="vehicle"><option value="">— none —</option>${S.vehicles.map(v => `<option value="${v.id}" ${t.vehicle === v.id ? 'selected' : ''}>${esc(v.reg)} · ${esc(v.model)}</option>`).join('')}</select></div>
+        <div class="field"><label>Status</label><select name="status" ${t.status === 'on job' ? 'disabled' : ''}>${t.status === 'on job' ? '<option>On a job</option>' : [['available', 'Available'], ['off', 'Off duty']].map(([v, l]) => `<option value="${v}" ${t.status === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div>
+        <p class="muted" style="margin:0;font-size:12px">To let this technician sign in to the app, add a user with the Technician role under Settings → Users and link it to this record.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary">${ic('check')}Save technician</button>${id === 'new' ? '' : `<button type="button" class="btn danger" data-action="deltech" data-id="${t.id}">Remove technician</button>`}</div></form>`;
+  }
+
+  /* ---------------- views: buildings & contacts ---------------- */
+  const CONTACT_ROLES = ['Building Manager', 'Operations Manager', 'Other'];
+  const contactsOf = (b, role) => (b.contacts || []).filter(c => !role || c.role === role);
+  const telLink = (p, label) => p ? `<a href="tel:${String(p).replace(/\s/g, '')}">${esc(label || p)}</a>` : '—';
+  function contactList(b) {
+    const list = contactsOf(b);
+    if (!list.length) return '<p class="muted" style="margin:6px 0">No contacts yet.</p>';
+    return `<div class="rows">${list.map(c => `<div class="row">${icS(c.role === 'Operations Manager' ? 'gear' : c.role === 'Building Manager' ? 'building' : 'users')}<div class="grow"><strong>${esc(c.name)}</strong><small>${esc(c.role)}${c.notify === false ? ' · notifications off' : ''}</small><small>${telLink(c.phone)}${c.email ? ` · <a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</small></div></div>`).join('')}</div>`;
+  }
+  function viewClients() {
+    return head('Clients', 'Buildings under service, their managers and equipment') + `<div class="grid g2">${S.buildings.map(b => `<div class="card"><header><h2>${esc(b.name)}</h2></header><small>${esc(b.client || '')} · ${esc(b.area || '')}</small>
+      ${contactList(b)}
+      <dl class="kv" style="margin-top:6px"><dt>Open jobs</dt><dd>${openJobs().filter(j => j.building === b.id).length}</dd><dt>Units</dt><dd>${(b.units || []).filter(u => !u.removed).length}</dd></dl>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">${isStaff() ? `<a class="btn sm primary" href="#/service/building/${b.id}">${ic('users')}Manage contacts</a>` : ''}<a class="btn sm" href="#/service/equipment/${b.id}">${ic('fcu')}Equipment & history</a></div></div>`).join('')}</div>`;
+  }
+  const contactRow = (c = { role: 'Building Manager', notify: true }) => `<div class="crow" data-row>
+      <input type="hidden" name="c_id" value="${esc(c.id || '')}">
+      <div class="field"><label>Name</label><input name="c_name" value="${esc(c.name || '')}" placeholder="Full name"></div>
+      <div class="field"><label>Role</label><select name="c_role">${CONTACT_ROLES.map(r => `<option ${c.role === r ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
+      <div class="field"><label>Mobile</label><input name="c_phone" type="tel" value="${esc(c.phone || '')}" placeholder="082 123 4567"></div>
+      <div class="field"><label>Email</label><input name="c_email" type="email" value="${esc(c.email || '')}"></div>
+      <label class="cnotify"><input type="checkbox" name="c_notify" ${c.notify !== false ? 'checked' : ''}> Notify</label>
+      <button type="button" class="btn sm danger" data-action="rmrow" aria-label="Remove contact">${ic('x')}</button></div>`;
+  function viewBuildingContacts(bid) {
+    const b = byId(S.buildings, bid);
+    if (!b || !isStaff()) return head('Building not found');
+    return head(`${esc(b.name)} · contacts`, 'Building managers and operations managers receive SMS and email updates when "Notify" is ticked', `<a class="btn sm" href="#/service/clients">${ic('back')}Clients</a>`) +
+      `<form class="card form" data-form="contacts" data-bid="${b.id}">
+        <div id="crows">${(b.contacts && b.contacts.length ? b.contacts : [{ role: 'Building Manager', notify: true }]).map(contactRow).join('')}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn sm" data-action="addrow" data-role="Building Manager">${ic('plus')}Add building manager</button><button type="button" class="btn sm" data-action="addrow" data-role="Operations Manager">${ic('plus')}Add operations manager</button><button type="button" class="btn sm" data-action="addrow" data-role="Other">${ic('plus')}Add other contact</button></div>
+        <div><button class="btn primary">${ic('check')}Save contacts</button></div></form>`;
+  }
+
+  /* ---------------- views: equipment register & service history ---------------- */
+  const today = () => new Date().toISOString().slice(0, 10);
+  const unitKey = j => j.unit || String(j.equipment || '').split(' · ')[0];
+  function unitHistory(bid, uid) {
+    const items = [];
+    S.services.filter(x => x.building === bid && x.unit === uid).forEach(x => items.push({ kind: 'service', at: x.date + 'T' + (x.at || '').slice(11), rec: x }));
+    S.jobs.filter(j => j.building === bid && unitKey(j) === uid).forEach(j => items.push({ kind: 'job', at: j.steps.completed || j.steps.logged, rec: j }));
+    S.alarms.filter(a => a.building === bid && a.equip === uid && a.priority !== 'Low').forEach(a => items.push({ kind: 'alarm', at: a.at, rec: a }));
+    return items.sort((x, y) => String(y.at).localeCompare(String(x.at)));
+  }
+  function lastServiced(bid, uid) {
+    const d = [...S.services.filter(x => x.building === bid && x.unit === uid).map(x => x.date), ...S.jobs.filter(j => j.building === bid && unitKey(j) === uid && j.steps.completed).map(j => j.steps.completed.slice(0, 10))].sort();
+    return d.length ? d[d.length - 1] : null;
+  }
+  function nextDue(u, last) {
+    if (!u.intervalMonths) return null;
+    const base = last || u.installed; if (!base) return null;
+    const d = new Date(base + 'T12:00:00'); d.setMonth(d.getMonth() + +u.intervalMonths);
+    return d.toISOString().slice(0, 10);
+  }
+  function duePill(due, last, u) {
+    if (u && !u.intervalMonths) return '<span class="pill off">No schedule</span>';
+    if (!last) return '<span class="pill warn">No service recorded</span>';
+    if (!due) return '<span class="pill off">No schedule</span>';
+    const days = Math.round((new Date(due) - new Date(today())) / 864e5);
+    if (days < 0) return `<span class="pill bad" title="Was due ${dmy(due)}">Overdue ${-days > 60 ? Math.round(-days / 30.4) + ' months' : -days + ' days'}</span>`;
+    if (days <= 14) return `<span class="pill warn" title="Due ${dmy(due)}">Due in ${days} day${days === 1 ? '' : 's'}</span>`;
+    return `<span class="pill ok">${dmy(due)}</span>`;
+  }
+  function liveStatus(bid, uid) {
+    const bm = ui.bmsCache[bid]; if (!bm) return null;
+    for (const k of ['ahus', 'chillers', 'pumps', 'towers', 'fans', 'fcus']) { const e = (bm[k] || []).find(x => x.id === uid); if (e) return e; }
+    return null;
+  }
+  function viewEquipment(bid) {
+    const b = byId(S.buildings, bid || ui.site) || S.buildings[0];
+    if (!b) return head('Equipment') + '<div class="card empty">No buildings yet.</div>';
+    const units = (b.units || []).filter(u => ui.showRemoved || !u.removed);
+    const rows = units.map(u => { const last = lastServiced(b.id, u.id); return { u, last, due: nextDue(u, last), open: openJobs().filter(j => j.building === b.id && unitKey(j) === u.id).length, live: liveStatus(b.id, u.id) }; });
+    const overdue = rows.filter(r => !r.u.removed && r.u.intervalMonths && (!r.last || (r.due && r.due < today()))).length;
+    const soon = rows.filter(r => r.due && r.due >= today() && (new Date(r.due) - new Date(today())) / 864e5 <= 14).length;
+    const removedCount = (b.units || []).filter(u => u.removed).length;
+    return head(`Equipment · ${esc(b.name)}`, 'Every aircon unit with its full service history',
+      `${S.buildings.length > 1 ? `<select data-change="eqsite" aria-label="Building" style="padding:8px 10px;background:var(--bg2);border:1px solid var(--line2);border-radius:8px">${S.buildings.map(x => `<option value="${x.id}" ${x.id === b.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : ''}${isStaff() ? `<a class="btn primary sm" href="#/service/unitedit/${b.id}/new">${ic('plus')}Add unit</a>` : ''}`) +
+      `<div class="grid g4" style="margin-bottom:14px">${kpi('fcu', 'Units', (b.units || []).filter(u => !u.removed).length)}${kpi('alert', 'Overdue / never serviced', overdue)}${kpi('clock', 'Due in 14 days', soon)}${kpi('wrench', 'Open calls', rows.reduce((s, r) => s + r.open, 0))}</div>
+      <div class="card">${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Unit</th><th class="hide-sm">Location</th><th class="hide-sm">Make / model</th><th>Last service</th><th>Next service</th><th class="hide-sm">Open calls</th></tr></thead><tbody>
+      ${rows.map(r => `<tr class="click ${r.u.removed ? 'muted' : ''}" data-href="#/service/unit/${b.id}/${encodeURIComponent(r.u.id)}"><td><strong>${esc(r.u.id)}</strong> ${r.live ? dot(r.live.status) : ''}<br><small>${esc(r.u.type || '')}${r.u.removed ? ' · decommissioned' : ''}</small></td><td class="hide-sm">${esc(r.u.location || '—')}</td><td class="hide-sm">${esc([r.u.make, r.u.model].filter(Boolean).join(' ') || '—')}</td><td class="mono">${r.last ? dmy(r.last) : '—'}</td><td>${r.u.removed ? '—' : duePill(r.due, r.last, r.u)}</td><td class="hide-sm">${r.open || ''}</td></tr>`).join('')}
+      </tbody></table></div>` : `<div class="empty">No units registered yet.${isStaff() ? ' Use “Add unit”.' : ''}</div>`}
+      ${removedCount ? `<p style="margin:10px 0 0"><a href="#" data-action="toggleremoved">${ui.showRemoved ? 'Hide' : 'Show'} ${removedCount} decommissioned unit${removedCount > 1 ? 's' : ''}</a></p>` : ''}</div>`;
+  }
+  const SERVICE_TYPES = ['Planned maintenance', 'Repair', 'Inspection', 'Filter change', 'Refrigerant top-up', 'Other'];
+  function historyItem(it) {
+    const r = it.rec;
+    if (it.kind === 'service') return `<li class="done"><span class="dot">${ic('wrench')}</span><div class="grow"><strong>${esc(r.type)}</strong><small>${esc(r.work)}</small>${r.notes ? `<small><em>${esc(r.notes)}</em></small>` : ''}<small>${esc(r.techName || 'Unassigned')} · logged by ${esc(r.by || '')}</small></div><time>${dmy(r.date)}</time>${isStaff() ? `<button class="btn sm" data-action="delservice" data-id="${r.id}" aria-label="Delete record" title="Delete record">${ic('x')}</button>` : ''}</li>`;
+    if (it.kind === 'job') return `<li class="${r.status === 'report' ? 'done' : ''}"><span class="dot">${ic('card')}</span><div class="grow"><strong><a href="#/service/job/${r.id}">${r.id}</a> · ${esc(r.fault)}</strong><small>${jobStatusPill(r)} ${urgPill(r.urgency)} ${esc(r.source || '')}</small>${r.findings ? `<small>Found: ${esc(r.findings)}</small>` : ''}${r.work ? `<small>Done: ${esc(r.work)}</small>` : ''}<small>${esc(techName(r) || 'Unassigned')}${r.status === 'report' ? ` · <a href="#/service/report/${r.id}">signed report</a>` : ''}</small></div><time>${dmy(it.at)}</time></li>`;
+    return `<li class="${r.status === 'Active' ? 'bad' : 'done'}"><span class="dot">${ic('alert')}</span><div class="grow"><strong><a href="#/bms/alarm/${r.id}">Alarm</a> · ${esc(r.desc)}</strong><small>${prioPill(r.priority)} ${statusPill(r.status)}${r.jobId ? ` · call ${r.jobId}` : ''}</small></div><time>${dmy(r.at)}</time></li>`;
+  }
+  function viewUnit(bid, uidRaw) {
+    const uid = decodeURIComponent(uidRaw || '');
+    const b = byId(S.buildings, bid), u = b && (b.units || []).find(x => x.id === uid);
+    if (!u) return head('Unit not found') + `<div class="card empty"><a href="#/service/equipment/${esc(bid || '')}">Back to equipment</a></div>`;
+    const hist = unitHistory(b.id, u.id), last = lastServiced(b.id, u.id), due = nextDue(u, last), live = liveStatus(b.id, u.id);
+    const nServ = hist.filter(h => h.kind === 'service').length, nJobs = hist.filter(h => h.kind === 'job').length;
+    return head(`${esc(u.id)} <small class="muted" style="font-weight:400">${esc(u.type || '')}</small> ${u.removed ? '<span class="pill off">Decommissioned</span>' : duePill(due, last, u)}`, `${esc(b.name)}${u.location ? ' · ' + esc(u.location) : ''}`,
+      `<a class="btn sm" href="#/service/equipment/${b.id}">${ic('back')}Equipment</a><button class="btn sm" data-action="print">${ic('print')}Print history</button>${!u.removed ? `<button class="btn sm primary" data-action="logcall" data-bid="${b.id}" data-uid="${esc(u.id)}">${ic('phone')}Log a call</button>` : ''}${isStaff() ? `<a class="btn sm" href="#/service/unitedit/${b.id}/${encodeURIComponent(u.id)}">Edit</a>` : ''}`) +
+      `<div class="grid split">
+        <div class="card"><header><h2>Service history</h2><small>${nServ} service${nServ === 1 ? '' : 's'} · ${nJobs} call${nJobs === 1 ? '' : 's'}</small></header>
+          ${hist.length ? `<ul class="timeline history">${hist.map(historyItem).join('')}</ul>` : '<div class="empty">No history yet.</div>'}</div>
+        <div class="grid" style="align-content:start">
+          <div class="card"><header><h3>Unit details</h3></header><dl class="kv">
+            <dt>Make</dt><dd>${esc(u.make || '—')}</dd><dt>Model</dt><dd>${esc(u.model || '—')}</dd><dt>Serial no.</dt><dd>${esc(u.serial || '—')}</dd>
+            <dt>Installed</dt><dd>${u.installed ? dmy(u.installed) : '—'}</dd><dt>Refrigerant</dt><dd>${esc(u.refrigerant || '—')}</dd>${u.capacity ? `<dt>Capacity</dt><dd>${esc(u.capacity)}</dd>` : ''}
+            <dt>Service interval</dt><dd>${u.intervalMonths ? `every ${u.intervalMonths} month${u.intervalMonths > 1 ? 's' : ''}` : 'not scheduled'}</dd>
+            <dt>Last serviced</dt><dd>${last ? dmy(last) : '—'}</dd><dt>Next service</dt><dd>${due ? dmy(due) : '—'}</dd></dl>
+            ${u.notes ? `<p style="margin:10px 0 0;font-size:13px">${esc(u.notes)}</p>` : ''}</div>
+          ${live ? `<div class="card"><header><h3>Live from the BMS</h3>${statusPill(live.status)}</header><dl class="kv">${['supplyTemp', 'returnTemp', 'supplyHz', 'load', 'chws', 'chwr', 'hz', 'fan', 'leaving'].filter(k => live[k] != null).map(k => `<dt>${{ supplyTemp: 'Supply air', returnTemp: 'Return air', supplyHz: 'Supply fan', load: 'Load', chws: 'CHW supply', chwr: 'CHW return', hz: 'Speed', fan: 'Fan', leaving: 'Leaving water' }[k]}</dt><dd>${live[k]}${{ supplyTemp: ' °C', returnTemp: ' °C', supplyHz: ' Hz', load: ' %', chws: ' °C', chwr: ' °C', hz: ' Hz', fan: ' %', leaving: ' °C' }[k]}</dd>`).join('')}</dl></div>` : ''}
+          ${isField() && !u.removed ? `<form class="card form noprint" data-form="service" data-bid="${b.id}" data-uid="${esc(u.id)}"><header><h3>Log a service</h3></header>
+            <div class="grid g2"><div class="field"><label>Date</label><input type="date" name="date" value="${today()}" max="${today()}" required></div>
+            <div class="field"><label>Type</label><select name="type">${SERVICE_TYPES.map(x => `<option>${x}</option>`).join('')}</select></div></div>
+            <div class="field"><label>Technician</label><select name="tech"><option value="">—</option>${S.technicians.map(t => `<option value="${t.id}" ${S.me.techId === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></div>
+            <div class="field"><label>Work done</label><textarea name="work" required placeholder="e.g. Filters replaced, coil cleaned, drain flushed"></textarea></div>
+            <div class="field"><label>Notes / readings (optional)</label><textarea name="notes" placeholder="e.g. Suction 3.1 bar, discharge 14.8 bar"></textarea></div>
+            <button class="btn primary">${ic('check')}Save to history</button></form>` : ''}
+        </div></div>`;
+  }
+  function viewUnitEdit(bid, uidRaw) {
+    const isNew = uidRaw === 'new', uid = decodeURIComponent(uidRaw || '');
+    const b = byId(S.buildings, bid);
+    const u = isNew ? { intervalMonths: 3 } : b && (b.units || []).find(x => x.id === uid);
+    if (!b || !u || !isStaff()) return head('Unit not found');
+    return head(isNew ? `Add unit · ${esc(b.name)}` : `Edit ${esc(u.id)}`, '', `<a class="btn sm" href="${isNew ? `#/service/equipment/${b.id}` : `#/service/unit/${b.id}/${encodeURIComponent(u.id)}`}">${ic('back')}Back</a>`) +
+      `<form class="card form" data-form="unit" data-bid="${b.id}" data-orig="${isNew ? '' : esc(u.id)}" style="max-width:720px">
+        <div class="grid g2">${field('Unit ID', 'id', u.id, 'text', 'required placeholder="e.g. AHU-04 or SPL-12"')}${field('Type', 'type', u.type, 'text', 'list="unitTypes" placeholder="e.g. Split unit"')}</div>
+        <datalist id="unitTypes">${['Air handling unit', 'Air-cooled chiller', 'Water-cooled chiller', 'Split unit', 'Cassette unit', 'Ducted unit', 'VRF outdoor unit', 'VRF indoor unit', 'Fan coil unit', 'Packaged unit', 'Cooling tower', 'Chilled water pump', 'Extract fan'].map(x => `<option value="${x}">`).join('')}</datalist>
+        <div class="field"><label>Location</label><input name="location" value="${esc(u.location || '')}" list="unitLocs"><datalist id="unitLocs">${(b.locations || []).map(x => `<option value="${esc(x)}">`).join('')}</datalist></div>
+        <div class="grid g3">${field('Make', 'make', u.make)}${field('Model', 'model', u.model)}${field('Serial number', 'serial', u.serial)}</div>
+        <div class="grid g3">${field('Installed', 'installed', u.installed, 'date')}${field('Refrigerant', 'refrigerant', u.refrigerant, 'text', 'placeholder="e.g. R410A"')}${field('Capacity', 'capacity', u.capacity, 'text', 'placeholder="e.g. 12 kW"')}</div>
+        ${field('Service every (months, 0 = no schedule)', 'intervalMonths', u.intervalMonths ?? 3, 'number', 'min="0" max="60"')}
+        <div class="field"><label>Notes</label><textarea name="notes">${esc(u.notes || '')}</textarea></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary">${ic('check')}Save unit</button>${isNew ? '' : `<button type="button" class="btn ${u.removed ? '' : 'danger'}" data-action="unitremoved" data-bid="${b.id}" data-uid="${esc(u.id)}" data-v="${u.removed ? '' : '1'}">${u.removed ? 'Restore unit' : 'Decommission unit'}</button>`}</div>
+        ${isNew ? '' : '<p class="muted" style="margin:0;font-size:12px">Decommissioning hides the unit from call-outs but keeps its full service history.</p>'}</form>`;
+  }
+
   function viewDocs() {
     return head('Documents', 'Site documentation') + `<div class="card"><div class="table-wrap"><table><thead><tr><th>Document</th><th>Type</th><th class="hide-sm">Size</th><th class="hide-sm">Updated</th><th></th></tr></thead><tbody>
       ${S.documents.map(d => `<tr><td>${ic('doc').replace('<svg', '<svg style="width:16px;height:16px;display:inline;vertical-align:-3px;margin-right:6px;fill:none;stroke:var(--cyan);stroke-width:1.7"')}${esc(d.name)}</td><td><span class="pill">${d.type}</span></td><td class="hide-sm">${d.size}</td><td class="hide-sm">${d.date}</td><td><button class="btn sm" data-action="doc">Open</button></td></tr>`).join('')}
@@ -854,11 +1007,10 @@
       `<form class="form" data-form="building" data-id="${id === 'new' ? '' : b.id}"><div class="grid g2">
         <div class="card form"><header><h2>Building & contacts</h2></header>
           ${field('Building name', 'name', b.name, 'text', 'required')}${field('Client', 'client', b.client)}${field('Area', 'area', b.area)}
-          <div class="grid g2">${field('Building manager', 'manager', b.manager)}${field('Manager mobile', 'managerPhone', b.managerPhone, 'tel')}</div>${field('Manager email', 'managerEmail', b.managerEmail, 'email')}
-          <div class="grid g2">${field('Operations manager', 'ops', b.ops)}${field('Ops mobile', 'opsPhone', b.opsPhone, 'tel')}</div>${field('Ops email', 'opsEmail', b.opsEmail, 'email')}
+          <div class="field"><label>Building & operations managers</label>${id === 'new' ? '<p class="muted" style="margin:4px 0">Add contacts after saving the building.</p>' : contactList(b) + `<a class="btn sm" href="#/service/building/${b.id}" style="width:max-content">${ic('users')}Manage contacts</a>`}</div>
           <div class="grid g2">${field('Comfort band low (°C)', 'comfortLo', (b.comfort || [20, 24])[0], 'number', 'step="0.5"')}${field('Comfort band high (°C)', 'comfortHi', (b.comfort || [20, 24])[1], 'number', 'step="0.5"')}</div>
           <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="autoCall" ${b.autoCall !== false ? 'checked' : ''}> Raise a service call automatically for critical alarms</label>
-          <div class="field"><label>Equipment (one per line, "ID · description")</label><textarea name="equipment" rows="6">${esc((b.equipment || []).join('\n'))}</textarea></div>
+          <div class="field"><label>Equipment</label>${id === 'new' ? '<p class="muted" style="margin:4px 0">Add units after saving the building.</p>' : `<p style="margin:4px 0">${(b.units || []).filter(u => !u.removed).length} units registered.</p><a class="btn sm" href="#/service/equipment/${b.id}" style="width:max-content">${ic('fcu')}Equipment & service history</a>`}</div>
           <div class="field"><label>Locations (one per line)</label><textarea name="locations" rows="4">${esc((b.locations || []).join('\n'))}</textarea></div>
         </div>
         <div class="grid" style="align-content:start">
@@ -898,6 +1050,7 @@
       `<form class="card form" data-form="user" data-id="${id === 'new' ? '' : u.id}" style="max-width:640px">
         ${field('Name', 'name', u.name, 'text', 'required')}${field('Email (login)', 'email', u.email, 'email', 'required')}${field('Mobile', 'phone', u.phone, 'tel')}
         <div class="field"><label>Role</label><select name="role">${[['client', 'Client'], ['tech', 'Technician'], ['desk', 'Service desk'], ['admin', 'Admin']].map(([v, l]) => `<option value="${v}" ${u.role === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div class="field"><label>Technician record (technicians only)</label><select name="techId"><option value="new">Create a new technician record</option>${S.technicians.map(t => { const other = S.admin.users.find(x => x.techId === t.id && x.id !== u.id); return `<option value="${t.id}" ${u.techId === t.id ? 'selected' : ''} ${other ? 'disabled' : ''}>${esc(t.name)}${other ? ' (linked to ' + esc(other.email) + ')' : ''}</option>`; }).join('')}</select></div>
         <div class="field"><label>Buildings (clients only)</label><div class="radio-row">${S.buildings.map(b => `<label><input type="checkbox" name="buildings" value="${b.id}" ${(u.buildings || []).includes(b.id) ? 'checked' : ''}><span>${esc(b.name)}</span></label>`).join('')}</div></div>
         ${field(id === 'new' ? 'Password (min 8 characters)' : 'New password (leave blank to keep)', 'password', '', 'password', id === 'new' ? 'required minlength="8" autocomplete="new-password"' : 'minlength="8" autocomplete="new-password"')}
         <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary">${ic('check')}Save user</button>${id === 'new' ? '' : `<button type="button" class="btn danger" data-action="deluser" data-id="${u.id}">Delete user</button>`}</div></form>`;
@@ -921,15 +1074,10 @@
 
   /* ---------------- views: vehicles, dispatch, assessments ---------------- */
   function viewVehicles() {
-    return head('Vehicles', 'Fleet status') + `<div class="grid g4" style="margin-bottom:14px">${kpi('truck', 'Vehicles', S.vehicles.length)}${kpi('route', 'In transit', S.vehicles.filter(v => v.status === 'in transit').length)}${kpi('pin', 'On site', S.vehicles.filter(v => v.status === 'on site').length)}${kpi('wrench', 'Service due', S.vehicles.filter(v => v.odo >= v.nextService - 2000).length)}</div>
+    return head('Vehicles', 'Fleet status') + `<div class="grid g4" style="margin-bottom:14px">${kpi('truck', 'Vehicles', S.vehicles.length)}${kpi('route', 'In transit', S.vehicles.filter(v => v.status === 'in transit').length)}${kpi('pin', 'On site', S.vehicles.filter(v => v.status === 'on site').length)}${kpi('clock', 'Parked', S.vehicles.filter(v => v.status === 'parked').length)}</div>
       <div class="grid g2">${S.vehicles.map(v => `<div class="card"><header><h2>${esc(v.reg)}</h2>${statusPill(v.status)}</header><small>${esc(v.model)}</small>
-        <dl class="kv" style="margin-top:10px"><dt>Driver</dt><dd>${esc((tech(v.driver) || {}).name || '—')}</dd><dt>Location</dt><dd>${esc(v.location)}</dd><dt>Odometer</dt><dd>${v.odo.toLocaleString()} km</dd><dt>Next service</dt><dd style="${v.odo >= v.nextService ? 'color:var(--red)' : ''}">${v.nextService.toLocaleString()} km${v.odo >= v.nextService ? ' · overdue' : ''}</dd></dl>
+        <dl class="kv" style="margin-top:10px"><dt>Driver</dt><dd>${esc((tech(v.driver) || {}).name || '—')}</dd><dt>Location</dt><dd>${esc(v.location)}</dd><dt>Odometer</dt><dd>${v.odo != null ? (+v.odo).toLocaleString() + ' km' : '—'}</dd></dl>
         <div style="margin-top:10px"><small>Fuel ${v.fuel}%</small><div class="bar"><i style="width:${v.fuel}%;${v.fuel < 25 ? 'background:var(--red)' : ''}"></i></div></div></div>`).join('')}</div>`;
-  }
-  function viewVehicleService() {
-    const list = [...S.vehicles].sort((a, b) => (a.nextService - a.odo) - (b.nextService - b.odo));
-    return head('Service schedule', 'Sorted by distance to next service') + `<div class="card"><div class="table-wrap"><table><thead><tr><th>Vehicle</th><th>Odometer</th><th>Next service</th><th>Remaining</th></tr></thead><tbody>
-      ${list.map(v => { const r = v.nextService - v.odo; return `<tr><td><strong>${esc(v.reg)}</strong><br><small>${esc(v.model)}</small></td><td class="mono">${v.odo.toLocaleString()}</td><td class="mono">${v.nextService.toLocaleString()}</td><td>${r <= 0 ? `<span class="pill bad">Overdue ${(-r).toLocaleString()} km</span>` : r < 5000 ? `<span class="pill warn">${r.toLocaleString()} km</span>` : `<span class="pill ok">${r.toLocaleString()} km</span>`}</td></tr>`; }).join('')}</tbody></table></div></div>`;
   }
   const TRIP_FLOW = ['Scheduled', 'In transit', 'Delivered'];
   function viewDispatch() {
@@ -1088,10 +1236,11 @@
     'service/techs': viewTechs, 'service/notifications': viewNotifs, 'service/reports': viewReports, 'service/clients': viewClients, 'service/documents': viewDocs,
     'bms/overview': viewOverview, 'bms/chillers': viewChillers, 'bms/ahus': viewAhus, 'bms/ahu': viewAhu, 'bms/fcus': viewFcus, 'bms/towers': viewTowers,
     'bms/pumps': viewPumps, 'bms/fans': viewFans, 'bms/zones': viewZones, 'bms/alarms': viewAlarms, 'bms/alarm': viewAlarm, 'bms/trends': viewTrends, 'bms/points': viewPoints,
-    vehicles: viewVehicles, 'vehicles/service': viewVehicleService, dispatch: viewDispatch, 'dispatch/new': viewDispatchNew,
+    vehicles: viewVehicles, dispatch: viewDispatch, 'dispatch/new': viewDispatchNew,
     assessments: viewAssessments, 'assessments/new': viewAssessNew,
     settings: viewSettings, 'settings/buildings': viewSettingsBuildings, 'settings/building': viewSettingsBuilding, 'settings/users': viewSettingsUsers, 'settings/user': viewSettingsUser, 'settings/outbox': viewOutbox,
     account: viewAccount,
+    'service/equipment': viewEquipment, 'service/unit': viewUnit, 'service/unitedit': viewUnitEdit, 'service/tech': viewTechEdit, 'service/building': viewBuildingContacts,
   };
   const LIVE = new Set(['dashboard', 'service/live', 'bms/overview', 'bms/chillers', 'bms/ahus', 'bms/ahu', 'bms/fcus', 'bms/towers', 'bms/pumps', 'bms/fans', 'bms/zones', 'bms/alarms', 'bms/alarm', 'bms/trends']);
   let current = { key: 'dashboard', mod: 'dashboard' };
@@ -1099,7 +1248,7 @@
     const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
     if (!parts.length) return { key: 'dashboard', mod: 'dashboard' };
     const key = parts.slice(0, 2).join('/');
-    if (parts.length >= 2 && ROUTES[key]) return { key, arg: parts[2], mod: parts[0] };
+    if (parts.length >= 2 && ROUTES[key]) return { key, arg: parts[2], arg2: parts[3], mod: parts[0] };
     if (ROUTES[parts[0]]) return { key: parts[0], arg: parts[1], mod: parts[0] === 'account' ? 'dashboard' : parts[0] };
     return { key: 'dashboard', mod: 'dashboard' };
   }
@@ -1114,7 +1263,7 @@
     const view = $('#view');
     const bmsView = current.key.startsWith('bms/') && !['bms/alarms', 'bms/alarm'].includes(current.key);
     try {
-      view.innerHTML = bmsView && noBms() ? head(esc(site().name || 'Info Hub')) + noBmsCard() : ROUTES[current.key](current.arg);
+      view.innerHTML = bmsView && noBms() ? head(esc(site().name || 'Info Hub')) + noBmsCard() : ROUTES[current.key](current.arg, current.arg2);
     } catch (e) {
       console.error(e);
       view.innerHTML = head('Something went wrong') + `<div class="card empty">${esc(e.message)}</div>`;
@@ -1182,6 +1331,14 @@
     trip: el => act('POST', `/api/trips/${el.dataset.id}/advance`, {}),
     clearalarm: el => { if (confirm('Clear this alarm manually?')) act('POST', `/api/alarms/${el.dataset.id}/clear`, {}, ['Alarm cleared']); },
     tour: () => showIntro(0),
+    deltech: async el => { const t = tech(el.dataset.id); if (t && confirm(`Remove ${t.name} from the technicians list? Their past jobs stay in the history.`) && await act('DELETE', `/api/techs/${t.id}`, undefined, ['Technician removed'])) { location.hash = '#/service/techs'; render(true); } },
+    addrow: el => { $('#crows').insertAdjacentHTML('beforeend', contactRow({ role: el.dataset.role, notify: true })); const r = $('#crows').lastElementChild; r.querySelector('input[name=c_name]').focus(); },
+    rmrow: el => el.closest('[data-row]').remove(),
+    toggleremoved: () => { ui.showRemoved = !ui.showRemoved; render(true); },
+    unitremoved: async el => { const on = !!el.dataset.v; if (on && !confirm('Decommission this unit? Its service history is kept.')) return; if (await act('POST', `/api/buildings/${el.dataset.bid}/units/${encodeURIComponent(el.dataset.uid)}/removed`, { removed: on }, [on ? 'Unit decommissioned' : 'Unit restored'])) { location.hash = `#/service/equipment/${el.dataset.bid}`; render(true); } },
+    delservice: async el => { if (confirm('Delete this service record?') && await act('DELETE', `/api/services/${el.dataset.id}`, undefined, ['Record deleted'])) render(true); },
+    logcall: el => { const b = bld(el.dataset.bid); ui.prefill = { building: b.id, equipment: (b.equipment || []).find(e => e.split(' · ')[0] === el.dataset.uid) }; location.hash = '#/service/callout'; },
+    reassign: async el => { const v = $('#reassignTech').value; if (!v) return toast('No technician available', 'Set someone on duty first.', 'bad'); if (await act('POST', `/api/jobs/${el.dataset.id}/assign`, { tech: v }, ['Technician assigned', 'They have been sent an SMS'])) render(true); },
     logout: async () => { try { await api('POST', '/api/logout', {}); } catch (e) { /* ignore */ } S = null; ui.bmsCache = {}; showLogin(); },
     retry: async el => { await act('POST', `/api/admin/outbox/${el.dataset.id}/retry`, {}, ['Retrying']); render(true); },
     deluser: async el => { if (confirm('Delete this user?') && await act('DELETE', `/api/admin/users/${el.dataset.id}`)) location.hash = '#/settings/users'; },
@@ -1206,6 +1363,7 @@
   document.addEventListener('change', e => {
     const el = e.target;
     if (el.dataset.change === 'site') switchSite(el.value);
+    if (el.dataset.change === 'eqsite') location.hash = '#/service/equipment/' + el.value;
     if (el.dataset.change === 'building') {
       const b = bld(el.value), f = el.form;
       f.equipment.innerHTML = (b.equipment || []).map(x => `<option>${esc(x)}</option>`).join('');
@@ -1266,17 +1424,36 @@
         case 'building': {
           const connector = parseJson(d.connector, 'Connector settings'); if (connector === undefined) break;
           const gsm = parseJson(d.gsm, 'GSM settings'); if (gsm === undefined) break;
-          const body = { id: f.dataset.id || undefined, name: d.name, client: d.client, area: d.area, manager: d.manager, managerPhone: d.managerPhone, managerEmail: d.managerEmail, ops: d.ops, opsPhone: d.opsPhone, opsEmail: d.opsEmail,
-            comfort: [+d.comfortLo || 20, +d.comfortHi || 24], autoCall: !!d.autoCall, equipment: lines(d.equipment), locations: lines(d.locations), connector, gsm, regenToken: !!d.regenToken };
+          const body = { id: f.dataset.id || undefined, name: d.name, client: d.client, area: d.area,
+            comfort: [+d.comfortLo || 20, +d.comfortHi || 24], autoCall: !!d.autoCall, locations: lines(d.locations), connector, gsm, regenToken: !!d.regenToken };
           const r = await act('POST', '/api/admin/buildings', body, ['Building saved', 'BMS connection restarted']);
           if (r && r.building) { ui.bmsCache = {}; if (ui.site === r.building.id) await loadBms(); location.hash = '#/settings/building/' + r.building.id; render(true); }
           break;
         }
         case 'user': {
-          const body = { id: f.dataset.id || undefined, name: d.name, email: d.email, phone: d.phone, role: d.role, buildings: new FormData(f).getAll('buildings') };
+          const body = { id: f.dataset.id || undefined, name: d.name, email: d.email, phone: d.phone, role: d.role, techId: d.techId, buildings: new FormData(f).getAll('buildings') };
           if (d.password) body.password = d.password;
           const r = await act('POST', '/api/admin/users', body, ['User saved']);
           if (r) location.hash = '#/settings/users';
+          break;
+        }
+        case 'tech': {
+          const r = await act('POST', '/api/techs', { id: f.dataset.id || undefined, name: d.name, skill: d.skill, phone: d.phone, email: d.email, vehicle: d.vehicle, status: d.status }, ['Technician saved']);
+          if (r) location.hash = '#/service/techs';
+          break;
+        }
+        case 'contacts': {
+          const contacts = [...f.querySelectorAll('[data-row]')].map(r => ({ id: r.querySelector('[name=c_id]').value, name: r.querySelector('[name=c_name]').value, role: r.querySelector('[name=c_role]').value, phone: r.querySelector('[name=c_phone]').value, email: r.querySelector('[name=c_email]').value, notify: r.querySelector('[name=c_notify]').checked }));
+          if (await act('PUT', `/api/buildings/${f.dataset.bid}/contacts`, { contacts }, ['Contacts saved', 'They will receive notifications for this building'])) location.hash = '#/service/clients';
+          break;
+        }
+        case 'unit': {
+          const r = await act('POST', `/api/buildings/${f.dataset.bid}/units`, { originalId: f.dataset.orig || undefined, unit: { id: d.id, type: d.type, location: d.location, make: d.make, model: d.model, serial: d.serial, installed: d.installed, refrigerant: d.refrigerant, capacity: d.capacity, intervalMonths: d.intervalMonths, notes: d.notes } }, ['Unit saved']);
+          if (r && r.unit) location.hash = `#/service/unit/${f.dataset.bid}/${encodeURIComponent(r.unit.id)}`;
+          break;
+        }
+        case 'service': {
+          if (await act('POST', '/api/services', { building: f.dataset.bid, unit: f.dataset.uid, date: d.date, type: d.type, tech: d.tech, work: d.work, notes: d.notes }, ['Saved to service history'])) render(true);
           break;
         }
         case 'password': if (await act('POST', '/api/me/password', { current: d.current, password: d.password }, ['Password changed', 'Sign in again on your other devices.'])) f.reset(); break;

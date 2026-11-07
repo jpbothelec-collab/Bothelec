@@ -3,11 +3,11 @@
  * source of truth; browsers receive filtered state over the API and live updates over SSE. */
 const fs = require('node:fs');
 const path = require('node:path');
-const { nowIso, rid, byId, log, setPath, emptyBms, COLLECTIONS } = require('./util');
+const { nowIso, rid, byId, log, setPath, emptyBms, COLLECTIONS, normalizePhone, clamp } = require('./util');
 const { seed, STEPS, DEFAULT_POLICY } = require('./seed');
 const { hashPassword, isStaff, canBuilding, canJob } = require('./auth');
 
-const COLLS = ['buildings', 'technicians', 'jobs', 'feed', 'alarms', 'vehicles', 'trips', 'assessments', 'documents', 'users'];
+const COLLS = ['buildings', 'technicians', 'jobs', 'services', 'feed', 'alarms', 'vehicles', 'trips', 'assessments', 'documents', 'users'];
 const stepIdx = k => STEPS.findIndex(s => s.key === k);
 const stepLabel = k => (STEPS[stepIdx(k)] || {}).label || k;
 const ROLE_LABEL = { manager: 'Building Manager', ops: 'Operations Manager', desk: 'Bothelec service desk', tech: 'Technician', caller: 'Caller' };
@@ -29,15 +29,16 @@ function createModel({ db, env, bus, filesDir }) {
     if (!S.meta) {
       const s = seed(env.SEED_DEMO === 'true');
       db.tx(() => {
-        ['buildings', 'technicians', 'jobs', 'alarms', 'vehicles', 'trips', 'assessments', 'documents'].forEach(c => s[c].forEach(o => db.put(c, o)));
+        ['buildings', 'technicians', 'jobs', 'services', 'alarms', 'vehicles', 'trips', 'assessments', 'documents'].forEach(c => s[c].forEach(o => db.put(c, o)));
         Object.values(s.bms).forEach(b => db.put('bms', b));
       });
-      Object.assign(S, { buildings: s.buildings, technicians: s.technicians, jobs: s.jobs, alarms: s.alarms, vehicles: s.vehicles, trips: s.trips, assessments: s.assessments, documents: s.documents, bms: s.bms });
+      Object.assign(S, { buildings: s.buildings, technicians: s.technicians, jobs: s.jobs, services: s.services, alarms: s.alarms, vehicles: s.vehicles, trips: s.trips, assessments: s.assessments, documents: s.documents, bms: s.bms });
       S.meta = s.meta; db.setKv('meta', S.meta);
       log(`[model] initialised ${env.SEED_DEMO === 'true' ? 'with demo data' : 'empty'}`);
     }
     if (!S.settings) { S.settings = { policy: DEFAULT_POLICY, desk: { phone: env.DESK_PHONE || '', email: env.DESK_EMAIL || '' }, etaMinutes: 25 }; db.setKv('settings', S.settings); }
-    S.buildings.forEach(b => { if (!b.ingestToken) { b.ingestToken = rid(18); db.put('buildings', b); } });
+    S.buildings.forEach(b => { if (!b.ingestToken) { b.ingestToken = rid(18); db.put('buildings', b); } migrateBuilding(b); });
+    S.services.sort((a, b) => (b.date + b.at).localeCompare(a.date + a.at));
     S.jobs.sort((a, b) => (b.steps.logged || '').localeCompare(a.steps.logged || ''));
     S.alarms.sort((a, b) => b.at.localeCompare(a.at));
     S.feed.sort((a, b) => b.at.localeCompare(a.at));
@@ -60,15 +61,131 @@ function createModel({ db, env, bus, filesDir }) {
   /* ---------------- lookups ---------------- */
   const bld = id => byId(S.buildings, id) || { id, name: id, equipment: [], locations: [] };
   const tech = id => byId(S.technicians, id);
-  function contact(role, b, job) {
+  /* Everyone in a notification role for this building (a building can have several managers). */
+  function contactsFor(role, b, job) {
+    const byRole = r => (b.contacts || []).filter(c => c.role === r && c.notify !== false);
     switch (role) {
-      case 'manager': return { name: b.manager, phone: b.managerPhone, email: b.managerEmail };
-      case 'ops': return { name: b.ops, phone: b.opsPhone, email: b.opsEmail };
-      case 'desk': return { name: 'Service desk', phone: S.settings.desk.phone, email: S.settings.desk.email };
-      case 'tech': { const t = job && tech(job.tech); return t ? { name: t.name, phone: t.phone, email: t.email } : {}; }
-      case 'caller': return job ? { name: job.contact, phone: job.contactPhone, email: job.contactEmail } : {};
-      default: return {};
+      case 'manager': return byRole('Building Manager');
+      case 'ops': return byRole('Operations Manager');
+      case 'desk': return [{ name: '', phone: S.settings.desk.phone, email: S.settings.desk.email }];
+      case 'tech': { const t = job && tech(job.tech); return t ? [{ name: t.name, phone: t.phone, email: t.email }] : []; }
+      case 'caller': return job ? [{ name: job.contact, phone: job.contactPhone, email: job.contactEmail }] : [];
+      default: return [];
     }
+  }
+  const str = (v, n = 200) => String(v == null ? '' : v).trim().slice(0, n);
+
+  /* ---------------- buildings: contacts & equipment register ---------------- */
+  const CONTACT_ROLES = ['Building Manager', 'Operations Manager', 'Other'];
+  const unitLabel = u => `${u.id} · ${u.type || 'Unit'}`;
+  function syncEquipment(b) { b.equipment = [...(b.units || []).filter(u => !u.removed).map(unitLabel), 'Other / not sure']; }
+  /* Older data had one manager/ops per building and equipment as plain text. */
+  function migrateBuilding(b) {
+    let dirty = false;
+    if (!Array.isArray(b.contacts)) {
+      b.contacts = [];
+      if (b.manager || b.managerPhone || b.managerEmail) b.contacts.push({ id: rid(5), name: b.manager || '', role: 'Building Manager', phone: b.managerPhone || '', email: b.managerEmail || '', notify: true });
+      if (b.ops || b.opsPhone || b.opsEmail) b.contacts.push({ id: rid(5), name: b.ops || '', role: 'Operations Manager', phone: b.opsPhone || '', email: b.opsEmail || '', notify: true });
+      ['manager', 'managerPhone', 'managerEmail', 'ops', 'opsPhone', 'opsEmail'].forEach(k => delete b[k]);
+      dirty = true;
+    }
+    if (!Array.isArray(b.units)) {
+      b.units = (b.equipment || []).filter(e => !/^Other/i.test(e)).map(e => {
+        const [id, ...rest] = String(e).split(' · ');
+        return { id: id.trim(), type: rest.join(' · ').trim() || 'Unit', location: '', make: '', model: '', serial: '', installed: '', refrigerant: '', capacity: '', intervalMonths: 3, notes: '', removed: false };
+      });
+      dirty = true;
+    }
+    const before = JSON.stringify(b.equipment); syncEquipment(b);
+    if (dirty || JSON.stringify(b.equipment) !== before) save('buildings', b);
+  }
+  function setContacts(bid, list) {
+    const b = byId(S.buildings, bid); if (!b) return { error: 'Building not found.' };
+    if (!Array.isArray(list)) return { error: 'Contacts must be a list.' };
+    const out = list.map(c => ({ id: str(c.id, 20) || rid(5), name: str(c.name, 80), role: CONTACT_ROLES.includes(c.role) ? c.role : 'Other', phone: str(c.phone, 30), email: str(c.email, 120).toLowerCase(), notify: c.notify !== false })).filter(c => c.name || c.phone || c.email);
+    for (const c of out) {
+      if (!c.name) return { error: 'Every contact needs a name.' };
+      if (c.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.email)) return { error: `The email for ${c.name} looks wrong.` };
+      if (c.phone && !normalizePhone(c.phone)) return { error: `The mobile number for ${c.name} looks wrong.` };
+    }
+    b.contacts = out; save('buildings', b); changed(bid);
+    return { ok: true, contacts: out };
+  }
+  function upsertUnit(bid, data, originalId) {
+    const b = byId(S.buildings, bid); if (!b) return { error: 'Building not found.' };
+    b.units = b.units || [];
+    const id = str(data.id, 40);
+    if (!id) return { error: 'Unit ID is required (for example AHU-04).' };
+    if (/[\/·#?]/.test(id)) return { error: 'Unit ID cannot contain / · # or ?' };
+    let u = originalId ? b.units.find(x => x.id === originalId) : null;
+    if (originalId && !u) return { error: 'Unit not found.' };
+    if (b.units.find(x => x.id === id && x !== u)) return { error: `${id} already exists in this building.` };
+    if (!u) { u = { id, removed: false }; b.units.push(u); }
+    else if (u.id !== id) {
+      S.jobs.filter(j => j.building === bid && j.unit === u.id).forEach(j => { j.unit = id; save('jobs', j); });
+      S.services.filter(x => x.building === bid && x.unit === u.id).forEach(x => { x.unit = id; save('services', x); });
+    }
+    Object.assign(u, { id, type: str(data.type, 60) || 'Unit', location: str(data.location, 80), make: str(data.make, 60), model: str(data.model, 60), serial: str(data.serial, 60),
+      installed: /^\d{4}-\d{2}-\d{2}$/.test(data.installed || '') ? data.installed : '', refrigerant: str(data.refrigerant, 20), capacity: str(data.capacity, 30),
+      intervalMonths: clamp(Math.round(+data.intervalMonths || 0), 0, 60), notes: str(data.notes, 1000) });
+    syncEquipment(b); save('buildings', b); changed(bid);
+    return { ok: true, unit: u };
+  }
+  function setUnitRemoved(bid, uid, removed) {
+    const b = byId(S.buildings, bid), u = b && (b.units || []).find(x => x.id === uid);
+    if (!u) return { error: 'Unit not found.' };
+    u.removed = !!removed; u.removedAt = removed ? nowIso() : undefined;
+    syncEquipment(b); save('buildings', b); changed(bid);
+    return { ok: true };
+  }
+  const SERVICE_TYPES = ['Planned maintenance', 'Repair', 'Inspection', 'Filter change', 'Refrigerant top-up', 'Other'];
+  function addService(data, actor) {
+    const b = byId(S.buildings, data.building); if (!b) return { error: 'Building not found.' };
+    const u = (b.units || []).find(x => x.id === data.unit); if (!u) return { error: 'Unit not found.' };
+    if (!str(data.work)) return { error: 'Describe the work that was done.' };
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(data.date || '') ? data.date : nowIso().slice(0, 10);
+    if (date > nowIso().slice(0, 10)) return { error: 'The service date cannot be in the future.' };
+    const t = tech(data.tech) || tech(actor.techId);
+    const rec = { id: 'SV' + Date.now().toString(36) + rid(2), building: b.id, unit: u.id, date, type: SERVICE_TYPES.includes(data.type) ? data.type : 'Other', tech: t ? t.id : null, techName: t ? t.name : '', work: str(data.work, 2000), notes: str(data.notes, 2000), by: actor.name, at: nowIso() };
+    S.services.unshift(rec); S.services.sort((a, c) => (c.date + c.at).localeCompare(a.date + a.at));
+    save('services', rec);
+    feed(`${u.id} · ${rec.type} logged`, `${b.name} — ${rec.work.slice(0, 90)}`, '', `#/service/unit/${b.id}/${encodeURIComponent(u.id)}`, b.id);
+    changed(b.id);
+    return { ok: true, service: rec };
+  }
+  function deleteService(id) {
+    const i = S.services.findIndex(x => x.id === id); if (i < 0) return { error: 'Not found.' };
+    const [rec] = S.services.splice(i, 1); db.del('services', id); changed(rec.building);
+    return { ok: true };
+  }
+
+  /* ---------------- technicians ---------------- */
+  function upsertTech(data) {
+    const name = str(data.name, 80); if (!name) return { error: 'Name is required.' };
+    if (data.phone && !normalizePhone(data.phone)) return { error: 'The mobile number looks wrong.' };
+    if (data.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(data.email).trim())) return { error: 'The email looks wrong.' };
+    let t = data.id ? tech(data.id) : null;
+    if (data.id && !t) return { error: 'Technician not found.' };
+    if (!t) { t = { id: 'T' + Date.now().toString(36), status: 'available', job: null }; S.technicians.push(t); }
+    const vehicle = data.vehicle && byId(S.vehicles, data.vehicle) ? data.vehicle : null;
+    if (t.vehicle && t.vehicle !== vehicle) { const old = byId(S.vehicles, t.vehicle); if (old && old.driver === t.id) { old.driver = null; save('vehicles', old); } }
+    Object.assign(t, { name, skill: str(data.skill, 80) || 'HVAC technician', phone: str(data.phone, 30), email: str(data.email, 120).toLowerCase(), vehicle });
+    if (vehicle) { const v = byId(S.vehicles, vehicle); S.technicians.filter(x => x !== t && x.vehicle === vehicle).forEach(x => { x.vehicle = null; save('technicians', x); }); v.driver = t.id; save('vehicles', v); }
+    if (['available', 'off'].includes(data.status) && t.status !== 'on job') t.status = data.status;
+    const u = S.users.find(x => x.techId === t.id); if (u) { u.name = t.name; u.phone = t.phone; save('users', u); }
+    save('technicians', t); changed(null);
+    return { ok: true, tech: t };
+  }
+  function deleteTech(id) {
+    const i = S.technicians.findIndex(x => x.id === id); if (i < 0) return { error: 'Technician not found.' };
+    const t = S.technicians[i];
+    const open = S.jobs.find(j => j.tech === id && j.status !== 'report');
+    if (open) return { error: `${t.name} still has open job ${open.id}. Reassign it first.` };
+    S.technicians.splice(i, 1); db.del('technicians', id);
+    S.vehicles.filter(v => v.driver === id).forEach(v => { v.driver = null; save('vehicles', v); });
+    S.users.filter(u => u.techId === id).forEach(u => { delete u.techId; save('users', u); });
+    changed(null);
+    return { ok: true };
   }
 
   function feed(title, body, kind, link, building) {
@@ -131,8 +248,7 @@ function createModel({ db, env, bus, filesDir }) {
     const seen = new Set();
     const roles = { email: rule.email || [], sms: [...(rule.sms || []), ...(urgent ? rule.smsIfUrgent || [] : [])] };
     for (const channel of ['email', 'sms']) {
-      for (const role of roles[channel]) {
-        const c = contact(role, b, job);
+      for (const role of roles[channel]) for (const c of contactsFor(role, b, job)) {
         const to = channel === 'sms' ? c.phone : c.email;
         if (!to || seen.has(channel + to)) continue;
         seen.add(channel + to);
@@ -140,7 +256,7 @@ function createModel({ db, env, bus, filesDir }) {
         const m = notifier.enqueue(channel === 'sms'
           ? { channel, to, text: msg.sms, meta }
           : { channel, to, subject: msg.subject, text: msg.text, html: msg.html, attachments: msg.attachments, meta });
-        out.push({ id: m.id, role: ROLE_LABEL[role] || role, channel: channel === 'sms' ? 'SMS' : 'Email', to: m.to || to, at: m.createdAt, status: m.status, error: m.error });
+        out.push({ id: m.id, role: (ROLE_LABEL[role] || role) + (c.name && role !== 'tech' ? ' · ' + c.name : ''), channel: channel === 'sms' ? 'SMS' : 'Email', to: m.to || to, at: m.createdAt, status: m.status, error: m.error });
       }
     }
     return out;
@@ -168,6 +284,8 @@ function createModel({ db, env, bus, filesDir }) {
   }
   function newJob(o, actor) {
     const job = Object.assign({ id: 'BA-' + S.meta.seq++, source: 'Client app', urgency: 'Medium', photos: [], findings: '', work: '', signature: null, signedBy: '', notifications: [], steps: {}, createdBy: actor ? actor.id : null }, o);
+    const bu = (bld(job.building).units || []).find(u => u.id === String(job.equipment || '').split(' · ')[0]);
+    if (bu && !job.unit) job.unit = bu.id;
     saveMeta();
     S.jobs.unshift(job);
     setStep(job, 'logged', actor);
@@ -181,7 +299,16 @@ function createModel({ db, env, bus, filesDir }) {
       const hvac = /AHU|CH|chill/i.test(job.equipment);
       t = (hvac && avail.find(x => /Chillers|AHU/.test(x.skill))) || avail[0];
     }
-    job.tech = t.id; t.status = 'on job'; t.job = job.id; save('technicians', t);
+    if (job.tech && job.tech !== t.id) { const old = tech(job.tech); if (old && old.job === job.id) { old.status = 'available'; old.job = null; save('technicians', old); } }
+    const reassign = job.status !== 'logged';
+    job.tech = t.id; job.techName = t.name; t.status = 'on job'; t.job = job.id; save('technicians', t);
+    if (reassign) {
+      const entries = dispatch({ sms: ['tech'], email: [] }, { b: bld(job.building), job, build: role => jobMessages(job, 'assigned', role), meta: { jobId: job.id, step: 'assigned' } });
+      job.notifications.push(...entries.map(e => ({ ...e, step: 'assigned' })));
+      feed(`${job.id} · Reassigned to ${t.name}`, bld(job.building).name, '', '#/service/job/' + job.id, job.building);
+      save('jobs', job); changed(job.building);
+      return { ok: true, tech: t };
+    }
     const v = byId(S.vehicles, t.vehicle); if (v) { v.status = 'in transit'; v.location = '→ ' + (bld(job.building).area || ''); save('vehicles', v); }
     setStep(job, 'assigned', actor);
     return { ok: true, tech: t };
@@ -398,6 +525,7 @@ function createModel({ db, env, bus, filesDir }) {
       feed: S.feed.filter(f => (f.building ? bOk(f.building) : staff)).slice(0, 150),
       vehicles: u.role === 'client' ? [] : S.vehicles,
       trips: u.role === 'client' ? [] : S.trips,
+      services: S.services.filter(x => bOk(x.building)),
       assessments: S.assessments.filter(a => bOk(a.building)),
       documents: S.documents,
       bmsSummary: Object.fromEntries(buildings.map(b => [b.id, S.bms[b.id] ? { fault: S.bms[b.id].fault, updatedAt: S.bms[b.id].updatedAt, hasData: true } : { hasData: false }])),
@@ -417,7 +545,12 @@ function createModel({ db, env, bus, filesDir }) {
     }
     Object.assign(u, { name: String(data.name || email), email, phone: data.phone || '', role: ['admin', 'desk', 'tech', 'client'].includes(data.role) ? data.role : 'client', buildings: Array.isArray(data.buildings) ? data.buildings : [] });
     if (data.password) { if (String(data.password).length < 8) return { error: 'Password must be at least 8 characters.' }; u.passwordHash = hashPassword(data.password); db.session.delUser(u.id); }
-    if (u.role === 'tech' && !u.techId) {
+    if (u.role !== 'tech') delete u.techId;
+    else if (data.techId && data.techId !== 'new' && tech(data.techId)) {
+      const other = S.users.find(x => x !== u && x.techId === data.techId);
+      if (other) return { error: `That technician is already linked to ${other.email}.` };
+      u.techId = data.techId;
+    } else if (!u.techId || data.techId === 'new') {
       const t = { id: 'T' + Date.now().toString(36), name: u.name, skill: data.skill || 'HVAC technician', phone: u.phone, email: u.email, status: 'available', vehicle: null };
       S.technicians.push(t); save('technicians', t); u.techId = t.id;
     }
@@ -434,9 +567,11 @@ function createModel({ db, env, bus, filesDir }) {
   function upsertBuilding(data) {
     if (!data.name) return { error: 'Name is required.' };
     let b = data.id && byId(S.buildings, data.id);
-    if (!b) { b = { id: 'B' + Date.now().toString(36), ingestToken: rid(18), equipment: ['Other / not sure'], locations: ['Plant room'], autoCall: true, comfort: [20, 24], connector: { type: 'none' } }; S.buildings.push(b); }
-    const allowed = ['name', 'client', 'area', 'manager', 'managerPhone', 'managerEmail', 'ops', 'opsPhone', 'opsEmail', 'equipment', 'locations', 'autoCall', 'comfort', 'connector', 'gsm'];
+    if (!b) { b = { id: 'B' + Date.now().toString(36), ingestToken: rid(18), contacts: [], units: [], equipment: ['Other / not sure'], locations: ['Plant room'], autoCall: true, comfort: [20, 24], connector: { type: 'none' } }; S.buildings.push(b); }
+    const allowed = ['name', 'client', 'area', 'locations', 'autoCall', 'comfort', 'connector', 'gsm'];
     allowed.forEach(k => { if (data[k] !== undefined) b[k] = data[k]; });
+    if (Array.isArray(data.contacts)) { const r = setContacts(b.id, data.contacts); if (r.error) return r; }
+    syncEquipment(b);
     if (data.regenToken) b.ingestToken = rid(18);
     save('buildings', b); changed(b.id);
     bus.emit('building:changed', b);
@@ -463,6 +598,7 @@ function createModel({ db, env, bus, filesDir }) {
     newJob, setStep, advance, autoAssign, sign, addPhotos, fileFor, saveDataUrl,
     raiseAlarm, clearAlarm, evaluate, applyReadings, setConnStatus, connStatus, gsmInbound,
     stateFor, upsertUser, deleteUser, upsertBuilding, deleteBuilding, updateSettings,
+    setContacts, upsertUnit, setUnitRemoved, addService, deleteService, upsertTech, deleteTech, SERVICE_TYPES,
     stop() { clearInterval(bmsTimer); clearInterval(wd); flushBms(); },
   };
 }

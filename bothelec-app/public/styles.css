@@ -492,3 +492,17 @@ body.intro-open { overflow: hidden; }
 }
 .iv-fit { width: 100%; display: grid; justify-items: center; transform-origin: top center; }
 @media (max-width: 900px) { .iv-stage { overflow: hidden; } }
+
+/* contacts editor, service history */
+.crow { display: grid; grid-template-columns: 1.2fr 1fr 1fr 1.3fr auto auto; gap: 8px; align-items: end; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.crow .cnotify { display: flex; gap: 6px; align-items: center; font-size: 13px; padding-bottom: 10px; white-space: nowrap; }
+.crow .btn { margin-bottom: 4px; }
+.history li { align-items: flex-start; }
+.history .grow small { display: block; margin-top: 2px; }
+.history li .btn { padding: 2px 6px; min-height: 26px; margin-left: 6px; }
+tr.muted td { opacity: .55; }
+@media (max-width: 900px) {
+  .crow { grid-template-columns: 1fr 1fr; }
+  .crow .cnotify { padding-bottom: 0; }
+}
+@media print { .history li .btn { display: none; } }
