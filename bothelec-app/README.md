@@ -171,17 +171,28 @@ The platform is the master for clients, contacts and jobs. Zoho Books is used fo
 Invoices are no longer created automatically when a report is signed: they wait for approval in the tracker
 (this can be switched back in Settings → Zoho Books & billing).
 
-**Connecting Zoho Books** (about 10 minutes):
-1. In Zoho Books, open Settings → Organisation profile and copy the **Organisation ID**. Note your Zoho domain: `zoho.com`, `zoho.eu`, `zoho.in` and so on. That is your data centre.
-2. Open the API console for that data centre (e.g. <https://api-console.zoho.com> or `api-console.zoho.eu`). Choose **Self Client**, then Create, and copy the Client ID and Client Secret.
-3. In the Self Client, open **Generate Code** and enter scope `ZohoBooks.fullaccess.all` with a 10-minute duration. Copy the code, then run (replace `com` with your data centre):
-   ```bash
-   curl -X POST "https://accounts.zoho.com/oauth/v2/token?grant_type=authorization_code&client_id=CLIENT_ID&client_secret=CLIENT_SECRET&code=CODE"
-   ```
-   Copy the `refresh_token` from the reply.
-4. In `.env` set `ZOHO_DC`, `ZOHO_CLIENT_ID`, `ZOHO_CLIENT_SECRET`, `ZOHO_REFRESH_TOKEN` and `ZOHO_ORG_ID`, then restart.
-5. In Settings → Zoho Books & billing, click **Test connection**, then **Sync all clients now**.
-6. Optional: in Zoho Books → Settings → Taxes, copy the ID of your 15% VAT tax into *Zoho tax ID*. You can also add Zoho item IDs to the price list so invoice lines link to your Zoho items.
+**Connecting Zoho Books** (about 5 minutes, done in the app):
+1. In the app, open **Settings → Zoho Books & billing**. The *Connect Zoho Books* panel shows the exact Homepage URL and
+   Redirect URI to use.
+2. Sign in to the Zoho API Console for your Zoho region (e.g. <https://api-console.zoho.com>) with the account that owns
+   your Zoho Books. Choose **Add Client → Server-based Applications** and paste the Homepage URL and Authorized Redirect URI
+   from step 1.
+3. Copy the **Client ID** and **Client Secret** into the panel, choose your region and click **Connect Zoho Books**.
+   Zoho asks you to approve access and sends you back. If the account has several organisations, pick one.
+4. Click **Test connection**, then **Sync all clients now**.
+
+The connection is stored on the server (the secret is never sent to browsers). *Disconnect* revokes it. Use the same
+address you'll keep using (e.g. `https://aircon.yourcompany.co.za`); if the address changes, update the redirect URI in
+Zoho and connect again. A connection can also be configured in `.env` (`ZOHO_*` values) with a Zoho "Self Client";
+a connection made in the app takes priority.
+
+Optional: in Zoho Books → Settings → Taxes, copy the ID of your 15% VAT tax into *Zoho tax ID*; add Zoho item IDs to the
+price list so invoice lines link to your Zoho items.
+
+**Importing your existing spreadsheet:** Billing tracker → *Import CSV*. In Excel use *Save As → CSV*, choose the client
+building, pick the file, check the column matching (it recognises headings such as "PO # Vantage", "Trigon INV",
+"Loaded to Vantage", "DATE PAID"), check the preview and import. Empty rows, totals rows and invoices already in the
+tracker are skipped. Dates like 1900-01-00 count as empty, and VOID in the paid column marks the row void.
 
 The connector was built and tested against a stand-in for the Zoho Books API (v3). Before relying on it, test it once against
 a Zoho Books trial organisation: create a test job with parts & labour, sign it off, and check the draft invoice in Zoho.

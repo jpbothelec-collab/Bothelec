@@ -9,7 +9,7 @@ const { openDb } = require('./lib/db');
 const { createModel } = require('./lib/model');
 const { createNotifier } = require('./lib/notify');
 const { createConnectorManager } = require('./lib/connectors');
-const { createZohoClient } = require('./lib/zoho');
+const { createZohoClient, authUrl, exchangeCode, revokeToken, DCS } = require('./lib/zoho');
 const { verifyPassword, isStaff, canBuilding, canJob, rateLimited } = require('./lib/auth');
 const { rid, byId, nowIso, log } = require('./lib/util');
 
@@ -21,8 +21,17 @@ function createServer(env = process.env, opts = {}) {
   const model = createModel({ db, env, bus, filesDir: path.join(dataDir, 'files') });
   const notifier = createNotifier({ db, env, onStatus: m => model.onOutboxStatus(m), openPort: opts.openPort });
   model.setNotifier(notifier);
-  const zoho = createZohoClient(env);
-  model.setZoho(zoho);
+  /* Zoho connection: one made in the app (Settings → Connect Zoho Books) wins over .env values. */
+  let zoho;
+  function buildZoho() {
+    const c = db.kv('zohoConn', null);
+    zoho = c && c.refreshToken
+      ? createZohoClient({ ...env, ZOHO_DC: c.dc, ZOHO_CLIENT_ID: c.clientId, ZOHO_CLIENT_SECRET: c.clientSecret, ZOHO_REFRESH_TOKEN: c.refreshToken, ZOHO_ORG_ID: c.orgId || '', ZOHO_ACCOUNTS_URL: c.accountsUrl, ZOHO_API_URL: c.apiUrl })
+      : createZohoClient(env);
+    zoho.meta = c && c.refreshToken ? { source: 'app', orgName: c.orgName || '', connectedAt: c.connectedAt, connectedBy: c.connectedBy, clientIdHint: '…' + String(c.clientId).slice(-4) } : { source: zoho.configured ? 'env' : 'none' };
+    model.setZoho(zoho);
+  }
+  buildZoho();
   const connectors = createConnectorManager({ model, bus });
   const S = model.S;
   const secureCookie = /^https:/.test(env.PUBLIC_URL || '') || env.COOKIE_SECURE === 'true';
@@ -157,8 +166,53 @@ function createServer(env = process.env, opts = {}) {
   R('POST', '/api/jobs/:id/invoice', (req, res, { u, p }) => { const j = job(res, u, p.id); if (j) result(res, model.requestInvoice('job:' + j.id)); }, { roles: STAFF });
   R('POST', '/api/services/:id/invoice', (req, res, { p }) => result(res, model.requestInvoice('service:' + p.id)), { roles: STAFF });
   R('POST', '/api/admin/zoho/test', async (req, res) => {
-    if (!zoho.configured) return fail(res, 400, 'Zoho Books is not configured: set ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET, ZOHO_REFRESH_TOKEN and ZOHO_ORG_ID in .env, then restart.');
+    if (!zoho.configured) return fail(res, 400, 'Zoho Books is not connected yet. Use Connect Zoho Books in Settings.');
     try { send(res, 200, { ok: true, organisation: await zoho.test() }); } catch (e) { fail(res, 400, e.message); }
+  }, { roles: ['admin'] });
+  R('POST', '/api/admin/zoho/connect', (req, res, { u, body }) => {
+    const dc = Object.keys(DCS).includes(body.dc) ? body.dc : 'com';
+    const clientId = String(body.clientId || '').trim(), clientSecret = String(body.clientSecret || '').trim();
+    const redirectUri = String(body.redirectUri || '');
+    if (!/^[\w.-]{10,}$/.test(clientId) || clientSecret.length < 10) return fail(res, 400, 'Paste the Client ID and Client Secret from the Zoho API console.');
+    if (!/^https?:\/\/[^/]+\/api\/zoho\/callback$/.test(redirectUri)) return fail(res, 400, 'Invalid redirect URI.');
+    const state = rid(16);
+    db.setKv('zohoPending', { dc, clientId, clientSecret, redirectUri, state, at: Date.now(), by: u.name });
+    send(res, 200, { ok: true, url: authUrl({ dc, clientId, redirectUri, state }) });
+  }, { roles: ['admin'] });
+  R('GET', '/api/zoho/callback', async (req, res, { u, url }) => {
+    const back = msg => { res.writeHead(302, { Location: '/#/settings/billing' + (msg ? '/error/' + encodeURIComponent(msg) : '/connected') }); res.end(); };
+    const p = db.kv('zohoPending', null);
+    if (url.searchParams.get('error')) return back('Zoho: ' + url.searchParams.get('error'));
+    if (!p || p.state !== url.searchParams.get('state') || Date.now() - p.at > 15 * 60e3) return back('The connection request expired or did not match. Please try Connect again.');
+    try {
+      const accountsServer = url.searchParams.get('accounts-server') || env.ZOHO_ACCOUNTS_URL || ('https://accounts.' + (p.dc === 'ca' ? 'zohocloud.ca' : 'zoho.' + p.dc));
+      if (!/^https:\/\/accounts\.zoho(cloud)?\.[a-z.]+$/.test(accountsServer) && accountsServer !== env.ZOHO_ACCOUNTS_URL) return back('Unexpected Zoho accounts server.');
+      const t = await exchangeCode({ accountsServer, clientId: p.clientId, clientSecret: p.clientSecret, redirectUri: p.redirectUri, code: url.searchParams.get('code') || '' });
+      const apiUrl = (env.ZOHO_API_URL && accountsServer === env.ZOHO_ACCOUNTS_URL) ? env.ZOHO_API_URL : (t.api_domain || ('https://www.zohoapis.' + p.dc)).replace(/\/$/, '') + '/books/v3';
+      const conn = { dc: p.dc, clientId: p.clientId, clientSecret: p.clientSecret, refreshToken: t.refresh_token, accountsUrl: accountsServer, apiUrl, orgId: '', orgName: '', connectedAt: nowIso(), connectedBy: u.name };
+      db.setKv('zohoConn', conn); db.setKv('zohoPending', null); buildZoho();
+      const orgs = await zoho.listOrgs().catch(() => []);
+      if (orgs.length === 1) { conn.orgId = orgs[0].id; conn.orgName = orgs[0].name; db.setKv('zohoConn', conn); buildZoho(); }
+      model.changed(null);
+      back();
+    } catch (e) { back(e.message); }
+  }, { roles: ['admin'], raw: true });
+  R('GET', '/api/admin/zoho/orgs', async (req, res) => {
+    if (!zoho.hasToken) return fail(res, 400, 'Not connected.');
+    try { send(res, 200, await zoho.listOrgs()); } catch (e) { fail(res, 400, e.message); }
+  }, { roles: ['admin'] });
+  R('POST', '/api/admin/zoho/org', async (req, res, { body }) => {
+    const conn = db.kv('zohoConn', null); if (!conn) return fail(res, 400, 'Not connected.');
+    const o = (await zoho.listOrgs().catch(() => [])).find(x => x.id === String(body.orgId));
+    if (!o) return fail(res, 400, 'Organisation not found on this Zoho account.');
+    conn.orgId = o.id; conn.orgName = o.name; db.setKv('zohoConn', conn); buildZoho(); model.changed(null);
+    send(res, 200, { ok: true, organisation: o });
+  }, { roles: ['admin'] });
+  R('POST', '/api/admin/zoho/disconnect', async (req, res) => {
+    const conn = db.kv('zohoConn', null); if (!conn) return fail(res, 400, 'Not connected from the app.');
+    await revokeToken(conn.accountsUrl, conn.refreshToken);
+    db.setKv('zohoConn', null); buildZoho(); model.changed(null);
+    send(res, 200, { ok: true });
   }, { roles: ['admin'] });
   R('POST', '/api/admin/zoho/sync', (req, res) => result(res, model.zSyncAll()), { roles: ['admin'] });
   R('POST', '/api/admin/zoho/:id/retry', (req, res, { p }) => result(res, model.zRetry(p.id)), { roles: ['admin'] });
@@ -167,6 +221,7 @@ function createServer(env = process.env, opts = {}) {
   R('POST', '/api/tracker', (req, res, { u, body }) => result(res, model.addTrackerRow(body, u)), { roles: STAFF });
   R('PUT', '/api/tracker/:id', (req, res, { u, p, body }) => result(res, model.updateTracker(p.id, body, u)), { roles: STAFF });
   R('DELETE', '/api/tracker/:id', (req, res, { p }) => result(res, model.deleteTrackerRow(p.id)), { roles: STAFF });
+  R('POST', '/api/tracker/import', (req, res, { u, body }) => result(res, model.importTracker(body.building, body.rows, u)), { roles: STAFF });
   R('POST', '/api/tracker/approve', (req, res, { u, body }) => result(res, model.approveTracker(body.ids, u)), { roles: STAFF });
   R('POST', '/api/tracker/bulk', (req, res, { body }) => { if (!['portal', 'paid'].includes(body.action)) return fail(res, 400, 'Unknown action'); result(res, model.bulkTracker(body.ids, body.action, body.date)); }, { roles: STAFF });
 

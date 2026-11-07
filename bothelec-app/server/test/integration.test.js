@@ -116,6 +116,8 @@ function zohoMock() {
       const u = new URL(req.url, 'http://x'), body = b ? JSON.parse(b) : null;
       const out = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
       z.calls.push({ method: req.method, path: u.pathname, q: Object.fromEntries(u.searchParams), auth: req.headers.authorization, body });
+      if (u.pathname === '/oauth/v2/token/revoke') { z.revoked = u.searchParams.get('token'); return out(200, { status: 'success' }); }
+      if (u.pathname === '/oauth/v2/token' && u.searchParams.get('grant_type') === 'authorization_code') { z.tokens++; z.exchange = Object.fromEntries(u.searchParams); return u.searchParams.get('code') === 'authcode' ? out(200, { access_token: 'at' + z.tokens, refresh_token: 'rt', api_domain: `http://127.0.0.1:${req.socket.localPort}`, expires_in: 3600 }) : out(200, { error: 'invalid_code' }); }
       if (u.pathname === '/oauth/v2/token') { z.tokens++; return u.searchParams.get('refresh_token') === 'rt' ? out(200, { access_token: 'at' + z.tokens, expires_in: 3600 }) : out(400, { error: 'invalid_code' }); }
       if (z.expireNext) { z.expireNext = false; return out(401, { code: 57, message: 'You are not authorized to perform this operation' }); }
       if (req.headers.authorization !== 'Zoho-oauthtoken at' + z.tokens) return out(401, { code: 57, message: 'bad token' });
@@ -588,4 +590,66 @@ test('billing tracker: rows for every job, manual POs, approval rules, manual in
   // a critical BMS call is flagged critical in the tracker
   const crit = st.jobs.find(j => j.urgency === 'Critical');
   assert.equal(st.tracker.find(t => t.jobId === crit.id).critical, true);
+});
+
+test('Connect Zoho Books from the app (OAuth): consent URL, callback, organisation, disconnect', async () => {
+  const redirectUri = base + '/api/zoho/callback';
+  assert.equal((await req('POST', '/api/admin/zoho/connect', { dc: 'eu', clientId: 'x', clientSecret: 'y', redirectUri })).status, 400, 'validates ids');
+  let r = await req('POST', '/api/admin/zoho/connect', { dc: 'eu', clientId: '1000.ABCDEFGHIJ', clientSecret: 'secretsecret123', redirectUri });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const auth = new URL(r.data.url);
+  assert.equal(auth.origin, 'https://accounts.zoho.eu');
+  assert.equal(auth.searchParams.get('scope'), 'ZohoBooks.fullaccess.all');
+  assert.equal(auth.searchParams.get('access_type'), 'offline');
+  assert.equal(auth.searchParams.get('redirect_uri'), redirectUri);
+  const state = auth.searchParams.get('state');
+  const accountsServer = app.server && zoho.srv.address() && `http://127.0.0.1:${zoho.srv.address().port}`;
+  // a forged state is refused
+  let cb = await fetch(`${base}/api/zoho/callback?code=authcode&state=wrong&accounts-server=${encodeURIComponent(accountsServer)}`, { headers: { Cookie: cookie }, redirect: 'manual' });
+  assert.match(decodeURIComponent(cb.headers.get('location')), /error\/The connection request expired/);
+  // the real callback
+  r = await req('POST', '/api/admin/zoho/connect', { dc: 'eu', clientId: '1000.ABCDEFGHIJ', clientSecret: 'secretsecret123', redirectUri });
+  const state2 = new URL(r.data.url).searchParams.get('state');
+  cb = await fetch(`${base}/api/zoho/callback?code=authcode&state=${state2}&location=eu&accounts-server=${encodeURIComponent(accountsServer)}`, { headers: { Cookie: cookie }, redirect: 'manual' });
+  assert.equal(cb.status, 302);
+  assert.equal(cb.headers.get('location'), '/#/settings/billing/connected');
+  assert.equal(zoho.exchange.client_id, '1000.ABCDEFGHIJ');
+  assert.equal(zoho.exchange.redirect_uri, redirectUri);
+  let st = (await req('GET', '/api/state')).data;
+  assert.equal(st.admin.zoho.meta.source, 'app');
+  assert.equal(st.admin.zoho.meta.orgName, 'Bothelec Aircon Solutions', 'single organisation picked automatically');
+  assert.ok(st.admin.zoho.configured);
+  assert.ok(!JSON.stringify(st).includes('secretsecret123'), 'secret never sent to the browser');
+  assert.equal((await req('POST', '/api/admin/zoho/test', {})).status, 200);
+  // a client user cannot start a connection
+  const cc = await login('client2@bothelec.test', 'client-pass-1');
+  assert.equal((await req('POST', '/api/admin/zoho/connect', { dc: 'com', clientId: '1000.ABCDEFGHIJ', clientSecret: 'secretsecret123', redirectUri }, { cookie: cc })).status, 403);
+  // disconnect revokes the token and falls back to the .env connection
+  r = await req('POST', '/api/admin/zoho/disconnect', {});
+  assert.equal(r.status, 200);
+  assert.equal(zoho.revoked, 'rt');
+  st = (await req('GET', '/api/state')).data;
+  assert.equal(st.admin.zoho.meta.source, 'env');
+});
+
+test('tracker CSV import: rows created, duplicates and empty rows skipped', async () => {
+  const rows = [
+    { line: 2, poDate: '2025-10-16', poNumber: '1046130', invoiceNumber: 'INV-0099430', invoiceDate: '2025-11-05', amountIncl: 215211.75, amountEx: 187140.65, portalDate: '2025-11-05', paidDate: '2025-11-11' },
+    { line: 3, poStatus: 'Not approved', amountIncl: 254893.6, amountEx: 221646.61 },
+    { line: 4, poNumber: '1048448', jobRef: '4336', jobDate: '2025-10-31', invoiceNumber: 'INV-0012423', invoiceDate: '2025-11-03', amountIncl: 235950.33, amountEx: 205174.2 },
+    { line: 5, jobRef: '3831', jobDate: '2026-01-06', invoiceNumber: 'INV-0012583', invoiceDate: '2026-01-23', amountIncl: 856.75, amountEx: 745, void: true },
+    { line: 6 },
+  ];
+  let r = await req('POST', '/api/tracker/import', { building: 'B1', rows });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.imported, 4);
+  assert.equal(r.data.skipped.length, 1);
+  r = await req('POST', '/api/tracker/import', { building: 'B1', rows: rows.slice(0, 1) });
+  assert.equal(r.data.imported, 0, 'same invoice number is not imported twice');
+  const st = (await req('GET', '/api/state')).data;
+  const a = st.tracker.find(t => t.invoice && t.invoice.number === 'INV-0099430');
+  assert.equal(a.poStatus, 'Approved'); assert.equal(a.paidDate, '2025-11-11'); assert.equal(a.amountIncl, 215211.75);
+  const v = st.tracker.find(t => t.invoice && t.invoice.number === 'INV-0012583');
+  assert.equal(v.void, true); assert.equal(v.legacyJob, '3831'); assert.equal(v.description, 'Job card 3831');
+  assert.ok(st.tracker.some(t => t.poStatus === 'Not approved' && t.amountEx === 221646.61));
 });

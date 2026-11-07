@@ -6,13 +6,36 @@
  *   ZOHO_DC=com|eu|in|com.au|jp|ca|sa   ZOHO_CLIENT_ID  ZOHO_CLIENT_SECRET  ZOHO_REFRESH_TOKEN  ZOHO_ORG_ID
  * ZOHO_ACCOUNTS_URL / ZOHO_API_URL override the URLs (used by the tests). */
 
+/* Zoho data centres. Canada uses the zohocloud.ca domain. */
+const DCS = { com: 'United States / global (zoho.com)', eu: 'Europe (zoho.eu)', in: 'India (zoho.in)', 'com.au': 'Australia (zoho.com.au)', jp: 'Japan (zoho.jp)', ca: 'Canada (zohocloud.ca)', sa: 'Saudi Arabia (zoho.sa)' };
+const domain = dc => (dc === 'ca' ? 'zohocloud.ca' : `zoho.${dc}`);
+const accountsFor = dc => `https://accounts.${domain(dc)}`;
+const SCOPE = 'ZohoBooks.fullaccess.all';
+
+/* "Connect Zoho Books" button: build the consent URL, then swap the returned code for a refresh token. */
+function authUrl({ dc, clientId, redirectUri, state }) {
+  const q = new URLSearchParams({ scope: SCOPE, client_id: clientId, response_type: 'code', access_type: 'offline', prompt: 'consent', redirect_uri: redirectUri, state });
+  return `${accountsFor(dc)}/oauth/v2/auth?${q}`;
+}
+async function exchangeCode({ accountsServer, clientId, clientSecret, redirectUri, code }) {
+  const q = new URLSearchParams({ grant_type: 'authorization_code', client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, code });
+  const res = await fetch(`${accountsServer.replace(/\/$/, '')}/oauth/v2/token?${q}`, { method: 'POST', signal: AbortSignal.timeout(20000) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.refresh_token) throw new Error('Zoho did not return a refresh token: ' + (data.error || res.status) + '. Check the Client ID/Secret and the redirect URI registered in the Zoho API console.');
+  return data; // { access_token, refresh_token, api_domain, expires_in }
+}
+async function revokeToken(accountsServer, refreshToken) {
+  try { await fetch(`${accountsServer.replace(/\/$/, '')}/oauth/v2/token/revoke?token=${encodeURIComponent(refreshToken)}`, { method: 'POST', signal: AbortSignal.timeout(15000) }); } catch { /* best effort */ }
+}
+
 function createZohoClient(env) {
   const dc = (env.ZOHO_DC || 'com').replace(/^\./, '');
-  const accountsUrl = (env.ZOHO_ACCOUNTS_URL || `https://accounts.zoho.${dc}`).replace(/\/$/, '');
+  const accountsUrl = (env.ZOHO_ACCOUNTS_URL || accountsFor(dc)).replace(/\/$/, '');
   const apiUrl = (env.ZOHO_API_URL || `https://www.zohoapis.${dc}/books/v3`).replace(/\/$/, '');
-  const appUrl = (env.ZOHO_APP_URL || `https://books.zoho.${dc}`).replace(/\/$/, '');
+  const appUrl = (env.ZOHO_APP_URL || `https://books.${domain(dc)}`).replace(/\/$/, '');
   const org = env.ZOHO_ORG_ID || '';
-  const configured = !!(env.ZOHO_CLIENT_ID && env.ZOHO_CLIENT_SECRET && env.ZOHO_REFRESH_TOKEN && org);
+  const hasToken = !!(env.ZOHO_CLIENT_ID && env.ZOHO_CLIENT_SECRET && env.ZOHO_REFRESH_TOKEN);
+  const configured = hasToken && !!org;
   let token = null, tokenExp = 0;
 
   async function accessToken(force) {
@@ -44,7 +67,8 @@ function createZohoClient(env) {
   }
 
   return {
-    configured, dc, org,
+    configured, hasToken, dc, org, accountsUrl,
+    async listOrgs() { const d = await call('GET', '/organizations'); return (d.organizations || []).map(o => ({ id: String(o.organization_id), name: o.name, currency: o.currency_code })); },
     invoiceUrl: id => `${appUrl}/app/${org}#/invoices/${id}`,
     contactUrl: id => `${appUrl}/app/${org}#/contacts/${id}`,
     async test() { const d = await call('GET', '/organizations'); const o = (d.organizations || []).find(x => String(x.organization_id) === String(org)); if (!o) throw new Error(`Connected, but organisation ${org} was not found on this account`); return { name: o.name, currency: o.currency_code }; },
@@ -57,4 +81,4 @@ function createZohoClient(env) {
   };
 }
 
-module.exports = { createZohoClient };
+module.exports = { createZohoClient, authUrl, exchangeCode, revokeToken, DCS };

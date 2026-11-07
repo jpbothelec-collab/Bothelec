@@ -687,6 +687,32 @@ function createModel({ db, env, bus, filesDir }) {
     save('tracker', t); changed(t.building);
     return { ok: true, row: t };
   }
+  /* Import rows from the old spreadsheet (parsed in the browser, re-checked here). */
+  function importTracker(bid, rows, actor) {
+    const b = byId(S.buildings, bid); if (!b) return { error: 'Choose the client building to import into.' };
+    if (!Array.isArray(rows) || !rows.length) return { error: 'No rows to import.' };
+    if (rows.length > 3000) return { error: 'Import at most 3000 rows at a time.' };
+    const out = { imported: 0, skipped: [] };
+    const num = v => (v === null || v === undefined || v === '' || isNaN(+v) ? null : money(+v));
+    for (const [i, r] of rows.entries()) {
+      const line = r.line || i + 1;
+      const po = str(r.poNumber, 40), inv = str(r.invoiceNumber, 40), job = str(r.jobRef, 40);
+      const ex = num(r.amountEx), incl = num(r.amountIncl);
+      if (!po && !inv && !job && !PO_STATUS.slice(1).includes(r.poStatus)) { out.skipped.push({ line, reason: ex === null && incl === null ? 'empty row' : 'totals row' }); continue; }
+      const dup = S.tracker.find(t => (inv && t.invoice && t.invoice.number === inv) || (!inv && po && t.poNumber === po && !t.invoice && t.building === b.id && (t.legacyJob || '') === job));
+      if (dup) { out.skipped.push({ line, reason: 'already in the tracker' + (inv ? ' (' + inv + ')' : po ? ' (PO ' + po + ')' : '') }); continue; }
+      const vatF = 1 + S.settings.billing.vatRate / 100;
+      const t = { id: 'TK' + Date.now().toString(36) + rid(4), building: b.id, jobId: null, serviceId: null,
+        poNumber: po, poDate: isoDate(r.poDate), poStatus: PO_STATUS.includes(r.poStatus) ? r.poStatus : (po ? 'Approved' : 'None'), critical: !!r.critical,
+        approvedAt: inv ? nowIso() : null, approvedBy: inv ? actor.name : '', invoice: inv ? { number: inv, date: isoDate(r.invoiceDate), source: 'import' } : null,
+        amountEx: ex !== null ? ex : incl !== null ? money(incl / vatF) : null, amountIncl: incl !== null ? incl : ex !== null ? money(ex * vatF) : null,
+        portalDate: isoDate(r.portalDate), paidDate: isoDate(r.paidDate), void: !!r.void, notes: str(r.notes, 1000),
+        description: job ? `Job card ${job}` : 'Imported from spreadsheet', legacyJob: job, legacyJobDate: isoDate(r.jobDate), createdAt: nowIso(), createdBy: actor.name, imported: true };
+      S.tracker.push(t); save('tracker', t); out.imported++;
+    }
+    changed(b.id);
+    return { ok: true, ...out };
+  }
   function deleteTrackerRow(id) {
     const i = S.tracker.findIndex(x => x.id === id); if (i < 0) return { error: 'Row not found.' };
     if (S.tracker[i].jobId || S.tracker[i].serviceId) return { error: 'Rows for jobs cannot be deleted. Mark them void instead.' };
@@ -822,7 +848,7 @@ function createModel({ db, env, bus, filesDir }) {
   }
   function zRetry(id) { const it = S.zohoq.find(x => x.id === id); if (it && it.status === 'failed') { Object.assign(it, { status: 'queued', attempts: 0, nextAt: 0, error: null }); db.put('zohoq', it); setImmediate(zWork); } return { ok: !!it }; }
   function zSyncAll() { if (!zoho || !zoho.configured) return { error: 'Zoho Books is not connected yet.' }; S.buildings.forEach(b => zEnqueue('contact', b.id)); return { ok: true, queued: S.buildings.length }; }
-  function zStatus() { return { configured: !!(zoho && zoho.configured), dc: zoho && zoho.dc, org: zoho && zoho.org, queued: S.zohoq.filter(x => x.status === 'queued').length, failed: S.zohoq.filter(x => x.status === 'failed').length, log: S.zohoq.slice(0, 40) }; }
+  function zStatus() { return { configured: !!(zoho && zoho.configured), hasToken: !!(zoho && zoho.hasToken), meta: (zoho && zoho.meta) || {}, dc: zoho && zoho.dc, org: zoho && zoho.org, queued: S.zohoq.filter(x => x.status === 'queued').length, failed: S.zohoq.filter(x => x.status === 'failed').length, log: S.zohoq.slice(0, 40) }; }
 
   function updateSettings(data) {
     if (data.billing) {
@@ -845,7 +871,7 @@ function createModel({ db, env, bus, filesDir }) {
   return {
     S, STEPS, stepLabel, bld, tech, feed, save, changed, saveMeta, flushBms,
     setNotifier: n => { notifier = n; }, onOutboxStatus,
-    addTrackerRow, updateTracker, deleteTrackerRow, approveTracker, bulkTracker,
+    addTrackerRow, updateTracker, deleteTrackerRow, importTracker, approveTracker, bulkTracker,
     setZoho: z => { zoho = z; }, zWork, zEnqueue, zRetry, zSyncAll, zStatus, requestInvoice, setJobBilling, setServiceBilling, totals,
     newJob, setStep, advance, autoAssign, sign, addPhotos, fileFor, saveDataUrl,
     raiseAlarm, clearAlarm, evaluate, applyReadings, setConnStatus, connStatus, gsmInbound,

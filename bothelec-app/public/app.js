@@ -127,7 +127,7 @@
         : `<strong>${esc(b.name || '—')}</strong>`}<small>${esc(b.area || '')}</small>
         <span class="pill ${conn === 'none' ? 'off' : 'ok'}" style="margin-top:3px;width:max-content"><i></i>${conn === 'none' ? 'No BMS link' : conn === 'simulator' ? 'Simulated' : 'BMS ' + conn}</span></div></div>
       <nav class="side">${mod.side.filter(sideAllowed).map(([href, label, icon]) => {
-        const on = key === href || (key.startsWith(href + '/') && href.includes('/')) || (href === 'bms/ahus' && key === 'bms/ahu') || (href === 'service/jobcards' && (key === 'service/job' || key === 'service/report')) || (href === 'bms/alarms' && key === 'bms/alarm') || (href === 'settings/buildings' && key === 'settings/building') || (href === 'settings/users' && key === 'settings/user') || (href === 'service/equipment' && (key === 'service/unit' || key === 'service/unitedit')) || (href === 'service/techs' && key === 'service/tech') || (href === 'service/clients' && key === 'service/building') || (href === 'service/tracker' && key === 'service/trackrow');
+        const on = key === href || (key.startsWith(href + '/') && href.includes('/')) || (href === 'bms/ahus' && key === 'bms/ahu') || (href === 'service/jobcards' && (key === 'service/job' || key === 'service/report')) || (href === 'bms/alarms' && key === 'bms/alarm') || (href === 'settings/buildings' && key === 'settings/building') || (href === 'settings/users' && key === 'settings/user') || (href === 'service/equipment' && (key === 'service/unit' || key === 'service/unitedit')) || (href === 'service/techs' && key === 'service/tech') || (href === 'service/clients' && key === 'service/building') || (href === 'service/tracker' && (key === 'service/trackrow' || key === 'service/trackimport'));
         const count = href === 'bms/alarms' && activeAlarms ? `<span class="count">${activeAlarms}</span>` : '';
         return `<a href="#/${href}" class="${on ? 'active' : ''}">${ic(icon)}<span>${esc(label)}</span>${count}</a>`;
       }).join('')}</nav>
@@ -208,7 +208,7 @@
       if (d.building === ui.site) { S.bms = cur; if (isLive()) rerender(); }
     });
   }
-  const NO_AUTO = new Set(['service/tracker', 'service/trackrow', 'settings/billing', 'service/svbilling', 'service/callout', 'service/tech', 'service/building', 'service/unitedit', 'service/unit', 'dispatch/new', 'assessments/new', 'settings', 'settings/building', 'settings/user', 'settings/users', 'settings/buildings', 'settings/outbox', 'account', 'bms/points']);
+  const NO_AUTO = new Set(['service/trackimport', 'service/tracker', 'service/trackrow', 'settings/billing', 'service/svbilling', 'service/callout', 'service/tech', 'service/building', 'service/unitedit', 'service/unit', 'dispatch/new', 'assessments/new', 'settings', 'settings/building', 'settings/user', 'settings/users', 'settings/buildings', 'settings/outbox', 'account', 'bms/points']);
   function rerender() {
     if (!S) return;
     const a = document.activeElement;
@@ -1186,18 +1186,11 @@
       <div class="field"><label>Price (excl. VAT)</label><input name="k_rate" type="number" step="0.01" min="0" value="${c.rate ?? ''}"></div>
       <div class="field"><label>Zoho item ID (optional)</label><input name="k_zoho" value="${esc(c.zohoItemId || '')}"></div>
       <button type="button" class="btn sm danger" data-action="rmrow" aria-label="Remove">${ic('x')}</button></div>`;
-  function viewSettingsBilling() {
+  function viewSettingsBilling(arg, arg2) {
     const Z = S.admin.zoho || {}, BS = S.admin.settings.billing;
-    return head('Zoho Books & billing', 'Clients and contacts are pushed to Zoho Books; signed jobs become draft invoices') +
+    return head('Zoho Books & billing', 'Clients and contacts are pushed to Zoho Books; approved jobs become draft invoices') +
       `<div class="grid g2">
-        <div class="card"><header><h2>Zoho Books</h2>${Z.configured ? '<span class="pill ok"><i></i>Configured</span>' : '<span class="pill warn"><i></i>Not connected</span>'}</header>
-          ${Z.configured ? `<dl class="kv"><dt>Data centre</dt><dd>zoho.${esc(Z.dc)}</dd><dt>Organisation ID</dt><dd>${esc(Z.org)}</dd><dt>Waiting to sync</dt><dd>${Z.queued}</dd><dt>Failed</dt><dd>${Z.failed}</dd></dl>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn sm" data-action="zohotest">Test connection</button><button class="btn sm" data-action="zohosync">Sync all clients now</button></div>`
-          : `<p style="margin-top:0">Parts & labour are recorded on every job already. To create invoices automatically:</p>
-            <ol style="margin:0;padding-left:20px;line-height:1.6;font-size:13px"><li>Start a Zoho Books organisation (a free trial is fine) and note its <b>Organisation ID</b> (Settings → Organisation profile).</li>
-            <li>Open the Zoho API console for your region (e.g. api-console.zoho.com) → <b>Self Client</b> → create.</li>
-            <li>Generate a code with scope <code>ZohoBooks.fullaccess.all</code>, then exchange it for a <b>refresh token</b> (see README).</li>
-            <li>Put <code>ZOHO_DC</code>, <code>ZOHO_CLIENT_ID</code>, <code>ZOHO_CLIENT_SECRET</code>, <code>ZOHO_REFRESH_TOKEN</code>, <code>ZOHO_ORG_ID</code> in the server's <code>.env</code> and restart.</li></ol>`}</div>
+        ${zohoPanel(arg, arg2)}
         <form class="card form" data-form="billingsettings"><header><h2>Invoicing settings</h2></header>
           <div class="grid g2">${field('VAT rate (%)', 'vatRate', BS.vatRate, 'number', 'step="0.5" min="0" max="50"')}${field('Currency', 'currency', BS.currency, 'text', 'maxlength="3"')}</div>
           ${field('Payment terms (days, for overdue)', 'termsDays', BS.termsDays ?? 30, 'number', 'min="0" max="365"')}
@@ -1238,7 +1231,7 @@
       else if (!rec && ex == null) st = 'Quote / PO';
       else if (t.poStatus === 'Pending') st = 'PO pending';
       else st = 'Ready to invoice';
-      const jobDate = job ? (job.steps.completed || job.steps.report || '').slice(0, 10) : sv ? sv.date : '';
+      const jobDate = job ? (job.steps.completed || job.steps.report || '').slice(0, 10) : sv ? sv.date : (t.legacyJobDate || '');
       return { t, job, sv, rec, b: bld(t.building), inv, ex, incl, overdue, st, jobDate, ref: job ? job.id : sv ? `${sv.unit} · ${sv.type}` : (t.description || '') };
     }).sort((a, b) => String(b.t.poDate || b.jobDate || b.t.createdAt).localeCompare(String(a.t.poDate || a.jobDate || a.t.createdAt)));
   }
@@ -1259,7 +1252,7 @@
     const rows = all.filter(r => tkMatch(r, ui.tkFilter) && (!ui.tkClient || (r.b.client || r.b.name) === ui.tkClient));
     const ready = all.filter(r => r.st === 'Ready to invoice'), unpaid = all.filter(r => tkMatch(r, 'invoiced')), over = all.filter(r => r.st === 'Overdue'), po = all.filter(r => tkMatch(r, 'po'));
     return head('Billing tracker', 'Every job from PO to payment. Rows are added automatically; approve them to invoice.',
-      `<a class="btn sm" href="#/service/trackrow/new">${ic('plus')}Add PO / quote</a><button class="btn sm" data-action="tkcsv">${ic('doc')}Export CSV</button>`) +
+      `<a class="btn sm" href="#/service/trackimport">${ic('doc')}Import CSV</a><a class="btn sm" href="#/service/trackrow/new">${ic('plus')}Add PO / quote</a><button class="btn sm" data-action="tkcsv">${ic('doc')}Export CSV</button>`) +
       `<div class="grid g4" style="margin-bottom:14px">${kpi('check', `Ready to invoice · ${ready.length}`, fmtMoney(sumIncl(ready)))}${kpi('clipboard', 'Awaiting PO', po.length)}${kpi('doc', `Invoiced, unpaid · ${unpaid.length}`, fmtMoney(sumIncl(unpaid)))}${kpi('alert', `Overdue · ${over.length}`, fmtMoney(sumIncl(over)))}</div>
       <div class="card">
         <div class="tk-bar">
@@ -1334,6 +1327,132 @@
     return true;
   }
   const tkSelected = () => [...document.querySelectorAll('[data-tkrow]:checked')].map(x => x.dataset.tkrow);
+
+  /* ---------------- Zoho connect panel ---------------- */
+  const ZOHO_DCS = [['com', 'zoho.com (global / US)'], ['eu', 'zoho.eu (Europe)'], ['in', 'zoho.in (India)'], ['com.au', 'zoho.com.au (Australia)'], ['jp', 'zoho.jp (Japan)'], ['ca', 'zohocloud.ca (Canada)'], ['sa', 'zoho.sa (Saudi Arabia)']];
+  function zohoPanel(arg, arg2) {
+    const Z = S.admin.zoho || {}, M = Z.meta || {};
+    const banner = arg === 'error' ? `<div class="banner bad" style="margin:0 0 10px"><span class="grow">${esc(arg2 || 'Connection failed')}</span></div>` : arg === 'connected' ? `<div class="banner ok" style="margin:0 0 10px"><strong>Zoho Books connected.</strong></div>` : '';
+    if (Z.configured) return `<div class="card"><header><h2>Zoho Books</h2><span class="pill ok"><i></i>Connected</span></header>${banner}
+      <dl class="kv"><dt>Organisation</dt><dd>${esc(M.orgName || Z.org)}</dd><dt>Data centre</dt><dd>${esc(Z.dc)}</dd>
+      <dt>Connected</dt><dd>${M.source === 'app' ? `by ${esc(M.connectedBy || '')} · ${M.connectedAt ? dmy(M.connectedAt) : ''}` : 'from the server .env file'}</dd>
+      <dt>Waiting to sync</dt><dd>${Z.queued}</dd><dt>Failed</dt><dd>${Z.failed}</dd></dl>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn sm" data-action="zohotest">Test connection</button><button class="btn sm" data-action="zohosync">Sync all clients now</button>${M.source === 'app' ? '<button class="btn sm danger" data-action="zohodisconnect">Disconnect</button>' : ''}</div></div>`;
+    if (Z.hasToken) {
+      setTimeout(async () => { const el = $('#zohoOrgs'); if (!el) return; try { const orgs = await api('GET', '/api/admin/zoho/orgs'); el.innerHTML = orgs.length ? orgs.map(o => `<option value="${esc(o.id)}">${esc(o.name)} · ${esc(o.currency)} · ${esc(o.id)}</option>`).join('') : '<option value="">No Zoho Books organisation found on this account</option>'; } catch (e) { el.innerHTML = `<option value="">${esc(e.message)}</option>`; } }, 0);
+      return `<form class="card form" data-form="zohoorg"><header><h2>Zoho Books</h2><span class="pill warn"><i></i>Choose organisation</span></header>${banner}
+        <div class="field"><label>Which Zoho Books organisation should invoices go to?</label><select name="orgId" id="zohoOrgs"><option>Loading…</option></select></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary">${ic('check')}Use this organisation</button>${M.source === 'app' ? '<button type="button" class="btn sm danger" data-action="zohodisconnect">Disconnect</button>' : ''}</div></form>`;
+    }
+    const cb = location.origin + '/api/zoho/callback';
+    return `<form class="card form" data-form="zohoconnect"><header><h2>Connect Zoho Books</h2><span class="pill warn"><i></i>Not connected</span></header>${banner}
+      <ol style="margin:0;padding-left:20px;line-height:1.65;font-size:13px">
+        <li>Sign in to the <b>Zoho API Console</b> for your Zoho region (for zoho.com: <a href="https://api-console.zoho.com" target="_blank" rel="noopener">api-console.zoho.com</a>) with the same Zoho account that owns your Zoho Books.</li>
+        <li>Click <b>Add Client</b> → <b>Server-based Applications</b>. Client name: <i>Bothelec Aircon Platform</i>.</li>
+        <li>Homepage URL: <code class="copy">${esc(location.origin)}</code><br>Authorized Redirect URI: <code class="copy">${esc(cb)}</code></li>
+        <li>Create, then copy the <b>Client ID</b> and <b>Client Secret</b> into the boxes below and click Connect.</li></ol>
+      <div class="field"><label>Zoho region (the end of your Zoho address)</label><select name="dc">${ZOHO_DCS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></div>
+      ${field('Client ID', 'clientId', '', 'text', 'required autocomplete="off" spellcheck="false"')}${field('Client Secret', 'clientSecret', '', 'password', 'required autocomplete="off"')}
+      <button class="btn primary">${ic('check')}Connect Zoho Books</button>
+      <p class="muted" style="margin:0;font-size:12px">You'll be sent to Zoho to approve access, then brought back here. The secret is stored on the server only.${location.protocol === 'http:' && !/localhost|127\.0\.0\.1/.test(location.hostname) ? ' <b>Use the https:// address of the platform for this step.</b>' : ''}</p></form>`;
+  }
+
+  /* ---------------- tracker: CSV import from the old spreadsheet ---------------- */
+  const IMP_FIELDS = [
+    ['poDate', 'PO received date', /p\.?o.*(rec|rcv)|receiv|recieval/i], ['critical', 'Critical', /critical/i], ['poStatus', 'Approval', /approv/i],
+    ['poNumber', 'PO number', /p\.?o\.?\s*(#|no|num)|order\s*(#|no)/i], ['jobRef', 'Job card number', /job\s*card\s*(n|#)|job\s*(no|#|nr)/i], ['jobDate', 'Job card date', /job\s*card\s*date|jobcard\s*date/i],
+    ['invoiceNumber', 'Invoice number', /inv(oice)?(?!.*date)/i], ['invoiceDate', 'Invoice date', /inv(oice)?.*date/i], ['amountIncl', 'Amount (incl. VAT)', /^amount$|incl/i],
+    ['amountEx', 'Amount ex VAT', /ex\.?\s*vat|excl/i], ['portalDate', 'Loaded to portal', /loaded|portal|uploaded/i], ['paidDate', 'Date paid / VOID', /paid/i]];
+  function parseCsv(text) {
+    text = text.replace(/^﻿/, '');
+    const first = text.split(/\r?\n/).find(l => l.trim()) || '';
+    const delim = [',', ';', '\t'].sort((a, b) => first.split(b).length - first.split(a).length)[0];
+    const rows = []; let row = [], cell = '', q = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (q) { if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; }
+      else if (c === '"') q = true;
+      else if (c === delim) { row.push(cell); cell = ''; }
+      else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+      else cell += c;
+    }
+    if (cell || row.length) { row.push(cell); rows.push(row); }
+    return rows.map(r => r.map(x => x.trim()));
+  }
+  const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12 };
+  function impDate(v) {
+    v = String(v || '').trim(); if (!v || /^1900|\/1900$|^0+$/.test(v)) return '';
+    const pad = n => String(n).padStart(2, '0'), ok = (y, m, d) => (y > 1990 && y < 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31 ? `${y}-${pad(m)}-${pad(d)}` : '');
+    let m;
+    if ((m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/.exec(v))) return ok(+m[1], +m[2], +m[3]);
+    if ((m = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/.exec(v))) return ok(+m[3], +m[2], +m[1]);
+    if ((m = /^(\d{1,2})[\s-]([a-z]{3,4})[a-z]*[\s-](\d{4})/i.exec(v)) && MONTHS[m[2].toLowerCase()]) return ok(+m[3], MONTHS[m[2].toLowerCase()], +m[1]);
+    if (/^\d{5}(\.\d+)?$/.test(v)) { const d = new Date(Date.UTC(1899, 11, 30) + Math.floor(+v) * 864e5); return ok(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()); }
+    return '';
+  }
+  function impMoney(v) {
+    let s = String(v || '').replace(/[R\s ]/g, '').replace(/^ZAR/i, '');
+    if (!s || /^-+$/.test(s)) return null;
+    if (s.includes(',') && s.includes('.')) s = s.replace(/,/g, ''); else if (/,\d{2}$/.test(s)) s = s.replace(/\./g, '').replace(',', '.'); else s = s.replace(/,/g, '');
+    const n = parseFloat(s); return isNaN(n) ? null : n;
+  }
+  function impRow(cells, map) {
+    const g = k => (map[k] === '' || map[k] == null ? '' : cells[+map[k]] || '');
+    const appr = g('poStatus'), paid = g('paidDate');
+    return {
+      poDate: impDate(g('poDate')), critical: !!g('critical') && !/^(no|n|0|false|-)$/i.test(g('critical')),
+      poStatus: /not/i.test(appr) ? 'Not approved' : /pend/i.test(appr) ? 'Pending' : /approv|yes/i.test(appr) ? 'Approved' : '',
+      poNumber: g('poNumber').replace(/^-$/, ''), jobRef: g('jobRef').replace(/^-$/, ''), jobDate: impDate(g('jobDate')),
+      invoiceNumber: g('invoiceNumber').replace(/^-$/, ''), invoiceDate: impDate(g('invoiceDate')),
+      amountIncl: impMoney(g('amountIncl')), amountEx: impMoney(g('amountEx')), portalDate: impDate(g('portalDate')),
+      paidDate: /void/i.test(paid) ? '' : impDate(paid), void: /void/i.test(paid),
+    };
+  }
+  function impParsed() {
+    const I = ui.imp; if (!I) return [];
+    return I.body.map((cells, i) => ({ line: I.headerRow + i + 2, ...impRow(cells, I.map) }))
+      .map(r => { const bare = !r.poNumber && !r.invoiceNumber && !r.jobRef && !r.poStatus; return { ...r, empty: bare && r.amountIncl == null && r.amountEx == null, total: bare && (r.amountIncl != null || r.amountEx != null) }; })
+      .map(r => ({ ...r, empty: r.empty || r.total, dup: !!(S.tracker || []).find(t => (r.invoiceNumber && t.invoice && t.invoice.number === r.invoiceNumber)) }));
+  }
+  function viewTrackImport() {
+    if (!isStaff()) return head('Not found');
+    const I = ui.imp;
+    let body = `<form class="card form" data-form="impfile" style="max-width:720px"><header><h2>1 · Choose the file</h2></header>
+      <p style="margin:0">In Excel: <b>File → Save As → CSV (Comma delimited)</b>. Import one client's sheet at a time.</p>
+      <div class="field"><label>Client building for these rows</label><select name="building">${S.buildings.map(b => `<option value="${b.id}" ${I && I.building === b.id ? 'selected' : ''}>${esc(b.client || b.name)} · ${esc(b.name)}</option>`).join('')}</select></div>
+      <div class="field"><label>CSV file</label><input type="file" name="file" accept=".csv,text/csv" data-impfile></div></form>`;
+    if (I) {
+      const rows = impParsed(), good = rows.filter(r => !r.empty && !r.dup);
+      body += `<div class="card" style="margin-top:14px"><header><h2>2 · Check the columns</h2><small>${esc(I.name)} · ${I.body.length} data rows</small></header>
+        <div class="grid g3">${IMP_FIELDS.map(([k, l]) => `<div class="field"><label>${l}</label><select data-impmap="${k}"><option value="">— not in file —</option>${I.headers.map((h, i) => `<option value="${i}" ${String(I.map[k]) === String(i) ? 'selected' : ''}>${esc(h || 'Column ' + (i + 1))}</option>`).join('')}</select></div>`).join('')}</div>
+        <p class="muted" style="font-size:12px;margin:8px 0 0">"Overdue" is not imported: the tracker works it out from the invoice date. Dates like 1900-01-00 are treated as empty; VOID in the paid column marks the row void.</p></div>
+      <div class="card" style="margin-top:14px"><header><h2>3 · Preview</h2><small>${good.length} to import · ${rows.filter(r => r.dup).length} already in the tracker · ${rows.filter(r => r.empty).length} empty or totals rows (skipped)</small></header>
+        <div class="table-wrap"><table class="tk-table"><thead><tr><th>Line</th><th></th><th>PO received</th><th>Approval</th><th>PO #</th><th>Job card</th><th>Invoice</th><th style="text-align:right">Amount</th><th style="text-align:right">Ex VAT</th><th>Portal</th><th>Paid</th></tr></thead><tbody>
+        ${rows.slice(0, 40).map(r => `<tr class="${r.empty || r.dup ? 'muted' : ''}"><td class="mono">${r.line}</td><td>${r.total ? '<small>totals row</small>' : r.empty ? '<small>empty</small>' : r.dup ? '<small>duplicate</small>' : '<span class="pill ok">new</span>'}${r.critical ? ' <span class="pill bad">Critical</span>' : ''}</td>
+          <td class="mono">${r.poDate ? dmy(r.poDate) : '—'}</td><td>${esc(r.poStatus || (r.poNumber ? 'Approved' : '—'))}</td><td class="mono tk-po">${esc(r.poNumber || '')}</td><td>${esc(r.jobRef || '')}<br><small>${r.jobDate ? dmy(r.jobDate) : ''}</small></td>
+          <td>${esc(r.invoiceNumber || '—')}<br><small>${r.invoiceDate ? dmy(r.invoiceDate) : ''}</small></td><td class="mono" style="text-align:right">${r.amountIncl != null ? fmtMoney(r.amountIncl) : '—'}</td><td class="mono" style="text-align:right">${r.amountEx != null ? fmtMoney(r.amountEx) : '—'}</td>
+          <td class="mono">${r.portalDate ? dmy(r.portalDate) : '—'}</td><td class="mono">${r.void ? 'VOID' : r.paidDate ? dmy(r.paidDate) : '—'}</td></tr>`).join('')}</tbody></table></div>
+        ${rows.length > 40 ? `<p class="muted" style="font-size:12px">Showing the first 40 of ${rows.length} rows.</p>` : ''}
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn primary" data-action="impgo" ${good.length ? '' : 'disabled'}>${ic('check')}Import ${good.length} row${good.length === 1 ? '' : 's'}</button><button class="btn" data-action="impclear">Start again</button></div></div>`;
+    }
+    return head('Import from spreadsheet', 'Bring your existing PO / invoice tracking sheet into the billing tracker', `<a class="btn sm" href="#/service/tracker">${ic('back')}Billing tracker</a>`) + body;
+  }
+  function impLoad(file, building) {
+    const fr = new FileReader();
+    fr.onload = () => {
+      const all = parseCsv(String(fr.result)).filter(r => r.some(c => c));
+      const hi = Math.max(0, all.findIndex(r => r.filter(c => /[a-z]/i.test(c)).length >= 3 && IMP_FIELDS.some(([, , re]) => r.some(c => re.test(c)))));
+      const headers = all[hi] || [];
+      const map = {}; const used = new Set();
+      for (const [k, , re] of [...IMP_FIELDS].sort((a, b) => (a[0] === 'poNumber' ? -1 : b[0] === 'poNumber' ? 1 : 0))) {
+        const i = headers.findIndex((h, j) => !used.has(j) && re.test(h) && !(k === 'invoiceNumber' && /date/i.test(h)) && !(k === 'poNumber' && /rec/i.test(h)) && !(k === 'portalDate' && /#|p\.?o/i.test(h)));
+        if (i >= 0) { map[k] = i; used.add(i); }
+      }
+      ui.imp = { name: file.name, building, headers, headerRow: hi, body: all.slice(hi + 1), map };
+      render(true);
+    };
+    fr.readAsText(file);
+  }
 
   /* ---------------- intro / product tour (click-through) ---------------- */
   const INTRO_KEY = 'bothelec.introSeen';
@@ -1456,7 +1575,7 @@
     'bms/pumps': viewPumps, 'bms/fans': viewFans, 'bms/zones': viewZones, 'bms/alarms': viewAlarms, 'bms/alarm': viewAlarm, 'bms/trends': viewTrends, 'bms/points': viewPoints,
     vehicles: viewVehicles, dispatch: viewDispatch, 'dispatch/new': viewDispatchNew,
     assessments: viewAssessments, 'assessments/new': viewAssessNew,
-    settings: viewSettings, 'settings/buildings': viewSettingsBuildings, 'settings/building': viewSettingsBuilding, 'settings/users': viewSettingsUsers, 'settings/user': viewSettingsUser, 'settings/outbox': viewOutbox, 'settings/billing': viewSettingsBilling, 'service/tracker': viewTracker, 'service/trackrow': viewTrackRow, 'service/svbilling': viewServiceBilling,
+    settings: viewSettings, 'settings/buildings': viewSettingsBuildings, 'settings/building': viewSettingsBuilding, 'settings/users': viewSettingsUsers, 'settings/user': viewSettingsUser, 'settings/outbox': viewOutbox, 'settings/billing': viewSettingsBilling, 'service/tracker': viewTracker, 'service/trackimport': viewTrackImport, 'service/trackrow': viewTrackRow, 'service/svbilling': viewServiceBilling,
     account: viewAccount,
     'service/equipment': viewEquipment, 'service/unit': viewUnit, 'service/unitedit': viewUnitEdit, 'service/tech': viewTechEdit, 'service/building': viewBuildingContacts,
   };
@@ -1549,6 +1668,17 @@
     trip: el => act('POST', `/api/trips/${el.dataset.id}/advance`, {}),
     clearalarm: el => { if (confirm('Clear this alarm manually?')) act('POST', `/api/alarms/${el.dataset.id}/clear`, {}, ['Alarm cleared']); },
     tour: () => showIntro(0),
+    zohodisconnect: async () => { if (confirm('Disconnect Zoho Books? Invoices already in Zoho stay there.') && await act('POST', '/api/admin/zoho/disconnect', {}, ['Zoho Books disconnected'])) location.hash = '#/settings/billing'; },
+    impclear: () => { ui.imp = null; render(true); },
+    impgo: async el => {
+      const rows = impParsed().filter(r => !r.empty && !r.dup);
+      if (!rows.length) return;
+      el.disabled = true;
+      const r = await act('POST', '/api/tracker/import', { building: ui.imp.building, rows });
+      if (!r) { el.disabled = false; return; }
+      toast(`${r.imported} rows imported`, r.skipped.length ? `${r.skipped.length} skipped (empty or already in the tracker)` : 'All rows imported');
+      ui.imp = null; ui.tkFilter = 'all'; location.hash = '#/service/tracker';
+    },
     tkfilter: el => { ui.tkFilter = el.dataset.v; render(true); },
     tkcsv: () => trackerCsv(),
     tkapprove: async () => { const ids = tkSelected(); if (!ids.length) return toast('Select rows first', 'Tick the rows you want to approve.', 'bad'); await tkApprove(ids); },
@@ -1606,6 +1736,9 @@
       if (c) { root.querySelector('.lbody').insertAdjacentHTML('beforeend', lineRow({ kind: c.kind, code: c.code, description: c.name, qty: 1, unitPrice: c.rate })); refreshLineTotals(root); }
       el.value = '';
     }
+    if (el.matches && el.matches('[data-impfile]') && el.files[0]) impLoad(el.files[0], el.form.building.value);
+    if (el.form && el.form.dataset.form === 'impfile' && el.name === 'building' && ui.imp) ui.imp.building = el.value;
+    if (el.dataset.impmap && ui.imp) { ui.imp.map[el.dataset.impmap] = el.value; render(true); }
     if (el.dataset.change === 'tkfilter') { ui.tkFilter = el.value; render(true); }
     if (el.dataset.change === 'tkclient') { ui.tkClient = el.value; render(true); }
     if (el.matches && el.matches('[data-tkall]')) document.querySelectorAll('#tracker tbody tr').forEach(tr => { if (!tr.hidden) tr.querySelector('[data-tkrow]').checked = el.checked; });
@@ -1695,6 +1828,13 @@
           if (await act('PUT', '/api/admin/settings', { billing: { catalogue } }, ['Price list saved'])) render(true);
           break;
         }
+        case 'zohoconnect': {
+          try { const r = await api('POST', '/api/admin/zoho/connect', { dc: d.dc, clientId: d.clientId, clientSecret: d.clientSecret, redirectUri: location.origin + '/api/zoho/callback' }); location.href = r.url; }
+          catch (err) { toast('Could not start the connection', err.message, 'bad'); }
+          break;
+        }
+        case 'zohoorg': if (d.orgId && await act('POST', '/api/admin/zoho/org', { orgId: d.orgId }, ['Organisation selected', 'Zoho Books is connected'])) location.hash = '#/settings/billing'; break;
+        case 'impfile': break;
         case 'tracker': {
           const body = { poNumber: d.poNumber, poDate: d.poDate, poStatus: d.poStatus, critical: !!d.critical, portalDate: d.portalDate, paidDate: d.paidDate, void: !!d.void, notes: d.notes };
           if (d.invoiceNumber !== undefined) { body.invoiceNumber = d.invoiceNumber; body.invoiceDate = d.invoiceDate; }
