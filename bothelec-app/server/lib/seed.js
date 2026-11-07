@@ -79,7 +79,7 @@ function demoBms() {
 function seed(demo) {
   const s = {
     meta: { id: 'meta', seq: 1048 },
-    buildings: [], technicians: [], jobs: [], services: [], feed: [], alarms: [], vehicles: [], trips: [], assessments: [], documents: [], bms: {},
+    buildings: [], technicians: [], jobs: [], services: [], tracker: [], feed: [], alarms: [], vehicles: [], trips: [], assessments: [], documents: [], bms: {},
   };
   if (!demo) return s;
 
@@ -142,6 +142,9 @@ function seed(demo) {
     s.jobs.push(job);
   };
   mk(1048, { building: 'B1', unit: 'AHU-02', techName: 'J. Mokoena', equipment: 'AHU-02 · Air handling unit', location: 'Level 2 - Central zone', fault: 'Office not cooling, warm air', urgency: 'High', tech: 'T1', findings: 'Supply fan belt worn and slipping. Low airflow to Level 2.', work: 'Fan belt replaced and tensioned. Airflow and set-point verified.', signedBy: 'L. Pillay', billing: { lines: [{ id: 'l1', kind: 'Call-out', code: 'CALLOUT', description: 'Call-out fee', qty: 1, unitPrice: 650 }, { id: 'l2', kind: 'Labour', code: 'LAB-HR', description: 'Labour (technician)', qty: 1.5, unitPrice: 550 }, { id: 'l3', kind: 'Part', code: 'BELT-A', description: 'V-belt (A section)', qty: 2, unitPrice: 260 }], notes: '' } }, [1450, 1443, 1427, 1402, 1324, 1321]);
+  mk(1047, { building: 'B2', unit: 'VRF-02', tech: 'T2', techName: 'T. Naidoo', equipment: 'VRF-02 · VRF outdoor unit', location: 'Roof', fault: 'VRF-02 error code E7, no cooling on level 2', urgency: 'High',
+    findings: 'Outdoor fan motor capacitor failed.', work: 'Capacitor replaced, unit tested, error cleared.', signedBy: 'M. Khumalo',
+    billing: { lines: [{ id: 'm1', kind: 'Call-out', code: 'CALLOUT', description: 'Call-out fee', qty: 1, unitPrice: 650 }, { id: 'm2', kind: 'Labour', code: 'LAB-HR', description: 'Labour (technician)', qty: 2, unitPrice: 550 }, { id: 'm3', kind: 'Part', code: 'CAP-35', description: 'Run capacitor 35 µF', qty: 1, unitPrice: 310 }], notes: '' } }, [4400, 4390, 4360, 4330, 4250, 4245]);
   mk(1049, { building: 'B2', equipment: 'SPL-SR1 · Split unit (server room)', location: 'Server room', fault: 'Unit leaking water onto floor', urgency: 'High', tech: 'T2' }, [70, 62, 35]);
   mk(1050, { building: 'B3', equipment: 'PU-02 · Packaged unit', location: 'Ward A', fault: 'Noisy compressor', urgency: 'Medium', tech: 'T3' }, [40, 31]);
   mk(1051, { building: 'B1', equipment: 'FCU-L2-04 · Fan coil unit', location: 'Level 2 - East zone', fault: 'Thermostat display blank', urgency: 'Low' }, [12]);
@@ -162,6 +165,14 @@ function seed(demo) {
   sv(14, 'B3', 'CH-A', 100, 'Refrigerant top-up', 'T4', 'Small leak found on service valve and repaired; 1.2 kg R410A added.', 'Leak test passed.');
   sv(15, 'B3', 'PU-02', 45, 'Repair', 'T3', 'Compressor contactor replaced.');
   sv(8, 'B3', 'AHU-T1', 20, 'Planned maintenance', 'T1', 'Monthly theatre AHU service: HEPA ΔP logged, pressure cascade verified.');
+  /* Billing tracker demo rows (job rows are added automatically) */
+  const d = n => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+  const tk = (id, o) => s.tracker.push(Object.assign({ id, building: 'B1', jobId: null, serviceId: null, poNumber: '', poDate: '', poStatus: 'None', critical: false, approvedAt: null, approvedBy: '', invoice: null, amountEx: null, amountIncl: null, portalDate: '', paidDate: '', void: false, notes: '', description: '', createdAt: new Date().toISOString() }, o));
+  tk('TK-demo1', { jobId: 'BA-1048', poNumber: '1046130', poDate: d(3), poStatus: 'Approved', approvedAt: new Date().toISOString(), approvedBy: 'Seed', invoice: { number: 'INV-0012430', date: d(1), source: 'manual' }, amountEx: 1820, amountIncl: 2093, portalDate: d(1) });
+  tk('TK-demo2', { building: 'B2', description: 'Quote: replace server-room split unit', poNumber: '1048452', poDate: d(12), poStatus: 'Pending', amountEx: 77052.9, amountIncl: 88610.84 });
+  tk('TK-demo3', { building: 'B3', description: 'Quote: theatre AHU coil replacement', poStatus: 'Not approved', poDate: d(40), amountEx: 221646.61, amountIncl: 254893.6 });
+  tk('TK-demo4', { building: 'B2', description: 'Annual maintenance contract — Q3', poNumber: '1045854', poDate: d(120), poStatus: 'Approved', invoice: { number: 'INV-0012323', date: d(75), source: 'manual' }, amountEx: 24692.11, amountIncl: 28395.93, portalDate: d(74) });
+  tk('TK-demo5', { building: 'B1', description: 'Annual maintenance contract — Q2', poNumber: '1044321', poDate: d(160), poStatus: 'Approved', invoice: { number: 'INV-0012201', date: d(130), source: 'manual' }, amountEx: 24692.11, amountIncl: 28395.93, portalDate: d(129), paidDate: d(95) });
   s.technicians[1].status = 'on job'; s.technicians[1].job = 'BA-1049';
   s.technicians[2].status = 'on job'; s.technicians[2].job = 'BA-1050';
 
@@ -193,7 +204,7 @@ function seed(demo) {
 
 /* Price list for parts & labour (edit in Settings → Zoho Books & billing). Prices exclude VAT. */
 const DEFAULT_BILLING = () => ({
-  currency: 'ZAR', vatRate: 15, pricesIncludeVat: false, autoInvoice: true, zohoTaxId: '',
+  currency: 'ZAR', vatRate: 15, pricesIncludeVat: false, autoInvoice: false, termsDays: 30, trackerV1: true, zohoTaxId: '',
   catalogue: [
     { code: 'CALLOUT', name: 'Call-out fee', kind: 'Call-out', unit: 'each', rate: 650, zohoItemId: '' },
     { code: 'LAB-HR', name: 'Labour (technician)', kind: 'Labour', unit: 'hour', rate: 550, zohoItemId: '' },

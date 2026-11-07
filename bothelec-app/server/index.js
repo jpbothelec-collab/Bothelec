@@ -163,6 +163,13 @@ function createServer(env = process.env, opts = {}) {
   R('POST', '/api/admin/zoho/sync', (req, res) => result(res, model.zSyncAll()), { roles: ['admin'] });
   R('POST', '/api/admin/zoho/:id/retry', (req, res, { p }) => result(res, model.zRetry(p.id)), { roles: ['admin'] });
 
+  // billing tracker
+  R('POST', '/api/tracker', (req, res, { u, body }) => result(res, model.addTrackerRow(body, u)), { roles: STAFF });
+  R('PUT', '/api/tracker/:id', (req, res, { u, p, body }) => result(res, model.updateTracker(p.id, body, u)), { roles: STAFF });
+  R('DELETE', '/api/tracker/:id', (req, res, { p }) => result(res, model.deleteTrackerRow(p.id)), { roles: STAFF });
+  R('POST', '/api/tracker/approve', (req, res, { u, body }) => result(res, model.approveTracker(body.ids, u)), { roles: STAFF });
+  R('POST', '/api/tracker/bulk', (req, res, { body }) => { if (!['portal', 'paid'].includes(body.action)) return fail(res, 400, 'Unknown action'); result(res, model.bulkTracker(body.ids, body.action, body.date)); }, { roles: STAFF });
+
   // technicians
   R('POST', '/api/techs', (req, res, { body }) => result(res, model.upsertTech(body)), { roles: STAFF });
   R('DELETE', '/api/techs/:id', (req, res, { p }) => result(res, model.deleteTech(p.id)), { roles: STAFF });

@@ -88,7 +88,7 @@
   const SERVICE_SIDE = [
     ['service/live', 'Live Jobs', 'grid'], ['service/callout', 'Call-outs', 'phone'], ['service/jobcards', 'Job Cards', 'card'], ['service/equipment', 'Equipment & history', 'fcu'],
     ['service/techs', 'Technicians', 'users', 'staff'], ['service/notifications', 'Notifications', 'bell'], ['assessments', 'Assessments', 'clipboard', 'field'],
-    ['service/reports', 'Reports', 'chart'], ['service/clients', 'Clients', 'building', 'staff'], ['service/documents', 'Documents', 'doc'],
+    ['service/tracker', 'Billing tracker', 'list', 'staff'], ['service/reports', 'Reports', 'chart'], ['service/clients', 'Clients', 'building', 'staff'], ['service/documents', 'Documents', 'doc'],
   ];
   const BMS_SIDE = [
     ['bms/overview', 'Site Overview', 'building'], ['bms/chillers', 'Chiller Plants', 'snow'], ['bms/ahus', 'AHUs & Ventilation', 'wind'],
@@ -127,7 +127,7 @@
         : `<strong>${esc(b.name || '—')}</strong>`}<small>${esc(b.area || '')}</small>
         <span class="pill ${conn === 'none' ? 'off' : 'ok'}" style="margin-top:3px;width:max-content"><i></i>${conn === 'none' ? 'No BMS link' : conn === 'simulator' ? 'Simulated' : 'BMS ' + conn}</span></div></div>
       <nav class="side">${mod.side.filter(sideAllowed).map(([href, label, icon]) => {
-        const on = key === href || (key.startsWith(href + '/') && href.includes('/')) || (href === 'bms/ahus' && key === 'bms/ahu') || (href === 'service/jobcards' && (key === 'service/job' || key === 'service/report')) || (href === 'bms/alarms' && key === 'bms/alarm') || (href === 'settings/buildings' && key === 'settings/building') || (href === 'settings/users' && key === 'settings/user') || (href === 'service/equipment' && (key === 'service/unit' || key === 'service/unitedit')) || (href === 'service/techs' && key === 'service/tech') || (href === 'service/clients' && key === 'service/building');
+        const on = key === href || (key.startsWith(href + '/') && href.includes('/')) || (href === 'bms/ahus' && key === 'bms/ahu') || (href === 'service/jobcards' && (key === 'service/job' || key === 'service/report')) || (href === 'bms/alarms' && key === 'bms/alarm') || (href === 'settings/buildings' && key === 'settings/building') || (href === 'settings/users' && key === 'settings/user') || (href === 'service/equipment' && (key === 'service/unit' || key === 'service/unitedit')) || (href === 'service/techs' && key === 'service/tech') || (href === 'service/clients' && key === 'service/building') || (href === 'service/tracker' && key === 'service/trackrow');
         const count = href === 'bms/alarms' && activeAlarms ? `<span class="count">${activeAlarms}</span>` : '';
         return `<a href="#/${href}" class="${on ? 'active' : ''}">${ic(icon)}<span>${esc(label)}</span>${count}</a>`;
       }).join('')}</nav>
@@ -208,7 +208,7 @@
       if (d.building === ui.site) { S.bms = cur; if (isLive()) rerender(); }
     });
   }
-  const NO_AUTO = new Set(['settings/billing', 'service/svbilling', 'service/callout', 'service/tech', 'service/building', 'service/unitedit', 'service/unit', 'dispatch/new', 'assessments/new', 'settings', 'settings/building', 'settings/user', 'settings/users', 'settings/buildings', 'settings/outbox', 'account', 'bms/points']);
+  const NO_AUTO = new Set(['service/tracker', 'service/trackrow', 'settings/billing', 'service/svbilling', 'service/callout', 'service/tech', 'service/building', 'service/unitedit', 'service/unit', 'dispatch/new', 'assessments/new', 'settings', 'settings/building', 'settings/user', 'settings/users', 'settings/buildings', 'settings/outbox', 'account', 'bms/points']);
   function rerender() {
     if (!S) return;
     const a = document.activeElement;
@@ -1009,7 +1009,7 @@
     return head(id === 'new' ? 'Add building' : esc(b.name), id === 'new' ? '' : 'Contacts, alarm rules and BMS connection', `<a class="btn sm" href="#/settings/buildings">${ic('back')}All buildings</a>`) +
       `<form class="form" data-form="building" data-id="${id === 'new' ? '' : b.id}"><div class="grid g2">
         <div class="card form"><header><h2>Building & contacts</h2></header>
-          ${field('Building name', 'name', b.name, 'text', 'required')}${field('Client', 'client', b.client)}${field('Area', 'area', b.area)}
+          ${field('Building name', 'name', b.name, 'text', 'required')}${field('Client', 'client', b.client)}${field('Area', 'area', b.area)}${field('Client PO portal (e.g. Vantage)', 'portal', b.portal)}
           <div class="field"><label>Building & operations managers</label>${id === 'new' ? '<p class="muted" style="margin:4px 0">Add contacts after saving the building.</p>' : contactList(b) + `<a class="btn sm" href="#/service/building/${b.id}" style="width:max-content">${ic('users')}Manage contacts</a>`}</div>
           <div class="grid g2">${field('Comfort band low (°C)', 'comfortLo', (b.comfort || [20, 24])[0], 'number', 'step="0.5"')}${field('Comfort band high (°C)', 'comfortHi', (b.comfort || [20, 24])[1], 'number', 'step="0.5"')}</div>
           <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="autoCall" ${b.autoCall !== false ? 'checked' : ''}> Raise a service call automatically for critical alarms</label>
@@ -1200,8 +1200,9 @@
             <li>Put <code>ZOHO_DC</code>, <code>ZOHO_CLIENT_ID</code>, <code>ZOHO_CLIENT_SECRET</code>, <code>ZOHO_REFRESH_TOKEN</code>, <code>ZOHO_ORG_ID</code> in the server's <code>.env</code> and restart.</li></ol>`}</div>
         <form class="card form" data-form="billingsettings"><header><h2>Invoicing settings</h2></header>
           <div class="grid g2">${field('VAT rate (%)', 'vatRate', BS.vatRate, 'number', 'step="0.5" min="0" max="50"')}${field('Currency', 'currency', BS.currency, 'text', 'maxlength="3"')}</div>
+          ${field('Payment terms (days, for overdue)', 'termsDays', BS.termsDays ?? 30, 'number', 'min="0" max="365"')}
           <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="pricesIncludeVat" ${BS.pricesIncludeVat ? 'checked' : ''}> Prices include VAT</label>
-          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="autoInvoice" ${BS.autoInvoice ? 'checked' : ''}> Create a draft invoice in Zoho Books automatically when a job report is signed</label>
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="autoInvoice" ${BS.autoInvoice ? 'checked' : ''}> Skip approval: send to Zoho Books as soon as a job report is signed (normally you approve in the Billing tracker)</label>
           ${field('Zoho tax ID for VAT (optional)', 'zohoTaxId', BS.zohoTaxId, 'text', 'placeholder="From Zoho Books → Settings → Taxes"')}
           <button class="btn primary">${ic('check')}Save</button></form>
       </div>
@@ -1211,6 +1212,128 @@
         <div><button class="btn primary">${ic('check')}Save price list</button></div></form>
       ${Z.configured ? `<div class="card" style="margin-top:14px"><header><h2>Sync log</h2></header>${(Z.log || []).length ? `<div class="table-wrap"><table><thead><tr><th>Time</th><th>What</th><th>Status</th></tr></thead><tbody>${Z.log.map(x => `<tr><td class="mono">${hhmm(x.createdAt)}<br><small>${dmy(x.createdAt)}</small></td><td>${x.kind === 'contact' ? 'Client ' + esc(bld(x.ref).name) : 'Invoice ' + esc(x.ref.split(':')[1])}${x.error ? `<br><small style="color:var(--red)">${esc(x.error)}</small>` : ''}${x.result && x.result.number ? `<br><small>${esc(x.result.number)}</small>` : ''}</td><td>${x.status === 'done' ? '<span class="pill ok">Done</span>' : x.status === 'queued' ? `<span class="pill warn">Waiting${x.attempts ? ' · retry ' + x.attempts : ''}</span>` : `<span class="pill bad">Failed</span> <button class="btn sm" data-action="zohoretry" data-id="${x.id}">Retry</button>`}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Nothing synced yet.</div>'}</div>` : ''}`;
   }
+
+  /* ---------------- views: billing tracker ---------------- */
+  const PO_STATUS = ['None', 'Pending', 'Approved', 'Not approved'];
+  const TK_CLS = { 'Void': 'off', 'Not approved': 'off', 'Paid': 'ok', 'Overdue': 'bad', 'Loaded to portal': 'info', 'Invoiced': 'info', 'Sending to Zoho': 'warn', 'Approved': 'warn', 'In progress': 'off', 'Needs parts & labour': 'warn', 'Quote / PO': 'off', 'PO pending': 'warn', 'Ready to invoice': 'ok' };
+  function trackerRows() {
+    const terms = B().termsDays ?? 30;
+    return (S.tracker || []).map(t => {
+      const job = t.jobId && byId(S.jobs, t.jobId), sv = t.serviceId && byId(S.services, t.serviceId), rec = job || sv;
+      const lines = rec && rec.billing ? rec.billing.lines || [] : [];
+      const live = lines.length ? calcTotals(lines) : null;
+      const ex = t.amountEx ?? (live ? live.subtotal : null), incl = t.amountIncl ?? (live ? live.total : null);
+      const inv = t.invoice || (rec && rec.invoice && rec.invoice.number ? { number: rec.invoice.number, date: (rec.invoice.at || '').slice(0, 10), source: 'zoho' } : null);
+      let overdue = 0;
+      if (inv && inv.date && !t.paidDate && !t.void) overdue = Math.max(0, Math.floor((new Date(today()) - new Date(inv.date)) / 864e5) - terms);
+      const done = job ? ['completed', 'report'].includes(job.status) : true;
+      let st;
+      if (t.void) st = 'Void';
+      else if (t.poStatus === 'Not approved') st = 'Not approved';
+      else if (t.paidDate) st = 'Paid';
+      else if (inv) st = overdue > 0 ? 'Overdue' : t.portalDate ? 'Loaded to portal' : 'Invoiced';
+      else if (t.approvedAt) st = B().zoho && rec ? 'Sending to Zoho' : 'Approved';
+      else if (job && !done) st = 'In progress';
+      else if (rec && !lines.length) st = 'Needs parts & labour';
+      else if (!rec && ex == null) st = 'Quote / PO';
+      else if (t.poStatus === 'Pending') st = 'PO pending';
+      else st = 'Ready to invoice';
+      const jobDate = job ? (job.steps.completed || job.steps.report || '').slice(0, 10) : sv ? sv.date : '';
+      return { t, job, sv, rec, b: bld(t.building), inv, ex, incl, overdue, st, jobDate, ref: job ? job.id : sv ? `${sv.unit} · ${sv.type}` : (t.description || '') };
+    }).sort((a, b) => String(b.t.poDate || b.jobDate || b.t.createdAt).localeCompare(String(a.t.poDate || a.jobDate || a.t.createdAt)));
+  }
+  const TK_FILTERS = [['open', 'Open'], ['ready', 'Ready to invoice'], ['po', 'Awaiting PO'], ['invoiced', 'Invoiced, unpaid'], ['overdue', 'Overdue'], ['paid', 'Paid'], ['closed', 'Void / not approved'], ['all', 'All']];
+  const tkMatch = (r, f) => ({
+    open: !['Paid', 'Void', 'Not approved'].includes(r.st),
+    ready: ['Ready to invoice', 'Approved', 'Sending to Zoho'].includes(r.st),
+    po: ['PO pending', 'Quote / PO'].includes(r.st) || (!r.t.poNumber && !['Paid', 'Void', 'Not approved'].includes(r.st)),
+    invoiced: ['Invoiced', 'Loaded to portal', 'Overdue'].includes(r.st),
+    overdue: r.st === 'Overdue', paid: r.st === 'Paid', closed: ['Void', 'Not approved'].includes(r.st), all: true,
+  }[f]);
+  const sumIncl = rows => rows.reduce((a, r) => a + (r.incl || 0), 0);
+  function viewTracker() {
+    if (!isStaff()) return head('Billing tracker') + '<div class="card empty">Only the service desk can see the billing tracker.</div>';
+    ui.tkFilter = ui.tkFilter || 'open';
+    const all = trackerRows();
+    const clients = [...new Set(all.map(r => r.b.client || r.b.name))].sort();
+    const rows = all.filter(r => tkMatch(r, ui.tkFilter) && (!ui.tkClient || (r.b.client || r.b.name) === ui.tkClient));
+    const ready = all.filter(r => r.st === 'Ready to invoice'), unpaid = all.filter(r => tkMatch(r, 'invoiced')), over = all.filter(r => r.st === 'Overdue'), po = all.filter(r => tkMatch(r, 'po'));
+    return head('Billing tracker', 'Every job from PO to payment. Rows are added automatically; approve them to invoice.',
+      `<a class="btn sm" href="#/service/trackrow/new">${ic('plus')}Add PO / quote</a><button class="btn sm" data-action="tkcsv">${ic('doc')}Export CSV</button>`) +
+      `<div class="grid g4" style="margin-bottom:14px">${kpi('check', `Ready to invoice · ${ready.length}`, fmtMoney(sumIncl(ready)))}${kpi('clipboard', 'Awaiting PO', po.length)}${kpi('doc', `Invoiced, unpaid · ${unpaid.length}`, fmtMoney(sumIncl(unpaid)))}${kpi('alert', `Overdue · ${over.length}`, fmtMoney(sumIncl(over)))}</div>
+      <div class="card">
+        <div class="tk-bar">
+          <select class="tk-fsel" data-change="tkfilter" aria-label="Show">${TK_FILTERS.map(([k, l]) => `<option value="${k}" ${ui.tkFilter === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+          <div class="seg tk-seg">${TK_FILTERS.map(([k, l]) => `<button data-action="tkfilter" data-v="${k}" class="${ui.tkFilter === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+          <select data-change="tkclient" aria-label="Client"><option value="">All clients</option>${clients.map(c => `<option ${ui.tkClient === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
+          <input type="search" data-filter="tracker" placeholder="Search PO, job, invoice…" aria-label="Search">
+        </div>
+        <div class="tk-bar tk-bulk"><label><input type="checkbox" data-tkall> Select all</label><span class="muted" id="tkCount">0 selected</span>
+          <button class="btn sm primary" data-action="tkapprove">${ic('check')}${B().zoho ? 'Approve & send to Zoho' : 'Approve for invoicing'}</button>
+          <button class="btn sm" data-action="tkportal">Loaded to portal today</button><button class="btn sm" data-action="tkpaid">Mark paid today</button></div>
+        ${rows.length ? `<div class="table-wrap"><table class="tk-table" id="tracker"><thead><tr><th></th><th>Status</th><th>Client</th><th>PO</th><th>Job card</th><th>Invoice</th><th style="text-align:right">Amount</th><th>Overdue</th><th>Portal</th><th>Paid</th></tr></thead><tbody>
+        ${rows.map(r => `<tr class="click${r.t.critical ? ' tk-crit' : ''}" data-href="#/service/trackrow/${r.t.id}">
+          <td><input type="checkbox" data-tkrow="${r.t.id}" aria-label="Select"></td>
+          <td><span class="pill ${TK_CLS[r.st] || 'off'}">${esc(r.st)}</span>${r.t.critical ? '<br><span class="pill bad" style="margin-top:3px">Critical</span>' : ''}</td>
+          <td>${esc(r.b.client || r.b.name)}<br><small>${esc(r.b.name)}</small></td>
+          <td>${r.t.poNumber ? `<span class="tk-po">${esc(r.t.poNumber)}</span>` : '<small class="muted">no PO</small>'}<br><small>${[r.t.poDate ? dmy(r.t.poDate) : '', r.t.poStatus !== 'None' ? r.t.poStatus : ''].filter(Boolean).join(' · ') || '&nbsp;'}</small></td>
+          <td>${r.job ? `<a href="#/service/job/${r.job.id}">${r.job.id}</a>` : r.sv ? `<a href="#/service/svbilling/${r.sv.id}">${esc(r.ref)}</a>` : `<span class="tk-desc">${esc(r.ref)}</span>`}<br><small>${r.jobDate ? dmy(r.jobDate) : '&nbsp;'}</small></td>
+          <td>${r.inv ? esc(r.inv.number) : '—'}<br><small>${r.inv && r.inv.date ? dmy(r.inv.date) : '&nbsp;'}</small></td>
+          <td class="mono" style="text-align:right">${r.incl != null ? fmtMoney(r.incl) : '—'}<br><small>${r.ex != null ? fmtMoney(r.ex) + ' ex VAT' : '&nbsp;'}</small></td>
+          <td class="mono" style="${r.overdue ? 'color:var(--red);font-weight:600' : ''}">${r.overdue ? r.overdue + ' days' : '—'}</td>
+          <td class="mono">${r.t.portalDate ? dmy(r.t.portalDate) : '—'}</td>
+          <td class="mono" style="${r.t.paidDate ? 'color:var(--accent)' : ''}">${r.t.void ? 'VOID' : r.t.paidDate ? dmy(r.t.paidDate) : '—'}</td></tr>`).join('')}
+        </tbody></table></div>` : '<div class="empty">Nothing here.</div>'}
+        <p class="muted" style="font-size:12px;margin:10px 0 0">Overdue counts from the invoice date after ${B().termsDays ?? 30} days' payment terms (Settings → Zoho Books & billing).</p></div>`;
+  }
+  function viewTrackRow(id) {
+    if (!isStaff()) return head('Not found');
+    const isNew = id === 'new';
+    const r = isNew ? null : trackerRows().find(x => x.t.id === id);
+    if (!isNew && !r) return head('Row not found');
+    const t = r ? r.t : { poStatus: 'Pending', building: ui.site };
+    const b = bld(t.building), manual = !t.jobId && !t.serviceId, zinv = r && r.inv && r.inv.source === 'zoho';
+    const portalName = b.portal || 'client portal';
+    return head(isNew ? 'Add PO / quote' : (r.job ? `Billing · ${r.job.id}` : `Billing · ${esc(r.ref || t.poNumber || 'PO')}`), r ? `${esc(b.client || b.name)} · ${esc(b.name)}` : 'For POs and quotes that are not linked to a service call',
+      `<a class="btn sm" href="#/service/tracker">${ic('back')}Billing tracker</a>${r && r.job ? `<a class="btn sm" href="#/service/job/${r.job.id}">Open job</a>` : ''}`) +
+      `<div class="grid split"><form class="card form" data-form="tracker" data-id="${isNew ? '' : t.id}">
+        ${r ? `<header><h2>Status</h2><span class="pill ${TK_CLS[r.st] || 'off'}">${esc(r.st)}</span></header>` : ''}
+        ${manual ? `<div class="field"><label>Client building</label><select name="building">${S.buildings.map(x => `<option value="${x.id}" ${x.id === t.building ? 'selected' : ''}>${esc(x.client || x.name)} · ${esc(x.name)}</option>`).join('')}</select></div>
+          ${field('Description', 'description', t.description, 'text', 'placeholder="e.g. Quote: replace server-room split unit" required')}
+          ${field('Amount excl. VAT', 'amountEx', t.amountEx, 'number', 'step="0.01" min="0"')}` : ''}
+        <div class="grid g2">${field('PO number', 'poNumber', t.poNumber)}${field('PO received', 'poDate', t.poDate, 'date')}</div>
+        <div class="grid g2"><div class="field"><label>PO approval</label><select name="poStatus">${PO_STATUS.map(x => `<option ${t.poStatus === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+          <label style="display:flex;gap:8px;align-items:center;margin-top:18px"><input type="checkbox" name="critical" ${t.critical ? 'checked' : ''}> Critical</label></div>
+        ${zinv ? `<div class="field"><label>Invoice</label><p style="margin:4px 0">${esc(r.inv.number)} · ${dmy(r.inv.date)} (Zoho Books)${r.rec && r.rec.invoice && r.rec.invoice.url ? ` · <a href="${esc(r.rec.invoice.url)}" target="_blank" rel="noopener">Open in Zoho</a>` : ''}</p></div>`
+          : `<div class="grid g2">${field('Invoice number', 'invoiceNumber', r && r.inv ? r.inv.number : '', 'text', B().zoho ? 'placeholder="Filled in by Zoho when sent"' : 'placeholder="e.g. INV-0012430"')}${field('Invoice date', 'invoiceDate', r && r.inv ? r.inv.date : '', 'date')}</div>`}
+        <div class="grid g2">${field(`Loaded to ${esc(portalName)}`, 'portalDate', t.portalDate, 'date')}${field('Date paid', 'paidDate', t.paidDate, 'date')}</div>
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="void" ${t.void ? 'checked' : ''}> Void</label>
+        <div class="field"><label>Notes</label><textarea name="notes">${esc(t.notes || '')}</textarea></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary">${ic('check')}Save</button>
+          ${r && ['Ready to invoice', 'PO pending'].includes(r.st) && r.rec ? `<button type="button" class="btn" data-action="tkapproveone" data-id="${t.id}">${B().zoho ? 'Approve & send to Zoho' : 'Approve for invoicing'}</button>` : ''}
+          ${!isNew && manual ? `<button type="button" class="btn danger" data-action="tkdelete" data-id="${t.id}">Delete</button>` : ''}</div>
+      </form>
+      ${r ? `<div class="grid" style="align-content:start"><div class="card"><header><h3>Amount</h3></header><dl class="kv"><dt>Excl. VAT</dt><dd>${r.ex != null ? fmtMoney(r.ex) : '—'}</dd><dt>Incl. VAT</dt><dd><strong>${r.incl != null ? fmtMoney(r.incl) : '—'}</strong></dd>${r.overdue ? `<dt>Overdue</dt><dd style="color:var(--red)">${r.overdue} days</dd>` : ''}</dl>
+        ${r.rec && r.rec.billing && r.rec.billing.lines && r.rec.billing.lines.length ? `<div style="margin-top:10px">${linesTable(r.rec.billing.lines)}</div>` : ''}
+        ${r.job && !(r.rec.billing && r.rec.billing.lines && r.rec.billing.lines.length) ? `<p class="muted">No parts & labour recorded yet. <a href="#/service/job/${r.job.id}">Add them on the job</a>.</p>` : ''}</div>
+        ${t.approvedAt ? `<div class="card"><small>Approved by ${esc(t.approvedBy || '')} · ${dmy(t.approvedAt)}</small></div>` : ''}</div>` : ''}</div>`;
+  }
+  function trackerCsv() {
+    const rows = trackerRows();
+    const q = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+    const head = ['Status', 'Client', 'Building', 'PO received date', 'Critical', 'PO approval', 'PO #', 'Job card nr', 'Job card date', 'Invoice', 'Invoice date', 'Amount', 'Ex VAT amount', 'Overdue days', 'Loaded to portal', 'Date paid', 'Notes'];
+    const body = rows.map(r => [r.st, r.b.client || r.b.name, r.b.name, r.t.poDate, r.t.critical ? 'Yes' : '', r.t.poStatus === 'None' ? '' : r.t.poStatus, r.t.poNumber, r.job ? r.job.id : r.ref, r.jobDate, r.inv ? r.inv.number : '', r.inv ? r.inv.date : '', r.incl != null ? r.incl.toFixed(2) : '', r.ex != null ? r.ex.toFixed(2) : '', r.overdue || '', r.t.portalDate, r.t.void ? 'VOID' : r.t.paidDate, r.t.notes].map(q).join(','));
+    const blob = new Blob(['﻿' + [head.map(q).join(','), ...body].join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `billing-tracker-${today()}.csv`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+  async function tkApprove(ids) {
+    const r = await act('POST', '/api/tracker/approve', { ids });
+    if (!r) return false;
+    toast(`${r.approved} approved${r.sent ? `, ${r.sent} sent to Zoho Books` : ''}`, r.skipped.length ? 'Skipped: ' + r.skipped.slice(0, 4).join('; ') + (r.skipped.length > 4 ? '…' : '') : (B().zoho ? 'Draft invoices appear in a few seconds' : 'Add the invoice numbers when invoiced'), r.skipped.length && !r.approved ? 'bad' : '');
+    render(true);
+    return true;
+  }
+  const tkSelected = () => [...document.querySelectorAll('[data-tkrow]:checked')].map(x => x.dataset.tkrow);
 
   /* ---------------- intro / product tour (click-through) ---------------- */
   const INTRO_KEY = 'bothelec.introSeen';
@@ -1333,7 +1456,7 @@
     'bms/pumps': viewPumps, 'bms/fans': viewFans, 'bms/zones': viewZones, 'bms/alarms': viewAlarms, 'bms/alarm': viewAlarm, 'bms/trends': viewTrends, 'bms/points': viewPoints,
     vehicles: viewVehicles, dispatch: viewDispatch, 'dispatch/new': viewDispatchNew,
     assessments: viewAssessments, 'assessments/new': viewAssessNew,
-    settings: viewSettings, 'settings/buildings': viewSettingsBuildings, 'settings/building': viewSettingsBuilding, 'settings/users': viewSettingsUsers, 'settings/user': viewSettingsUser, 'settings/outbox': viewOutbox, 'settings/billing': viewSettingsBilling, 'service/svbilling': viewServiceBilling,
+    settings: viewSettings, 'settings/buildings': viewSettingsBuildings, 'settings/building': viewSettingsBuilding, 'settings/users': viewSettingsUsers, 'settings/user': viewSettingsUser, 'settings/outbox': viewOutbox, 'settings/billing': viewSettingsBilling, 'service/tracker': viewTracker, 'service/trackrow': viewTrackRow, 'service/svbilling': viewServiceBilling,
     account: viewAccount,
     'service/equipment': viewEquipment, 'service/unit': viewUnit, 'service/unitedit': viewUnitEdit, 'service/tech': viewTechEdit, 'service/building': viewBuildingContacts,
   };
@@ -1426,6 +1549,13 @@
     trip: el => act('POST', `/api/trips/${el.dataset.id}/advance`, {}),
     clearalarm: el => { if (confirm('Clear this alarm manually?')) act('POST', `/api/alarms/${el.dataset.id}/clear`, {}, ['Alarm cleared']); },
     tour: () => showIntro(0),
+    tkfilter: el => { ui.tkFilter = el.dataset.v; render(true); },
+    tkcsv: () => trackerCsv(),
+    tkapprove: async () => { const ids = tkSelected(); if (!ids.length) return toast('Select rows first', 'Tick the rows you want to approve.', 'bad'); await tkApprove(ids); },
+    tkapproveone: async el => { if (await tkApprove([el.dataset.id])) location.hash = '#/service/tracker'; },
+    tkportal: async () => { const ids = tkSelected(); if (!ids.length) return toast('Select rows first', '', 'bad'); const r = await act('POST', '/api/tracker/bulk', { ids, action: 'portal' }); if (r) { toast(`${r.updated} marked as loaded to portal`, 'Only invoiced rows are updated'); render(true); } },
+    tkpaid: async () => { const ids = tkSelected(); if (!ids.length) return toast('Select rows first', '', 'bad'); if (!confirm(`Mark ${ids.length} row(s) as paid today?`)) return; const r = await act('POST', '/api/tracker/bulk', { ids, action: 'paid' }); if (r) { toast(`${r.updated} marked as paid`, 'Only invoiced rows are updated'); render(true); } },
+    tkdelete: async el => { if (confirm('Delete this PO / quote row?') && await act('DELETE', `/api/tracker/${el.dataset.id}`, undefined, ['Row deleted'])) location.hash = '#/service/tracker'; },
     addline: el => { const root = el.closest('[data-lines]'); root.querySelector('.lbody').insertAdjacentHTML('beforeend', lineRow({ kind: 'Part', qty: 1 })); root.querySelector('.lbody').lastElementChild.querySelector('[name=l_desc]').focus(); },
     rmline: el => { const root = el.closest('[data-lines]'); el.closest('[data-line]').remove(); refreshLineTotals(root); },
     invoice: async el => { el.disabled = true; await act('POST', `/api/${el.dataset.kind === 'job' ? 'jobs' : 'services'}/${el.dataset.id}/invoice`, {}, ['Sending to Zoho Books', 'The draft invoice appears here in a few seconds']); },
@@ -1450,7 +1580,7 @@
     const a = e.target.closest('[data-action]');
     if (a) { e.preventDefault(); ACTIONS[a.dataset.action] && ACTIONS[a.dataset.action](a); return; }
     const r = e.target.closest('tr[data-href]');
-    if (r && !e.target.closest('a,button')) location.hash = r.dataset.href;
+    if (r && !e.target.closest('a,button,input,label,select')) location.hash = r.dataset.href;
   });
   const bindTimers = {};
   document.addEventListener('input', e => {
@@ -1465,6 +1595,7 @@
       if (el.name === 'l_desc') { const c = B().catalogue.find(x => x.name === el.value); const row = el.closest('[data-line]'); if (c && row) { row.querySelector('[name=l_price]').value = c.rate; row.querySelector('[name=l_kind]').value = c.kind; row.querySelector('[name=l_code]').value = c.code; } }
       refreshLineTotals(lroot);
     }
+    if (el.dataset.filter === 'tracker') { const q = el.value.toLowerCase(); document.querySelectorAll('#tracker tbody tr').forEach(tr => { tr.hidden = !tr.textContent.toLowerCase().includes(q); }); }
     if (el.dataset.filter === 'points') { const q = el.value.toLowerCase(); document.querySelectorAll('#points tbody tr').forEach(tr => { tr.hidden = !tr.textContent.toLowerCase().includes(q); }); }
   });
   document.addEventListener('change', e => {
@@ -1475,6 +1606,10 @@
       if (c) { root.querySelector('.lbody').insertAdjacentHTML('beforeend', lineRow({ kind: c.kind, code: c.code, description: c.name, qty: 1, unitPrice: c.rate })); refreshLineTotals(root); }
       el.value = '';
     }
+    if (el.dataset.change === 'tkfilter') { ui.tkFilter = el.value; render(true); }
+    if (el.dataset.change === 'tkclient') { ui.tkClient = el.value; render(true); }
+    if (el.matches && el.matches('[data-tkall]')) document.querySelectorAll('#tracker tbody tr').forEach(tr => { if (!tr.hidden) tr.querySelector('[data-tkrow]').checked = el.checked; });
+    if (el.matches && el.matches('[data-tkall], [data-tkrow]')) { const n = tkSelected().length; const c = $('#tkCount'); if (c) c.textContent = `${n} selected`; }
     if (el.dataset.change === 'eqsite') location.hash = '#/service/equipment/' + el.value;
     if (el.dataset.change === 'building') {
       const b = bld(el.value), f = el.form;
@@ -1536,7 +1671,7 @@
         case 'building': {
           const connector = parseJson(d.connector, 'Connector settings'); if (connector === undefined) break;
           const gsm = parseJson(d.gsm, 'GSM settings'); if (gsm === undefined) break;
-          const body = { id: f.dataset.id || undefined, name: d.name, client: d.client, area: d.area,
+          const body = { id: f.dataset.id || undefined, name: d.name, client: d.client, area: d.area, portal: d.portal,
             comfort: [+d.comfortLo || 20, +d.comfortHi || 24], autoCall: !!d.autoCall, locations: lines(d.locations), connector, gsm, regenToken: !!d.regenToken };
           const r = await act('POST', '/api/admin/buildings', body, ['Building saved', 'BMS connection restarted']);
           if (r && r.building) { ui.bmsCache = {}; if (ui.site === r.building.id) await loadBms(); location.hash = '#/settings/building/' + r.building.id; render(true); }
@@ -1554,10 +1689,18 @@
           if (r) render(true);
           break;
         }
-        case 'billingsettings': if (await act('PUT', '/api/admin/settings', { billing: { vatRate: +d.vatRate, currency: d.currency, pricesIncludeVat: !!d.pricesIncludeVat, autoInvoice: !!d.autoInvoice, zohoTaxId: d.zohoTaxId } }, ['Invoicing settings saved'])) render(true); break;
+        case 'billingsettings': if (await act('PUT', '/api/admin/settings', { billing: { vatRate: +d.vatRate, termsDays: +d.termsDays, currency: d.currency, pricesIncludeVat: !!d.pricesIncludeVat, autoInvoice: !!d.autoInvoice, zohoTaxId: d.zohoTaxId } }, ['Invoicing settings saved'])) render(true); break;
         case 'catalogue': {
           const catalogue = [...f.querySelectorAll('[data-row]')].map(r => ({ code: r.querySelector('[name=k_code]').value, name: r.querySelector('[name=k_name]').value, kind: r.querySelector('[name=k_kind]').value, unit: r.querySelector('[name=k_unit]').value, rate: +r.querySelector('[name=k_rate]').value, zohoItemId: r.querySelector('[name=k_zoho]').value }));
           if (await act('PUT', '/api/admin/settings', { billing: { catalogue } }, ['Price list saved'])) render(true);
+          break;
+        }
+        case 'tracker': {
+          const body = { poNumber: d.poNumber, poDate: d.poDate, poStatus: d.poStatus, critical: !!d.critical, portalDate: d.portalDate, paidDate: d.paidDate, void: !!d.void, notes: d.notes };
+          if (d.invoiceNumber !== undefined) { body.invoiceNumber = d.invoiceNumber; body.invoiceDate = d.invoiceDate; }
+          if (d.building !== undefined) { body.building = d.building; body.description = d.description; body.amountEx = d.amountEx; }
+          const r = f.dataset.id ? await act('PUT', `/api/tracker/${f.dataset.id}`, body, ['Saved']) : await act('POST', '/api/tracker', body, ['PO / quote added']);
+          if (r) location.hash = '#/service/tracker';
           break;
         }
         case 'tech': {

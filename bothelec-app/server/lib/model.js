@@ -7,7 +7,7 @@ const { nowIso, rid, byId, log, setPath, emptyBms, COLLECTIONS, normalizePhone, 
 const { seed, STEPS, DEFAULT_POLICY, DEFAULT_BILLING } = require('./seed');
 const { hashPassword, isStaff, canBuilding, canJob } = require('./auth');
 
-const COLLS = ['buildings', 'technicians', 'jobs', 'services', 'feed', 'alarms', 'vehicles', 'trips', 'assessments', 'documents', 'users'];
+const COLLS = ['buildings', 'technicians', 'jobs', 'services', 'tracker', 'feed', 'alarms', 'vehicles', 'trips', 'assessments', 'documents', 'users'];
 const stepIdx = k => STEPS.findIndex(s => s.key === k);
 const stepLabel = k => (STEPS[stepIdx(k)] || {}).label || k;
 const ROLE_LABEL = { manager: 'Building Manager', ops: 'Operations Manager', desk: 'Bothelec service desk', tech: 'Technician', caller: 'Caller' };
@@ -29,15 +29,16 @@ function createModel({ db, env, bus, filesDir }) {
     if (!S.meta) {
       const s = seed(env.SEED_DEMO === 'true');
       db.tx(() => {
-        ['buildings', 'technicians', 'jobs', 'services', 'alarms', 'vehicles', 'trips', 'assessments', 'documents'].forEach(c => s[c].forEach(o => db.put(c, o)));
+        ['buildings', 'technicians', 'jobs', 'services', 'tracker', 'alarms', 'vehicles', 'trips', 'assessments', 'documents'].forEach(c => s[c].forEach(o => db.put(c, o)));
         Object.values(s.bms).forEach(b => db.put('bms', b));
       });
-      Object.assign(S, { buildings: s.buildings, technicians: s.technicians, jobs: s.jobs, services: s.services, alarms: s.alarms, vehicles: s.vehicles, trips: s.trips, assessments: s.assessments, documents: s.documents, bms: s.bms });
+      Object.assign(S, { buildings: s.buildings, technicians: s.technicians, jobs: s.jobs, services: s.services, tracker: s.tracker, alarms: s.alarms, vehicles: s.vehicles, trips: s.trips, assessments: s.assessments, documents: s.documents, bms: s.bms });
       S.meta = s.meta; db.setKv('meta', S.meta);
       log(`[model] initialised ${env.SEED_DEMO === 'true' ? 'with demo data' : 'empty'}`);
     }
     if (!S.settings) { S.settings = { policy: DEFAULT_POLICY, desk: { phone: env.DESK_PHONE || '', email: env.DESK_EMAIL || '' }, etaMinutes: 25 }; db.setKv('settings', S.settings); }
     if (!S.settings.billing) { S.settings.billing = DEFAULT_BILLING(); db.setKv('settings', S.settings); }
+    if (!S.settings.billing.trackerV1) { Object.assign(S.settings.billing, { autoInvoice: false, termsDays: S.settings.billing.termsDays || 30, trackerV1: true }); db.setKv('settings', S.settings); }
     S.zohoq = db.all('zohoq').sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     S.buildings.forEach(b => { if (!b.ingestToken) { b.ingestToken = rid(18); db.put('buildings', b); } migrateBuilding(b); });
     S.services.sort((a, b) => (b.date + b.at).localeCompare(a.date + a.at));
@@ -151,6 +152,7 @@ function createModel({ db, env, bus, filesDir }) {
     const t = tech(data.tech) || tech(actor.techId);
     const rec = { id: 'SV' + Date.now().toString(36) + rid(2), building: b.id, unit: u.id, date, type: SERVICE_TYPES.includes(data.type) ? data.type : 'Other', tech: t ? t.id : null, techName: t ? t.name : '', work: str(data.work, 2000), notes: str(data.notes, 2000), by: actor.name, at: nowIso() };
     if (data.billing && Array.isArray(data.billing.lines)) { const r = cleanLines(data.billing.lines); if (r.error) return r; if (r.lines.length) rec.billing = { lines: r.lines, notes: '', updatedBy: actor.name, updatedAt: nowIso() }; }
+    if (rec.billing) ensureTracker('service', rec);
     S.services.unshift(rec); S.services.sort((a, c) => (c.date + c.at).localeCompare(a.date + a.at));
     save('services', rec);
     feed(`${u.id} · ${rec.type} logged`, `${b.name} — ${rec.work.slice(0, 90)}`, '', `#/service/unit/${b.id}/${encodeURIComponent(u.id)}`, b.id);
@@ -298,6 +300,7 @@ function createModel({ db, env, bus, filesDir }) {
     if (bu && !job.unit) job.unit = bu.id;
     saveMeta();
     S.jobs.unshift(job);
+    ensureTracker('job', job);
     setStep(job, 'logged', actor);
     return job;
   }
@@ -536,11 +539,12 @@ function createModel({ db, env, bus, filesDir }) {
       vehicles: u.role === 'client' ? [] : S.vehicles,
       trips: u.role === 'client' ? [] : S.trips,
       services: S.services.filter(x => bOk(x.building)),
+      tracker: staff ? S.tracker : [],
       assessments: S.assessments.filter(a => bOk(a.building)),
       documents: S.documents,
       bmsSummary: Object.fromEntries(buildings.map(b => [b.id, S.bms[b.id] ? { fault: S.bms[b.id].fault, updatedAt: S.bms[b.id].updatedAt, hasData: true } : { hasData: false }])),
       admin: u.role === 'admin' ? { users: S.users.map(publicUser), settings: S.settings, connectors: connStatus, notifier: notifier && notifier.status(), zoho: zStatus() } : undefined,
-      billing: { vatRate: S.settings.billing.vatRate, pricesIncludeVat: S.settings.billing.pricesIncludeVat, currency: S.settings.billing.currency, catalogue: u.role === 'client' ? [] : S.settings.billing.catalogue, zoho: !!(zoho && zoho.configured), autoInvoice: S.settings.billing.autoInvoice },
+      billing: { vatRate: S.settings.billing.vatRate, pricesIncludeVat: S.settings.billing.pricesIncludeVat, currency: S.settings.billing.currency, catalogue: u.role === 'client' ? [] : S.settings.billing.catalogue, zoho: !!(zoho && zoho.configured), autoInvoice: S.settings.billing.autoInvoice, termsDays: S.settings.billing.termsDays ?? 30 },
     };
   }
 
@@ -579,7 +583,7 @@ function createModel({ db, env, bus, filesDir }) {
     if (!data.name) return { error: 'Name is required.' };
     let b = data.id && byId(S.buildings, data.id);
     if (!b) { b = { id: 'B' + Date.now().toString(36), ingestToken: rid(18), contacts: [], units: [], equipment: ['Other / not sure'], locations: ['Plant room'], autoCall: true, comfort: [20, 24], connector: { type: 'none' } }; S.buildings.push(b); }
-    const allowed = ['name', 'client', 'area', 'locations', 'autoCall', 'comfort', 'connector', 'gsm'];
+    const allowed = ['name', 'client', 'area', 'portal', 'locations', 'autoCall', 'comfort', 'connector', 'gsm'];
     allowed.forEach(k => { if (data[k] !== undefined) b[k] = data[k]; });
     if (Array.isArray(data.contacts)) { const r = setContacts(b.id, data.contacts); if (r.error) return r; }
     syncEquipment(b);
@@ -619,6 +623,7 @@ function createModel({ db, env, bus, filesDir }) {
     if (target.invoice && target.invoice.id) return { error: `Already invoiced (${target.invoice.number || target.invoice.id}). Change it in Zoho Books.` };
     const r = cleanLines(data.lines); if (r.error) return r;
     target.billing = { lines: r.lines, notes: str(data.notes, 1000), updatedBy: actor.name, updatedAt: nowIso() };
+    if (coll === 'services' && r.lines.length) ensureTracker('service', target);
     save(coll, target); changed(target.building);
     return { ok: true, billing: target.billing, totals: totals(r.lines) };
   }
@@ -629,6 +634,94 @@ function createModel({ db, env, bus, filesDir }) {
   function setServiceBilling(id, data, actor) {
     const rec = byId(S.services, id); if (!rec) return { error: 'Service record not found.' };
     return setBilling(rec, data, actor, 'services');
+  }
+
+  /* ---------------- billing tracker (PO → job card → invoice → portal → paid) ---------------- */
+  const PO_STATUS = ['None', 'Pending', 'Approved', 'Not approved'];
+  const isoDate = v => (/^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : '');
+  function trackerFor(kind, id) { return S.tracker.find(t => (kind === 'job' ? t.jobId : t.serviceId) === id); }
+  function ensureTracker(kind, rec) {
+    if (trackerFor(kind, rec.id)) return;
+    const t = { id: 'TK' + Date.now().toString(36) + rid(3), building: rec.building, jobId: kind === 'job' ? rec.id : null, serviceId: kind === 'service' ? rec.id : null,
+      poNumber: '', poDate: '', poStatus: 'None', critical: kind === 'job' && rec.urgency === 'Critical', approvedAt: null, approvedBy: '', invoice: null, amountEx: null, amountIncl: null,
+      portalDate: '', paidDate: '', void: false, notes: '', description: '', createdAt: nowIso() };
+    if (rec.invoice && rec.invoice.number) t.invoice = { number: rec.invoice.number, date: (rec.invoice.at || '').slice(0, 10), source: rec.invoice.provider || 'zoho' };
+    S.tracker.unshift(t); save('tracker', t);
+  }
+  function addTrackerRow(data, actor) {
+    const b = byId(S.buildings, data.building); if (!b) return { error: 'Choose a client building.' };
+    const t = { id: 'TK' + Date.now().toString(36) + rid(3), building: b.id, jobId: null, serviceId: null, poNumber: '', poDate: '', poStatus: 'Pending', critical: false, approvedAt: null, approvedBy: '', invoice: null, amountEx: null, amountIncl: null, portalDate: '', paidDate: '', void: false, notes: '', description: '', createdAt: nowIso(), createdBy: actor.name };
+    S.tracker.unshift(t);
+    const r = updateTracker(t.id, data, actor);
+    if (r.error) { S.tracker.shift(); return r; }
+    return { ok: true, row: t };
+  }
+  function updateTracker(id, d, actor) {
+    const t = byId(S.tracker, id); if (!t) return { error: 'Row not found.' };
+    if (d.poNumber !== undefined) t.poNumber = str(d.poNumber, 40);
+    if (d.poDate !== undefined) t.poDate = isoDate(d.poDate);
+    if (d.poStatus !== undefined) t.poStatus = PO_STATUS.includes(d.poStatus) ? d.poStatus : 'None';
+    if (d.critical !== undefined) t.critical = !!d.critical;
+    if (d.portalDate !== undefined) t.portalDate = isoDate(d.portalDate);
+    if (d.paidDate !== undefined) t.paidDate = isoDate(d.paidDate);
+    if (d.void !== undefined) t.void = !!d.void;
+    if (d.notes !== undefined) t.notes = str(d.notes, 1000);
+    if (d.description !== undefined && !t.jobId && !t.serviceId) t.description = str(d.description, 200);
+    if (d.amountEx !== undefined && !t.jobId && !t.serviceId) {
+      const v = d.amountEx === '' || d.amountEx === null ? null : +d.amountEx;
+      if (v !== null && !(v >= 0 && v < 1e9)) return { error: 'Amount is not valid.' };
+      t.amountEx = v === null ? null : money(v);
+      t.amountIncl = v === null ? null : money(v * (1 + S.settings.billing.vatRate / 100));
+    }
+    if (d.invoiceNumber !== undefined && !(t.invoice && t.invoice.source === 'zoho')) {
+      const num = str(d.invoiceNumber, 40);
+      if (num) {
+        const rec = t.jobId ? byId(S.jobs, t.jobId) : t.serviceId ? byId(S.services, t.serviceId) : null;
+        const tt = rec && rec.billing && rec.billing.lines && rec.billing.lines.length ? totals(rec.billing.lines) : null;
+        t.invoice = { number: num, date: isoDate(d.invoiceDate) || nowIso().slice(0, 10), source: 'manual' };
+        if (tt && t.amountEx === null) { t.amountEx = tt.subtotal; t.amountIncl = tt.total; }
+        if (!t.approvedAt) { t.approvedAt = nowIso(); t.approvedBy = actor.name; }
+      } else t.invoice = null;
+    } else if (d.invoiceDate !== undefined && t.invoice && t.invoice.source === 'manual') t.invoice.date = isoDate(d.invoiceDate) || t.invoice.date;
+    t.updatedAt = nowIso(); t.updatedBy = actor.name;
+    save('tracker', t); changed(t.building);
+    return { ok: true, row: t };
+  }
+  function deleteTrackerRow(id) {
+    const i = S.tracker.findIndex(x => x.id === id); if (i < 0) return { error: 'Row not found.' };
+    if (S.tracker[i].jobId || S.tracker[i].serviceId) return { error: 'Rows for jobs cannot be deleted. Mark them void instead.' };
+    const [t] = S.tracker.splice(i, 1); db.del('tracker', id); changed(t.building);
+    return { ok: true };
+  }
+  /* Approve rows for invoicing; with Zoho connected this also creates the draft invoices. */
+  function approveTracker(ids, actor) {
+    const out = { approved: 0, sent: 0, skipped: [] };
+    for (const id of (ids || []).slice(0, 200)) {
+      const t = byId(S.tracker, id); if (!t) continue;
+      const label = t.jobId || t.poNumber || t.id;
+      if (t.void) { out.skipped.push(`${label}: void`); continue; }
+      if (t.invoice) { out.skipped.push(`${label}: already invoiced`); continue; }
+      const rec = t.jobId ? byId(S.jobs, t.jobId) : t.serviceId ? byId(S.services, t.serviceId) : null;
+      if (t.jobId && rec && !['completed', 'report'].includes(rec.status)) { out.skipped.push(`${label}: work not completed`); continue; }
+      const lines = rec && rec.billing ? rec.billing.lines || [] : [];
+      if (rec && !lines.length) { out.skipped.push(`${label}: no parts & labour`); continue; }
+      t.approvedAt = nowIso(); t.approvedBy = actor.name; save('tracker', t); out.approved++;
+      if (rec && zoho && zoho.configured) { zEnqueue('invoice', (t.jobId ? 'job:' : 'service:') + rec.id); out.sent++; }
+    }
+    changed(null);
+    return { ok: true, ...out };
+  }
+  function bulkTracker(ids, action, date) {
+    const day = isoDate(date) || nowIso().slice(0, 10); let n = 0;
+    for (const id of (ids || []).slice(0, 500)) {
+      const t = byId(S.tracker, id); if (!t || t.void) continue;
+      if (action === 'portal' && t.invoice && !t.portalDate) { t.portalDate = day; n++; }
+      else if (action === 'paid' && t.invoice && !t.paidDate) { t.paidDate = day; n++; }
+      else continue;
+      save('tracker', t);
+    }
+    changed(null);
+    return { ok: true, updated: n };
   }
 
   /* ---------------- Zoho Books sync (platform is the master) ---------------- */
@@ -692,20 +785,24 @@ function createModel({ db, env, bus, filesDir }) {
     if (!lines.length) throw Object.assign(new Error('Nothing to invoice: no parts or labour recorded'), { retry: false });
     const b = byId(S.buildings, rec.building); if (!b) throw Object.assign(new Error('Building not found'), { retry: false });
     if (!(b.zoho && b.zoho.contactId)) await zSyncContact(b.id);
-    const reference = type === 'job' ? rec.id : `SV-${rec.unit}-${rec.date}`;
-    let inv = await zoho.findInvoiceByReference(type === 'job' ? rec.id : rec.id);
+    const tk = trackerFor(type, rec.id);
+    const reference = (tk && tk.poNumber) || rec.id;
+    const t = totals(lines);
+    let inv = await zoho.findInvoiceByReference(reference);
+    if (inv && tk && tk.poNumber && inv.total !== undefined && Math.abs(+inv.total - t.total) > 0.01) inv = null; // same PO, different invoice
     if (!inv) {
       const B = S.settings.billing, cat = B.catalogue || [];
       const what = type === 'job' ? `Service call ${rec.id} · ${rec.equipment} · ${b.name}${rec.work ? '\nWork done: ' + rec.work : ''}` : `${rec.type} · ${rec.unit} · ${b.name} (${rec.date})\n${rec.work}`;
       inv = await zoho.createInvoice({
         customer_id: b.zoho.contactId,
-        reference_number: type === 'job' ? rec.id : rec.id,
+        reference_number: reference,
         date: nowIso().slice(0, 10),
         is_inclusive_tax: !!B.pricesIncludeVat,
         line_items: lines.map(l => { const c = cat.find(x => x.code && x.code === l.code); return { ...(c && c.zohoItemId ? { item_id: c.zohoItemId } : {}), name: l.description.slice(0, 100), description: [l.kind, rec.unit || ''].filter(Boolean).join(' · '), rate: l.unitPrice, quantity: l.qty, ...(B.zohoTaxId ? { tax_id: B.zohoTaxId } : {}) }; }),
         notes: what.slice(0, 2000),
       });
     }
+    if (tk) { tk.invoice = { number: inv.invoice_number || '', date: nowIso().slice(0, 10), source: 'zoho' }; tk.amountEx = t.subtotal; tk.amountIncl = t.total; save('tracker', tk); }
     rec.invoice = { provider: 'zoho', id: inv.invoice_id, number: inv.invoice_number || '', status: inv.status || 'draft', at: nowIso(), url: zoho.invoiceUrl(inv.invoice_id), reference };
     save(type === 'job' ? 'jobs' : 'services', rec);
     feed(`Draft invoice ${rec.invoice.number || ''} created in Zoho Books`, `${type === 'job' ? rec.id : rec.unit + ' · ' + rec.type} — ${b.name}`, '', type === 'job' ? '#/service/job/' + rec.id : `#/service/unit/${b.id}/${encodeURIComponent(rec.unit)}`, b.id);
@@ -719,6 +816,8 @@ function createModel({ db, env, bus, filesDir }) {
     if (!rec) return { error: 'Not found.' };
     if (rec.invoice && rec.invoice.id) return { error: 'Already invoiced.' };
     if (!(rec.billing && rec.billing.lines && rec.billing.lines.length)) return { error: 'Record the parts & labour first.' };
+    const tk = trackerFor(type, id);
+    if (tk && !tk.approvedAt) { tk.approvedAt = nowIso(); save('tracker', tk); }
     return { ok: true, queued: zEnqueue('invoice', ref).id };
   }
   function zRetry(id) { const it = S.zohoq.find(x => x.id === id); if (it && it.status === 'failed') { Object.assign(it, { status: 'queued', attempts: 0, nextAt: 0, error: null }); db.put('zohoq', it); setImmediate(zWork); } return { ok: !!it }; }
@@ -730,6 +829,7 @@ function createModel({ db, env, bus, filesDir }) {
       const B = data.billing, cur = S.settings.billing;
       const vatRate = +B.vatRate; if (B.vatRate !== undefined && !(vatRate >= 0 && vatRate <= 50)) return { error: 'VAT rate must be between 0 and 50 %.' };
       const catalogue = Array.isArray(B.catalogue) ? B.catalogue.map(c => ({ code: str(c.code, 30), name: str(c.name, 100), kind: LINE_KINDS.includes(c.kind) ? c.kind : 'Part', unit: str(c.unit, 20) || 'each', rate: money(Math.max(0, +c.rate || 0)), zohoItemId: str(c.zohoItemId, 40) })).filter(c => c.name) : cur.catalogue;
+      if (B.termsDays !== undefined) { const td = Math.round(+B.termsDays); if (!(td >= 0 && td <= 365)) return { error: 'Payment terms must be 0–365 days.' }; cur.termsDays = td; }
       S.settings.billing = { ...cur, vatRate: B.vatRate !== undefined ? vatRate : cur.vatRate, pricesIncludeVat: B.pricesIncludeVat !== undefined ? !!B.pricesIncludeVat : cur.pricesIncludeVat, autoInvoice: B.autoInvoice !== undefined ? !!B.autoInvoice : cur.autoInvoice, currency: str(B.currency || cur.currency, 3).toUpperCase() || 'ZAR', zohoTaxId: B.zohoTaxId !== undefined ? str(B.zohoTaxId, 40) : cur.zohoTaxId, catalogue };
     }
     if (data.policy) S.settings.policy = data.policy;
@@ -740,9 +840,12 @@ function createModel({ db, env, bus, filesDir }) {
   }
 
   load();
+  S.jobs.forEach(j => ensureTracker('job', j));
+  S.services.filter(x => x.billing && x.billing.lines && x.billing.lines.length).forEach(x => ensureTracker('service', x));
   return {
     S, STEPS, stepLabel, bld, tech, feed, save, changed, saveMeta, flushBms,
     setNotifier: n => { notifier = n; }, onOutboxStatus,
+    addTrackerRow, updateTracker, deleteTrackerRow, approveTracker, bulkTracker,
     setZoho: z => { zoho = z; }, zWork, zEnqueue, zRetry, zSyncAll, zStatus, requestInvoice, setJobBilling, setServiceBilling, totals,
     newJob, setStep, advance, autoAssign, sign, addPhotos, fileFor, saveDataUrl,
     raiseAlarm, clearAlarm, evaluate, applyReadings, setConnStatus, connStatus, gsmInbound,

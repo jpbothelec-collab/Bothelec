@@ -154,9 +154,22 @@ The platform is the master for clients, contacts and jobs. Zoho Books is used fo
   Pick items from the **price list** (Settings → Zoho Books & billing) or type your own. VAT and totals are worked out
   automatically and shown on the signed report and in the report email.
 - **Zoho Books:** when connected, each building's client (and its managers as contact persons) is created in Zoho Books.
-  When a job report is signed, a **draft invoice** is created with the parts & labour lines and the job number as
-  reference. Logged services can be invoiced with one click. Your office reviews and sends invoices from Zoho Books.
+  When you approve a row in the billing tracker, a **draft invoice** is created with the parts & labour lines and the
+  client's PO number (or the job number) as order number. Logged services can be invoiced with one click. Your office reviews and sends invoices from Zoho Books.
   Sync runs in the background with retries; see Settings → Zoho Books & billing → Sync log.
+
+**Billing tracker** (Service → Billing tracker, service desk only) replaces the PO / invoice spreadsheet:
+- Every service call (and every logged service with parts & labour) gets a row automatically. *Add PO / quote* adds
+  rows for POs or quotes that aren't linked to a job yet.
+- Columns: status, client, PO number / received date / approval, job card number and date, invoice number and date,
+  amount incl. and ex VAT, days overdue (after the payment terms in Settings), date loaded to the client's PO portal
+  (e.g. Vantage, set per building) and date paid / void. Critical calls are flagged.
+- Tick rows and press **Approve & send to Zoho**: draft invoices are created with the client's PO number as the order
+  number. Before Zoho is connected the button is **Approve for invoicing**; type the invoice number on the row instead.
+- *Loaded to portal today* and *Mark paid today* update many rows at once. **Export CSV** opens in Excel.
+
+Invoices are no longer created automatically when a report is signed: they wait for approval in the tracker
+(this can be switched back in Settings → Zoho Books & billing).
 
 **Connecting Zoho Books** (about 10 minutes):
 1. In Zoho Books, open Settings → Organisation profile and copy the **Organisation ID**. Note your Zoho domain: `zoho.com`, `zoho.eu`, `zoho.in` and so on. That is your data centre.

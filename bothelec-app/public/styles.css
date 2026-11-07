@@ -528,3 +528,20 @@ tr.muted td { opacity: .55; }
   .lrow .ltotal { order: 1; grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
   .lrow input, .lrow select { padding: 6px 8px; min-height: 36px; }
 }
+
+/* billing tracker */
+.tk-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.tk-bar select, .tk-bar input[type=search] { padding: 7px 10px; background: var(--bg2); border: 1px solid var(--line2); border-radius: 8px; font-size: 14px; }
+.tk-bar input[type=search] { flex: 1; min-width: 180px; }
+.tk-seg { flex-wrap: wrap; }
+.tk-bulk { padding: 8px 10px; background: var(--panel2); border-radius: 8px; }
+.tk-bulk label { display: flex; gap: 6px; align-items: center; font-size: 13px; }
+.tk-table th, .tk-table td { white-space: nowrap; font-size: 12.5px; padding: 8px 7px; }
+.tk-table .tk-po { color: #ff8a8e; font-weight: 600; }
+.tk-crit td:first-child { box-shadow: inset 3px 0 0 var(--red); }
+@media (max-width: 700px) { .tk-seg button { padding: 6px 8px; } }
+
+.tk-desc { display: inline-block; max-width: 220px; white-space: normal; font-size: 12px; }
+.tk-table td small { color: var(--muted); }
+.tk-fsel { display: none; }
+@media (max-width: 900px) { .tk-seg { display: none; } .tk-fsel { display: block; } }

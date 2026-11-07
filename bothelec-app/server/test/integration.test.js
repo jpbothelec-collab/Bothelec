@@ -490,11 +490,25 @@ test('parts & labour on a job → signed report → draft invoice in Zoho Books 
   await req('POST', `/api/jobs/${id}/advance`, {});
   const mailsBefore = smtp.mails.length;
   await req('POST', `/api/jobs/${id}/sign`, { signature: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', name: 'L. Pillay' });
+  // not invoiced automatically any more: it waits for approval in the billing tracker
+  await sleep(1500);
+  let st0 = (await req('GET', '/api/state')).data;
+  assert.ok(!st0.jobs.find(x => x.id === id).invoice, 'no invoice before approval');
+  const row = st0.tracker.find(t => t.jobId === id);
+  assert.ok(row, 'tracker row created automatically');
+  assert.equal(row.critical, false);
+  assert.equal((await req('PUT', `/api/tracker/${row.id}`, { poNumber: '1049001', poDate: '2026-11-01', poStatus: 'Approved' })).status, 200);
+  r = await req('POST', '/api/tracker/approve', { ids: [row.id] });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.sent, 1);
   const job = await until(async () => { const j = (await req('GET', '/api/state')).data.jobs.find(x => x.id === id); return j.invoice && j; }, 15000);
+  const row2 = (await req('GET', '/api/state')).data.tracker.find(t => t.id === row.id);
+  assert.equal(row2.invoice.number, 'INV-000001');
+  assert.equal(row2.amountIncl, 2472.48);
   assert.equal(job.invoice.number, 'INV-000001');
   assert.match(job.invoice.url, /#\/invoices\/i1$/);
   const inv = zoho.invoices[0];
-  assert.equal(inv.reference_number, id);
+  assert.equal(inv.reference_number, '1049001', 'client PO number becomes the order number');
   assert.equal(inv.customer_id, 'c1');
   assert.deepEqual(inv.line_items.map(l => [l.name, l.quantity, l.rate]), [['Call-out fee', 1, 650], ['Labour (technician)', 2, 550], ['Fan bearing', 2, 199.99]]);
   const contact = zoho.contacts[0];
@@ -539,4 +553,39 @@ test('Zoho: new building contact is added as a contact person; expired token is 
   assert.equal(r.status, 400);
   r = await req('PUT', '/api/admin/settings', { billing: { catalogue: [{ code: 'X1', name: 'Test item', kind: 'Part', unit: 'each', rate: 10 }] } });
   assert.equal((await req('GET', '/api/state')).data.billing.catalogue[0].name, 'Test item');
+});
+
+test('billing tracker: rows for every job, manual POs, approval rules, manual invoice numbers, portal and paid', async () => {
+  let st = (await req('GET', '/api/state')).data;
+  for (const j of st.jobs) assert.ok(st.tracker.some(t => t.jobId === j.id), 'row for ' + j.id);
+  // clients never see the tracker
+  const cc = await login('client2@bothelec.test', 'client-pass-1');
+  assert.deepEqual((await req('GET', '/api/state', undefined, { cookie: cc })).data.tracker, []);
+  assert.equal((await req('POST', '/api/tracker', { building: 'B2', description: 'x' }, { cookie: cc })).status, 403);
+  // manual PO / quote row
+  let r = await req('POST', '/api/tracker', { building: 'B2', description: 'Quote: new split unit', poNumber: 'PO-77', poDate: '2026-10-01', poStatus: 'Pending', amountEx: 1000 });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const manual = r.data.row;
+  assert.equal(manual.amountIncl, 1150);
+  // approving an unfinished job is refused with a reason
+  const open = st.jobs.find(j => !['completed', 'report'].includes(j.status));
+  const openRow = st.tracker.find(t => t.jobId === open.id);
+  r = await req('POST', '/api/tracker/approve', { ids: [openRow.id] });
+  assert.equal(r.data.approved, 0); assert.match(r.data.skipped[0], /not completed/);
+  // manual invoice number (before Zoho is used), then portal + paid in bulk
+  r = await req('PUT', `/api/tracker/${manual.id}`, { invoiceNumber: 'INV-0099', invoiceDate: '2026-10-05', poStatus: 'Approved' });
+  assert.equal(r.data.row.invoice.number, 'INV-0099');
+  r = await req('POST', '/api/tracker/bulk', { ids: [manual.id, openRow.id], action: 'portal', date: '2026-10-06' });
+  assert.equal(r.data.updated, 1, 'only invoiced rows');
+  r = await req('POST', '/api/tracker/bulk', { ids: [manual.id], action: 'paid' });
+  assert.equal(r.data.updated, 1);
+  st = (await req('GET', '/api/state')).data;
+  const m = st.tracker.find(t => t.id === manual.id);
+  assert.equal(m.portalDate, '2026-10-06'); assert.ok(m.paidDate);
+  // job rows cannot be deleted; manual rows can
+  assert.equal((await req('DELETE', `/api/tracker/${openRow.id}`)).status, 400);
+  assert.equal((await req('DELETE', `/api/tracker/${manual.id}`)).status, 200);
+  // a critical BMS call is flagged critical in the tracker
+  const crit = st.jobs.find(j => j.urgency === 'Critical');
+  assert.equal(st.tracker.find(t => t.jobId === crit.id).critical, true);
 });
