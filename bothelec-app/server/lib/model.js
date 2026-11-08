@@ -790,7 +790,7 @@ function createModel({ db, env, bus, filesDir }) {
     const person = c => ({ ...splitName(c.name), email: c.email || undefined, mobile: c.phone || undefined });
     if (!id) { const found = await zoho.findContact(name); if (found) id = found.contact_id; }
     if (!id) {
-      const created = await zoho.createContact({ contact_name: name, company_name: name, contact_type: 'customer', contact_persons: persons.slice(0, 10).map((c, i) => ({ ...person(c), is_primary_contact: i === 0 })) });
+      const created = await zoho.createContact({ contact_name: name, company_name: name, contact_type: 'customer', contact_persons: persons.slice(0, 10).map(person) }); // Zoho makes the first person the primary contact
       id = created.contact_id;
       b.zoho.syncedPersons = persons.slice(0, 10).map(c => c.email || c.phone);
     } else {

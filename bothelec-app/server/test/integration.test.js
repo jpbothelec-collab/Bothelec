@@ -124,6 +124,7 @@ function zohoMock() {
       if (u.pathname !== '/books/v3/organizations' && u.searchParams.get('organization_id') !== 'org1') return out(400, { code: 6041, message: 'org missing' });
       if (u.pathname === '/books/v3/organizations') return out(200, { code: 0, organizations: [{ organization_id: 'org1', name: 'Bothelec Aircon Solutions', currency_code: 'ZAR' }] });
       if (u.pathname === '/books/v3/contacts' && req.method === 'GET') return out(200, { code: 0, contacts: z.contacts.filter(c => c.contact_name === u.searchParams.get('contact_name')) });
+      if (u.pathname === '/books/v3/contacts' && req.method === 'POST' && (body.contact_persons || []).some(p => 'is_primary_contact' in p)) return out(400, { code: 2, message: 'Invalid value passed for is_primary_contact' });
       if (u.pathname === '/books/v3/contacts' && req.method === 'POST') { const c = { contact_id: 'c' + (z.contacts.length + 1), ...body }; z.contacts.push(c); return out(201, { code: 0, contact: c }); }
       if (u.pathname === '/books/v3/contacts/contactpersons') { z.persons.push(body); return out(201, { code: 0, contact_person: { contact_person_id: 'p' + z.persons.length } }); }
       if (u.pathname === '/books/v3/invoices' && req.method === 'GET') return out(200, { code: 0, invoices: z.invoices.filter(i => i.reference_number === u.searchParams.get('reference_number')) });
@@ -474,11 +475,16 @@ test('older data is converted: single manager/ops fields become contacts, equipm
 
 test('parts & labour on a job → signed report → draft invoice in Zoho Books (client + contacts pushed)', async () => {
   // a fresh job on B1
-  const t = (await req('POST', '/api/techs', { name: 'Billing Tech', phone: '084 999 0000' })).data.tech; // earlier tests leave everyone busy
   let r = await req('POST', '/api/jobs', { building: 'B1', equipment: 'AHU-03 · Air handling unit', fault: 'Noisy fan', urgency: 'Medium' });
   const id = r.data.id;
-  await until(async () => (await req('GET', '/api/state')).data.jobs.find(j => j.id === id).status === 'assigned');
-  assert.ok(t.id);
+  // earlier tests (and automatic BMS calls) can leave every technician busy: give this job its own
+  await until(async () => {
+    const j = (await req('GET', '/api/state')).data.jobs.find(x => x.id === id);
+    if (j.status === 'assigned') return true;
+    const t = (await req('POST', '/api/techs', { name: 'Billing Tech ' + Date.now(), phone: '084 999 0000' })).data.tech;
+    await req('POST', `/api/jobs/${id}/assign`, { tech: t.id });
+    return false;
+  });
   const lines = [{ kind: 'Call-out', code: 'CALLOUT', description: 'Call-out fee', qty: 1, unitPrice: 650 }, { kind: 'Labour', code: 'LAB-HR', description: 'Labour (technician)', qty: 2, unitPrice: 550 }, { kind: 'Part', description: 'Fan bearing', qty: 2, unitPrice: 199.99 }];
   // a client cannot edit billing
   const cc = await login('client2@bothelec.test', 'client-pass-1');
