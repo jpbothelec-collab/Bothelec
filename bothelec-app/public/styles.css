@@ -357,7 +357,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 .field textarea[name=connector], .field textarea[name=gsm], textarea[name=policy] { white-space: pre; overflow-x: auto; }
 @media (max-width: 900px) {
   .sidebar { display: flex; gap: 6px; }
-  .sidebar .side.acct { display: flex; flex-direction: row; gap: 6px; }
+  .sidebar .side.acct { display: none; }
 }
 
 /* ---------- intro / product tour ---------- */

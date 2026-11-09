@@ -1072,7 +1072,9 @@
     return head('My account', `${esc(S.me.name)} · ${esc(S.me.email)}`) +
       `<form class="card form" data-form="password" style="max-width:480px"><header><h2>Change password</h2></header>
         ${field('Current password', 'current', '', 'password', 'required autocomplete="current-password"')}${field('New password (min 8 characters)', 'password', '', 'password', 'required minlength="8" autocomplete="new-password"')}
-        <button class="btn primary">Update password</button></form>`;
+        <button class="btn primary">Update password</button></form>
+      <div class="card" style="max-width:480px;margin-top:14px"><header><h2>${esc(S.me.name)}</h2><span class="pill">${esc({ admin: 'Admin', desk: 'Service desk', tech: 'Technician', client: 'Client' }[S.me.role] || S.me.role)}</span></header>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-action="tour">${ic('eye')}Product tour</button><button class="btn danger" data-action="logout">${ic('back')}Sign out</button></div></div>`;
   }
 
   /* ---------------- views: vehicles, dispatch, assessments ---------------- */

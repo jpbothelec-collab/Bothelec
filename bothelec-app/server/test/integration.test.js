@@ -659,3 +659,16 @@ test('tracker CSV import: rows created, duplicates and empty rows skipped', asyn
   assert.equal(v.void, true); assert.equal(v.legacyJob, '3831'); assert.equal(v.description, 'Job card 3831');
   assert.ok(st.tracker.some(t => t.poStatus === 'Not approved' && t.amountEx === 221646.61));
 });
+
+test('changing your password keeps this device signed in and signs out other devices', async () => {
+  await req('POST', '/api/admin/users', { name: 'Pw User', email: 'pw@bothelec.test', role: 'desk', password: 'first-pass-1' });
+  const deviceA = await login('pw@bothelec.test', 'first-pass-1');
+  const deviceB = await login('pw@bothelec.test', 'first-pass-1');
+  const r = await fetch(base + '/api/me/password', { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: deviceA }, body: JSON.stringify({ current: 'first-pass-1', password: 'second-pass-2' }) });
+  assert.equal(r.status, 200);
+  const newA = r.headers.get('set-cookie').split(';')[0];
+  assert.equal((await req('GET', '/api/state', undefined, { cookie: newA })).status, 200, 'this device still signed in');
+  assert.equal((await req('GET', '/api/state', undefined, { cookie: deviceB })).status, 401, 'other device signed out');
+  assert.equal((await req('POST', '/api/login', { email: 'pw@bothelec.test', password: 'first-pass-1' }, { cookie: '' })).status, 401);
+  assert.equal((await req('POST', '/api/login', { email: 'pw@bothelec.test', password: 'second-pass-2' }, { cookie: '' })).status, 200);
+});

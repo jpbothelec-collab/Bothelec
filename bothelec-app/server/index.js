@@ -105,7 +105,10 @@ function createServer(env = process.env, opts = {}) {
   R('POST', '/api/logout', (req, res) => { const t = cookies(req).tsid; if (t) db.session.del(t); send(res, 200, { ok: true }, { 'Set-Cookie': 'tsid=; HttpOnly; Path=/; Max-Age=0' }); }, { public: true });
   R('POST', '/api/me/password', (req, res, { u, body }) => {
     if (!verifyPassword(body.current || '', u.passwordHash)) return fail(res, 400, 'Current password is wrong.');
-    result(res, model.upsertUser({ ...u, password: body.password }));
+    const r = model.upsertUser({ ...u, password: body.password }); // signs this user out everywhere…
+    if (r.error) return fail(res, 400, r.error);
+    const t = rid(32); db.session.create(t, u.id, SESSION_TTL); // …then keep this device signed in
+    send(res, 200, { ok: true }, { 'Set-Cookie': `tsid=${t}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL / 1000}${secureCookie ? '; Secure' : ''}` });
   }, { roles: ALL });
 
   // state
