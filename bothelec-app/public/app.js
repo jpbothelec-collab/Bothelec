@@ -88,7 +88,7 @@
   const SERVICE_SIDE = [
     ['service/live', 'Live Jobs', 'grid'], ['service/callout', 'Call-outs', 'phone'], ['service/jobcards', 'Job Cards', 'card'], ['service/equipment', 'Equipment & history', 'fcu'],
     ['service/techs', 'Technicians', 'users', 'staff'], ['service/notifications', 'Notifications', 'bell'], ['assessments', 'Assessments', 'clipboard', 'field'],
-    ['service/tracker', 'Billing tracker', 'list', 'staff'], ['service/reports', 'Reports', 'chart'], ['service/clients', 'Clients', 'building', 'staff'], ['service/documents', 'Documents', 'doc'],
+    ['service/tracker', 'Billing tracker', 'list', 'staff'], ['service/reports', 'Reports', 'chart', 'notech'], ['service/clients', 'Clients', 'building', 'staff'], ['service/documents', 'Documents', 'doc', 'notech'],
   ];
   const BMS_SIDE = [
     ['bms/overview', 'Site Overview', 'building'], ['bms/chillers', 'Chiller Plants', 'snow'], ['bms/ahus', 'AHUs & Ventilation', 'wind'],
@@ -98,38 +98,40 @@
   ];
   const SETTINGS_SIDE = [['settings', 'SMS & email', 'bell'], ['settings/billing', 'Zoho Books & billing', 'doc'], ['settings/buildings', 'Buildings & BMS links', 'building'], ['settings/users', 'Users', 'users'], ['settings/outbox', 'Message log', 'list']];
   const MODULES = [
-    { id: 'dashboard', label: 'Dashboard', icon: 'grid', home: 'dashboard', side: SERVICE_SIDE, sub: 'Operations & Service' },
-    { id: 'bms', label: 'Info Hub', icon: 'info', home: 'bms/overview', side: BMS_SIDE, sub: 'Building Monitoring Centre' },
-    { id: 'service', label: 'Service & Maintenance', short: 'Service', icon: 'wrench', home: 'service/live', side: SERVICE_SIDE, sub: 'Operations & Service' },
-    { id: 'vehicles', label: 'Vehicles', icon: 'truck', home: 'vehicles', side: [['vehicles', 'Fleet', 'truck']], sub: 'Fleet', roles: ['admin', 'desk', 'tech'] },
-    { id: 'dispatch', label: 'Driver Dispatch', short: 'Dispatch', icon: 'pin', home: 'dispatch', side: [['dispatch', 'Trips & deliveries', 'route'], ['dispatch/new', 'New trip', 'plus']], sub: 'Logistics', roles: ['admin', 'desk', 'tech'] },
+    { id: 'dashboard', label: 'Dashboard', techLabel: 'My work', icon: 'grid', home: 'dashboard', side: SERVICE_SIDE, sub: 'Operations & Service' },
+    { id: 'bms', label: 'Info Hub', icon: 'info', home: 'bms/overview', side: BMS_SIDE, sub: 'Building Monitoring Centre', roles: ['admin', 'desk', 'client'] },
+    { id: 'service', label: 'Service & Maintenance', short: 'Service', techLabel: 'Jobs', icon: 'wrench', home: 'service/live', side: SERVICE_SIDE, sub: 'Operations & Service' },
+    { id: 'vehicles', label: 'Vehicles', icon: 'truck', home: 'vehicles', side: [['vehicles', 'Fleet', 'truck']], sub: 'Fleet', roles: ['admin', 'desk'] },
+    { id: 'dispatch', label: 'Driver Dispatch', short: 'Dispatch', techLabel: 'Trips', icon: 'pin', home: 'dispatch', side: [['dispatch', 'Trips & deliveries', 'route'], ['dispatch/new', 'New trip', 'plus']], sub: 'Logistics', roles: ['admin', 'desk', 'tech'] },
     { id: 'assessments', label: 'Assessments', short: 'Assess', icon: 'clipboard', home: 'assessments', side: [['assessments', 'All assessments', 'clipboard'], ['assessments/new', 'New assessment', 'plus']], sub: 'Site assessments', roles: ['admin', 'desk', 'tech'] },
     { id: 'settings', label: 'Settings', icon: 'gear', home: 'settings', side: SETTINGS_SIDE, sub: 'Administration', roles: ['admin'] },
   ];
   const role = () => (S && S.me ? S.me.role : 'client');
   const isStaff = () => role() === 'admin' || role() === 'desk';
   const isField = () => role() !== 'client';
-  const sideAllowed = item => !item[3] || (item[3] === 'staff' ? isStaff() : isField());
+  const isTech = () => role() === 'tech';
+  const sideAllowed = item => !item[3] || (item[3] === 'staff' ? isStaff() : item[3] === 'notech' ? !isTech() : isField());
+  const sideLabel = (href, label) => (isTech() ? { 'service/live': 'My jobs', 'service/callout': 'Log a call', dispatch: 'My trips', assessments: 'My assessments' }[href] || label : label);
   const site = () => (S && S.buildings.find(b => b.id === ui.site)) || {};
   const canSim = () => isStaff() && (site().connector || {}).type === 'simulator';
 
   function renderNav(mod, key) {
     $('#modules').innerHTML = MODULES.filter(m => !m.roles || m.roles.includes(role())).map(m =>
-      `<a href="#/${m.home}" class="${m.id === mod.id ? 'active' : ''}" title="${esc(m.label)}">${ic(m.icon)}<span class="l">${esc(m.label)}</span><span class="s">${esc(m.short || m.label)}</span></a>`).join('');
+      `<a href="#/${m.home}" class="${m.id === mod.id ? 'active' : ''}" title="${esc(m.label)}">${ic(m.icon)}<span class="l">${esc(isTech() && m.techLabel ? m.techLabel : m.label)}</span><span class="s">${esc(isTech() && m.techLabel ? m.techLabel : m.short || m.label)}</span></a>`).join('');
     const b = site();
     $('#siteName').textContent = b.name || 'No building';
     $('#siteArea').textContent = b.area || '';
     const activeAlarms = S.alarms.filter(a => a.status === 'Active' && a.building === ui.site).length;
     const conn = (b.connector || {}).type || 'none';
     $('#sidebar').innerHTML = `
-      <div class="site-card">${icS('building')}<div style="min-width:0;flex:1">${S.buildings.length > 1
+      ${isTech() ? '' : `<div class="site-card">${icS('building')}<div style="min-width:0;flex:1">${S.buildings.length > 1
         ? `<select data-change="site" aria-label="Building" style="width:100%;background:transparent;border:0;font-weight:650;font-size:12px;padding:0">${S.buildings.map(x => `<option value="${x.id}" ${x.id === ui.site ? 'selected' : ''} style="background:#0d1c21">${esc(x.name)}</option>`).join('')}</select>`
         : `<strong>${esc(b.name || '—')}</strong>`}<small>${esc(b.area || '')}</small>
-        <span class="pill ${conn === 'none' ? 'off' : 'ok'}" style="margin-top:3px;width:max-content"><i></i>${conn === 'none' ? 'No BMS link' : conn === 'simulator' ? 'Simulated' : 'BMS ' + conn}</span></div></div>
+        <span class="pill ${conn === 'none' ? 'off' : 'ok'}" style="margin-top:3px;width:max-content"><i></i>${conn === 'none' ? 'No BMS link' : conn === 'simulator' ? 'Simulated' : 'BMS ' + conn}</span></div></div>`}
       <nav class="side">${mod.side.filter(sideAllowed).map(([href, label, icon]) => {
         const on = key === href || (key.startsWith(href + '/') && href.includes('/')) || (href === 'bms/ahus' && key === 'bms/ahu') || (href === 'service/jobcards' && (key === 'service/job' || key === 'service/report')) || (href === 'bms/alarms' && key === 'bms/alarm') || (href === 'settings/buildings' && key === 'settings/building') || (href === 'settings/users' && key === 'settings/user') || (href === 'service/equipment' && (key === 'service/unit' || key === 'service/unitedit')) || (href === 'service/techs' && key === 'service/tech') || (href === 'service/clients' && key === 'service/building') || (href === 'service/tracker' && (key === 'service/trackrow' || key === 'service/trackimport'));
         const count = href === 'bms/alarms' && activeAlarms ? `<span class="count">${activeAlarms}</span>` : '';
-        return `<a href="#/${href}" class="${on ? 'active' : ''}">${ic(icon)}<span>${esc(label)}</span>${count}</a>`;
+        return `<a href="#/${href}" class="${on ? 'active' : ''}">${ic(icon)}<span>${esc(sideLabel(href, label))}</span>${count}</a>`;
       }).join('')}</nav>
       ${mod.id === 'bms' && S.bms.ahus.length ? `<div class="side-label">AHU units (${S.bms.ahus.length})</div><nav class="side">${S.bms.ahus.map(a =>
         `<a href="#/bms/ahu/${a.id}" class="${key === 'bms/ahu' && current.arg === a.id ? 'active' : ''}">${ic('wind')}<span>${a.id}</span><span style="margin-left:auto">${dot(a.status)}</span></a>`).join('')}</nav>` : ''}
@@ -163,7 +165,7 @@
     return o;
   }
   async function loadBms() {
-    if (!ui.site) { S.bms = normalizeBms(null); return; }
+    if (!ui.site || (S.me && S.me.role === 'tech')) { S.bms = normalizeBms(null); ui.bmsCache[ui.site] = S.bms; return; } // technicians have no building monitoring
     ui.bmsCache[ui.site] = normalizeBms(await api('GET', '/api/bms/' + encodeURIComponent(ui.site)));
     S.bms = ui.bmsCache[ui.site];
     if (!ui.zoneSel.length || !ui.zoneSel.every(id => S.bms.zones.some(z => z.id === id))) ui.zoneSel = S.bms.zones.slice(0, 2).map(z => z.id);
@@ -619,6 +621,38 @@
         ${isStaff() ? `<a class="btn sm" href="#/service/tech/${t.id}">Edit</a><button class="btn sm danger" data-action="deltech" data-id="${t.id}">Remove</button>` : ''}</div></div>`;
     }).join('')}</div>`;
   }
+  /* ---------------- technician home: "My work" ---------------- */
+  const URG_RANK = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+  function techNext(j) {
+    const step = { assigned: ['enroute', `${ic('route')}I'm on the way`], enroute: ['onsite', `${ic('pin')}I've arrived on site`] }[j.status];
+    if (step) return `<button class="btn primary tj-go" data-action="advance" data-id="${j.id}">${step[1]}</button>`;
+    if (j.status === 'onsite') return `<a class="btn primary tj-go" href="#/service/job/${j.id}">${ic('card')}Fill in the job card</a>`;
+    if (j.status === 'completed') return `<a class="btn primary tj-go" href="#/service/job/${j.id}">${ic('check')}Get the customer's signature</a>`;
+    return `<a class="btn tj-go" href="#/service/job/${j.id}">Open job</a>`;
+  }
+  function viewTechHome() {
+    const me = S.technicians[0] || {};
+    const open = S.jobs.filter(j => j.status !== 'report').sort((a, b) => (URG_RANK[a.urgency] ?? 9) - (URG_RANK[b.urgency] ?? 9) || String(a.steps.logged).localeCompare(String(b.steps.logged)));
+    const done = S.jobs.filter(j => j.status === 'report').sort((a, b) => String(b.steps.report).localeCompare(String(a.steps.report))).slice(0, 5);
+    const v = S.vehicles[0], trips = S.trips.filter(t => t.status !== 'Delivered');
+    const duty = me.id && me.status !== 'on job' ? `<button class="btn sm ${me.status === 'off' ? 'primary' : ''}" data-action="duty" data-id="${me.id}">${me.status === 'off' ? 'Go on duty' : 'Go off duty'}</button>` : '';
+    return head('My work', `${esc(S.me.name)} · ${me.status === 'off' ? 'off duty' : me.status === 'on job' ? 'on a job' : 'available for new jobs'}`, duty) +
+      (!me.id ? '<div class="banner bad"><span class="grow">Your login is not linked to a technician record yet. Ask the admin to link it (Service → Technicians → Edit → App login).</span></div>' : '') +
+      `<div class="tj-list">${open.length ? open.map(j => { const b = bld(j.building), bm = contactsOf(b, 'Building Manager')[0] || {};
+        return `<div class="card tj ${j.urgency === 'Critical' ? 'alert' : ''}"><header><h2><a href="#/service/job/${j.id}" style="color:inherit">${j.id}</a></h2>${urgPill(j.urgency)}${jobStatusPill(j)}</header>
+          <div class="tj-where"><strong>${esc(b.name)}</strong><small>${esc(b.area || '')}${j.location ? ' · ' + esc(j.location) : ''}</small></div>
+          <p class="tj-fault"><b>${esc(j.equipment)}</b><br>${esc(j.fault)}</p>
+          ${techNext(j)}
+          <div class="tj-links">${bm.phone ? `<a class="btn sm" href="tel:${bm.phone.replace(/\s/g, '')}">${ic('phone')}${esc(bm.name || 'Building manager')}</a>` : ''}<a class="btn sm" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([b.name, b.area].filter(Boolean).join(', '))}" target="_blank" rel="noopener">${ic('pin')}Directions</a>${j.unit ? `<a class="btn sm" href="#/service/unit/${j.building}/${encodeURIComponent(j.unit)}">${ic('fcu')}Unit history</a>` : ''}</div></div>`; }).join('')
+        : `<div class="card empty">No open jobs right now.${me.status === 'off' ? ' You are off duty.' : ' New jobs appear here and you get an SMS.'}</div>`}</div>
+      <div class="grid g2" style="margin-top:14px">
+        <div class="card"><header><h3>Recently completed</h3></header>${done.length ? `<div class="rows">${done.map(j => `<a class="row" href="#/service/report/${j.id}" style="color:inherit"><div class="grow"><strong>${j.id} · ${esc(bld(j.building).name)}</strong><small>${esc(j.fault)}</small></div><small class="mono">${dmy(j.steps.report)}</small></a>`).join('')}</div>` : '<p class="muted" style="margin:0">Nothing yet.</p>'}</div>
+        <div class="card"><header><h3>My vehicle & trips</h3></header>${v ? `<p style="margin:0 0 8px"><strong>${esc(v.reg)}</strong> · ${esc(v.model)}</p>` : '<p class="muted" style="margin:0 0 8px">No vehicle assigned.</p>'}
+          ${trips.length ? `<div class="rows">${trips.map(t => `<div class="row"><div class="grow"><strong>${esc(t.what)}</strong><small>${esc(t.from)} → ${esc(t.to)}</small></div>${statusPill(t.status)}</div>`).join('')}</div>` : '<p class="muted" style="margin:0">No open trips.</p>'}
+          <a class="btn sm" href="#/dispatch" style="margin-top:8px">All my trips</a></div>
+      </div>`;
+  }
+
   function viewTechEdit(id) {
     const t = id === 'new' ? { status: 'available' } : tech(id);
     if (!t || !isStaff()) return head('Technician not found');
@@ -628,9 +662,19 @@
         <div class="grid g2">${field('Mobile (for job SMS)', 'phone', t.phone, 'tel', 'placeholder="082 123 4567"')}${field('Email', 'email', t.email, 'email')}</div>
         <div class="grid g2"><div class="field"><label>Vehicle</label><select name="vehicle"><option value="">— none —</option>${S.vehicles.map(v => `<option value="${v.id}" ${t.vehicle === v.id ? 'selected' : ''}>${esc(v.reg)} · ${esc(v.model)}</option>`).join('')}</select></div>
         <div class="field"><label>Status</label><select name="status" ${t.status === 'on job' ? 'disabled' : ''}>${t.status === 'on job' ? '<option>On a job</option>' : [['available', 'Available'], ['off', 'Off duty']].map(([v, l]) => `<option value="${v}" ${t.status === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div>
-        <p class="muted" style="margin:0;font-size:12px">To let this technician sign in to the app, add a user with the Technician role under Settings → Users and link it to this record.</p>
-        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary">${ic('check')}Save technician</button>${id === 'new' ? '' : `<button type="button" class="btn danger" data-action="deltech" data-id="${t.id}">Remove technician</button>`}</div></form>`;
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary">${ic('check')}Save technician</button>${id === 'new' ? '' : `<button type="button" class="btn danger" data-action="deltech" data-id="${t.id}">Remove technician</button>`}</div></form>
+      ${id !== 'new' ? techLoginCard(t) : ''}`;
   }
+  function techLoginCard(t) {
+    if (role() !== 'admin') return `<div class="card" style="max-width:640px;margin-top:14px"><header><h2>App login</h2></header><p class="muted" style="margin:0">An admin can give this technician a login here.</p></div>`;
+    const u = (S.admin.users || []).find(x => x.techId === t.id);
+    return `<form class="card form" data-form="techlogin" data-tech="${t.id}" data-user="${u ? u.id : ''}" style="max-width:640px;margin-top:14px"><header><h2>App login</h2>${u ? '<span class="pill ok"><i></i>Has a login</span>' : '<span class="pill off">No login yet</span>'}</header>
+      <p class="muted" style="margin:0;font-size:13px">With a login, ${esc(t.name)} sees only their own jobs, job cards, trips and assessments, and can log services on equipment. No monitoring, billing, clients or other staff.</p>
+      ${u ? `<p style="margin:0">Signs in as <strong>${esc(u.email)}</strong></p>${field('New password (to reset it)', 'password', '', 'password', 'minlength="8" autocomplete="new-password" required')}<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn">Reset password</button><button type="button" class="btn danger" data-action="deluser" data-id="${u.id}">Remove login</button></div>`
+        : `${field('Email (their login)', 'email', t.email, 'email', 'required')}${field('Password (at least 8 characters; give it to them)', 'password', '', 'password', 'minlength="8" autocomplete="new-password" required')}<button class="btn primary">${ic('check')}Create login</button>`}</form>`;
+  }
+
 
   /* ---------------- views: buildings & contacts ---------------- */
   const CONTACT_ROLES = ['Building Manager', 'Operations Manager', 'Other'];
@@ -1096,7 +1140,7 @@
       <div class="field"><label>Load / description</label><input name="what" required placeholder="e.g. Replacement fan motor"></div>
       <div class="grid g2"><div class="field"><label>From</label><select name="from">${places.map(p => `<option>${esc(p)}</option>`).join('')}</select></div>
       <div class="field"><label>To</label><select name="to">${places.map((p, i) => `<option ${i === 1 ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></div></div>
-      <div class="grid g2"><div class="field"><label>Driver</label><select name="driver">${S.technicians.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></div>
+      <div class="grid g2">${isTech() ? `<input type="hidden" name="driver" value="${S.me.techId || ''}">` : ''}<div class="field" ${isTech() ? 'style="display:none"' : ''}><label>Driver</label><select name="driver">${S.technicians.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></div>
       <div class="field"><label>Departure</label><input type="time" name="time" value="${hhmm(new Date(Date.now() + 36e5).toISOString())}"></div></div>
       <button class="btn primary" type="submit">${ic('route')}Schedule trip</button></form>`;
   }
@@ -1570,7 +1614,7 @@
 
   /* ---------------- router ---------------- */
   const ROUTES = {
-    dashboard: viewDashboard,
+    dashboard: (a1, a2) => (isTech() ? viewTechHome() : viewDashboard(a1, a2)),
     'service/live': viewLive, 'service/callout': viewCallout, 'service/jobcards': viewJobCards, 'service/job': viewJob, 'service/report': viewReport,
     'service/techs': viewTechs, 'service/notifications': viewNotifs, 'service/reports': viewReports, 'service/clients': viewClients, 'service/documents': viewDocs,
     'bms/overview': viewOverview, 'bms/chillers': viewChillers, 'bms/ahus': viewAhus, 'bms/ahu': viewAhu, 'bms/fcus': viewFcus, 'bms/towers': viewTowers,
@@ -1597,7 +1641,8 @@
     document.body.classList.remove('auth');
     current = parse();
     let mod = MODULES.find(m => m.id === current.mod) || MODULES[0];
-    if (mod.roles && !mod.roles.includes(role())) { mod = MODULES[0]; current = { key: 'dashboard', mod: 'dashboard' }; }
+    const TECH_BLOCKED = ['service/tracker', 'service/trackrow', 'service/trackimport', 'service/reports', 'service/documents', 'service/clients', 'service/building', 'service/techs', 'service/tech', 'service/unitedit'];
+    if ((mod.roles && !mod.roles.includes(role())) || (isTech() && TECH_BLOCKED.includes(current.key))) { mod = MODULES[0]; current = { key: 'dashboard', mod: 'dashboard' }; }
     renderNav(mod, current.key);
     const view = $('#view');
     const bmsView = current.key.startsWith('bms/') && !['bms/alarms', 'bms/alarm'].includes(current.key);
@@ -1705,7 +1750,7 @@
     reassign: async el => { const v = $('#reassignTech').value; if (!v) return toast('No technician available', 'Set someone on duty first.', 'bad'); if (await act('POST', `/api/jobs/${el.dataset.id}/assign`, { tech: v }, ['Technician assigned', 'They have been sent an SMS'])) render(true); },
     logout: async () => { try { await api('POST', '/api/logout', {}); } catch (e) { /* ignore */ } S = null; ui.bmsCache = {}; showLogin(); },
     retry: async el => { await act('POST', `/api/admin/outbox/${el.dataset.id}/retry`, {}, ['Retrying']); render(true); },
-    deluser: async el => { if (confirm('Delete this user?') && await act('DELETE', `/api/admin/users/${el.dataset.id}`)) location.hash = '#/settings/users'; },
+    deluser: async el => { if (confirm('Delete this login?') && await act('DELETE', `/api/admin/users/${el.dataset.id}`)) { if (current.key === 'service/tech') render(true); else location.hash = '#/settings/users'; }; },
     delbuilding: async el => { if (confirm('Delete this building and its BMS history? Jobs are kept.') && await act('DELETE', `/api/admin/buildings/${el.dataset.id}`)) location.hash = '#/settings/buildings'; },
   };
   document.addEventListener('click', e => {
@@ -1843,6 +1888,12 @@
           if (d.building !== undefined) { body.building = d.building; body.description = d.description; body.amountEx = d.amountEx; }
           const r = f.dataset.id ? await act('PUT', `/api/tracker/${f.dataset.id}`, body, ['Saved']) : await act('POST', '/api/tracker', body, ['PO / quote added']);
           if (r) location.hash = '#/service/tracker';
+          break;
+        }
+        case 'techlogin': {
+          const t = tech(f.dataset.tech), u = (S.admin.users || []).find(x => x.id === f.dataset.user);
+          const body = u ? { ...u, techId: t.id, password: d.password } : { name: t.name, email: d.email, phone: t.phone, role: 'tech', techId: t.id, password: d.password, buildings: [] };
+          if (await act('POST', '/api/admin/users', body, [u ? 'Password reset' : 'Login created', u ? 'Give them the new password' : `${t.name} can now sign in with ${d.email}`])) render(true);
           break;
         }
         case 'tech': {

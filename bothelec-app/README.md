@@ -139,7 +139,8 @@ Failed messages are retried after 1, 5 and 15 minutes, then shown as failed in t
   **operations managers** (plus other contacts). Everyone with *Notify* ticked receives the SMS/email updates for their role.
 - **Technicians** (Service → Technicians): service desk staff add, edit and remove technicians (mobile for job SMS, email, vehicle).
   A technician with open jobs can't be removed until those jobs are reassigned (job page → *Reassign*). Past jobs keep their name.
-  To let a technician sign in, add a user with the Technician role and link it to their record.
+  To let a technician sign in, open their page (Service → Technicians → Edit) and use **App login** to create their
+  login (admin only); the same box resets their password or removes the login.
 - **Equipment & service history** (Service → Equipment & history): the register of aircon units per building
   (make, model, serial, install date, refrigerant, service interval). Each unit's page shows its full **service history**:
   planned services logged by technicians, every service call with findings, work done and signed report, and every alarm.
@@ -203,7 +204,7 @@ a Zoho Books trial organisation: create a test job with parts & labour, sign it 
 |---|---|
 | Admin | Everything, including Settings (SMS/email, buildings, BMS links, users) |
 | Service desk | All jobs, alarms, technicians, fleet; clear alarms; simulate faults on demo buildings |
-| Technician | Their own jobs (progress, job card, photos, signature), monitoring, fleet, dispatch |
+| Technician | Only their own workflow: a **My work** home screen with their open jobs and the next step for each, job cards (photos, parts & labour, signature), logging a call, equipment history and logging services, their own trips and assessments. No monitoring, billing, clients, other technicians or settings. |
 | Client | Only their own buildings: log calls, follow jobs, see their monitoring and alarms |
 
 Passwords are stored hashed (scrypt). Sessions use HttpOnly cookies, and logins are rate-limited.

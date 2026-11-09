@@ -526,6 +526,7 @@ function createModel({ db, env, bus, filesDir }) {
       const { ingestToken, connector, gsm, ...rest } = b; return { ...rest, connector: { type: (connector || {}).type || 'none' } };
     });
     const jobs = S.jobs.filter(j => canJob(u, j));
+    if (u.role === 'tech') return techState(u, buildings, jobs);
     const technicians = u.role === 'client' ? S.technicians.map(t => ({ id: t.id, name: t.name, status: t.status })) : S.technicians;
     return {
       me: publicUser(u),
@@ -545,6 +546,30 @@ function createModel({ db, env, bus, filesDir }) {
       bmsSummary: Object.fromEntries(buildings.map(b => [b.id, S.bms[b.id] ? { fault: S.bms[b.id].fault, updatedAt: S.bms[b.id].updatedAt, hasData: true } : { hasData: false }])),
       admin: u.role === 'admin' ? { users: S.users.map(publicUser), settings: S.settings, connectors: connStatus, notifier: notifier && notifier.status(), zoho: zStatus() } : undefined,
       billing: { vatRate: S.settings.billing.vatRate, pricesIncludeVat: S.settings.billing.pricesIncludeVat, currency: S.settings.billing.currency, catalogue: u.role === 'client' ? [] : S.settings.billing.catalogue, zoho: !!(zoho && zoho.configured), autoInvoice: S.settings.billing.autoInvoice, termsDays: S.settings.billing.termsDays ?? 30 },
+    };
+  }
+
+  /* A technician only gets their own work: their jobs, their trips, their vehicle and assessments,
+   * activity about their jobs, and the equipment registers needed to log services. No monitoring, billing or other staff. */
+  function techState(u, buildings, jobs) {
+    const me = tech(u.techId) || null;
+    const myJobIds = new Set(jobs.map(j => j.id));
+    const mine = f => /#\/service\/job\/(BA-\d+|TR-\d+)/.test(f.link || '') ? myJobIds.has(f.link.split('/').pop()) : false;
+    return {
+      me: publicUser(u), steps: STEPS, seq: S.meta.seq,
+      buildings: buildings.map(b => ({ ...b, connector: { type: 'none' } })),
+      technicians: me ? [me] : [],
+      jobs,
+      alarms: S.alarms.filter(a => a.jobId && myJobIds.has(a.jobId)),
+      feed: S.feed.filter(mine).slice(0, 100),
+      vehicles: me && me.vehicle ? S.vehicles.filter(v => v.id === me.vehicle) : [],
+      trips: me ? S.trips.filter(t => t.driver === me.id) : [],
+      services: S.services,
+      tracker: [],
+      assessments: me ? S.assessments.filter(a => a.by === me.id) : [],
+      documents: [],
+      bmsSummary: {},
+      billing: { vatRate: S.settings.billing.vatRate, pricesIncludeVat: S.settings.billing.pricesIncludeVat, currency: S.settings.billing.currency, catalogue: S.settings.billing.catalogue, zoho: false, autoInvoice: false, termsDays: 30 },
     };
   }
 

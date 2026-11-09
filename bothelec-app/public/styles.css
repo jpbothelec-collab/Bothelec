@@ -545,3 +545,12 @@ tr.muted td { opacity: .55; }
 .tk-table td small { color: var(--muted); }
 .tk-fsel { display: none; }
 @media (max-width: 900px) { .tk-seg { display: none; } .tk-fsel { display: block; } }
+
+/* technician home */
+.tj-list { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+.tj header { flex-wrap: wrap; }
+.tj-where { display: flex; flex-direction: column; margin-bottom: 6px; }
+.tj-fault { margin: 6px 0 12px; font-size: 14px; }
+.tj-go { width: 100%; min-height: 48px; font-size: 15px; }
+.tj-links { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+@media (max-width: 520px) { .tj-list { grid-template-columns: minmax(0, 1fr); } }

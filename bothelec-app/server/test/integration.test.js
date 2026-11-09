@@ -672,3 +672,35 @@ test('changing your password keeps this device signed in and signs out other dev
   assert.equal((await req('POST', '/api/login', { email: 'pw@bothelec.test', password: 'first-pass-1' }, { cookie: '' })).status, 401);
   assert.equal((await req('POST', '/api/login', { email: 'pw@bothelec.test', password: 'second-pass-2' }, { cookie: '' })).status, 200);
 });
+
+test('technician login only gets their own workflow', async () => {
+  let r = await req('POST', '/api/admin/users', { name: 'S. van Wyk', email: 'svanwyk@bothelec.test', role: 'tech', techId: 'T3', password: 'tech-pass-123' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const tc = await login('svanwyk@bothelec.test', 'tech-pass-123');
+  const st = (await req('GET', '/api/state', undefined, { cookie: tc })).data;
+  assert.ok(st.jobs.length >= 1 && st.jobs.every(j => j.tech === 'T3'), 'only own jobs');
+  assert.deepEqual(st.technicians.map(t => t.id), ['T3'], 'no other technicians (or their phone numbers)');
+  assert.ok(st.trips.every(t => t.driver === 'T3'), 'only own trips');
+  assert.ok(st.vehicles.every(v => v.id === 'V3'), 'only own vehicle');
+  assert.ok(st.assessments.every(a => a.by === 'T3'), 'only own assessments');
+  assert.ok(st.alarms.every(a => st.jobs.some(j => j.id === a.jobId)), 'only alarms linked to own jobs');
+  assert.deepEqual(st.tracker, []); assert.deepEqual(st.documents, []); assert.equal(st.admin, undefined);
+  assert.ok(st.buildings.every(b => !b.ingestToken && b.connector.type === 'none'));
+  assert.ok(st.feed.every(f => /service\/job\//.test(f.link) && st.jobs.some(j => f.link.endsWith('/' + j.id))), 'only activity about own jobs');
+  assert.equal((await req('GET', '/api/bms/B1', undefined, { cookie: tc })).status, 404, 'no building monitoring');
+  assert.equal((await req('POST', '/api/bms/B1/simulate-fault', {}, { cookie: tc })).status, 403);
+  assert.equal((await req('POST', '/api/tracker/approve', { ids: [] }, { cookie: tc })).status, 403);
+  assert.equal((await req('PUT', '/api/buildings/B1/contacts', { contacts: [] }, { cookie: tc })).status, 403);
+  const other = (await req('GET', '/api/state')).data.jobs.find(j => j.tech && j.tech !== 'T3');
+  if (other) assert.equal((await req('POST', `/api/jobs/${other.id}/advance`, {}, { cookie: tc })).status, 404, 'cannot touch other technicians\' jobs');
+  // trips are always their own
+  r = await req('POST', '/api/trips', { what: 'Spare filters', from: 'Depot', to: 'Site', driver: 'T1' }, { cookie: tc });
+  const trip = (await req('GET', '/api/state')).data.trips.find(t => t.id === r.data.id);
+  assert.equal(trip.driver, 'T3');
+  const t1trip = (await req('GET', '/api/state')).data.trips.find(t => t.driver === 'T4' && t.status !== 'Delivered');
+  if (t1trip) assert.equal((await req('POST', `/api/trips/${t1trip.id}/advance`, {}, { cookie: tc })).status, 404);
+  // can still log services on equipment
+  r = await req('POST', '/api/services', { building: 'B1', unit: 'AHU-01', work: 'Filters changed' }, { cookie: tc });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.service.techName, 'S. van Wyk');
+});

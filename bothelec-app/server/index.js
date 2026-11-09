@@ -113,11 +113,11 @@ function createServer(env = process.env, opts = {}) {
 
   // state
   R('GET', '/api/state', (req, res, { u }) => send(res, 200, model.stateFor(u)), { roles: ALL });
-  R('GET', '/api/bms/:bid', (req, res, { u, p }) => { if (!canBuilding(u, p.bid)) return fail(res, 404, 'Not found'); send(res, 200, S.bms[p.bid] || null); }, { roles: ALL });
+  R('GET', '/api/bms/:bid', (req, res, { u, p }) => { if (u.role === 'tech' || !canBuilding(u, p.bid)) return fail(res, 404, 'Not found'); send(res, 200, S.bms[p.bid] || null); }, { roles: ALL });
   R('GET', '/api/events', (req, res, { u, url }) => {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
     res.write('retry: 3000\n\n');
-    const s = { res, user: u, building: url.searchParams.get('building') };
+    const s = { res, user: u, building: u.role === 'tech' ? null : url.searchParams.get('building') };
     streams.add(s); req.on('close', () => streams.delete(s));
   }, { roles: ALL, raw: true });
   R('GET', '/api/files/:name', (req, res, { u, p }) => {
@@ -247,19 +247,21 @@ function createServer(env = process.env, opts = {}) {
     if (t.status === 'on job') return fail(res, 400, 'Technician is on a job.');
     t.status = t.status === 'off' ? 'available' : 'off'; model.save('technicians', t); model.changed(null); send(res, 200, { ok: true });
   }, { roles: FIELD });
-  R('POST', '/api/trips', (req, res, { body }) => {
+  R('POST', '/api/trips', (req, res, { u, body }) => {
+    if (u.role === 'tech') body.driver = u.techId;
     if (!body.what) return fail(res, 400, 'Describe the load.');
     const t = model.tech(body.driver);
     const trip = { id: 'D-' + (300 + S.trips.length + 1) + rid(2), what: String(body.what).slice(0, 200), from: body.from, to: body.to, driver: body.driver, vehicle: t && t.vehicle, status: 'Scheduled', at: body.at || nowIso() };
     S.trips.unshift(trip); model.save('trips', trip); model.changed(null); send(res, 200, { ok: true, id: trip.id });
   }, { roles: FIELD });
-  R('POST', '/api/trips/:id/advance', (req, res, { p }) => {
-    const t = byId(S.trips, p.id); if (!t) return fail(res, 404, 'Not found');
+  R('POST', '/api/trips/:id/advance', (req, res, { u, p }) => {
+    const t = byId(S.trips, p.id); if (!t || (u.role === 'tech' && t.driver !== u.techId)) return fail(res, 404, 'Not found');
     const flow = ['Scheduled', 'In transit', 'Delivered']; const i = flow.indexOf(t.status);
     if (i < 0 || i >= 2) return fail(res, 400, 'Trip already delivered.');
     t.status = flow[i + 1]; t.at = nowIso(); model.save('trips', t); model.changed(null); send(res, 200, { ok: true });
   }, { roles: FIELD });
   R('POST', '/api/assessments', (req, res, { u, body }) => {
+    if (u.role === 'tech') body.by = u.techId;
     if (!byId(S.buildings, body.building)) return fail(res, 400, 'Choose a building.');
     const items = (body.items || []).map(x => ({ name: String(x.name).slice(0, 60), rating: Math.max(1, Math.min(5, +x.rating || 3)) }));
     const score = items.length ? Math.round(items.reduce((s, x) => s + x.rating, 0) / items.length * 20) : 0;
