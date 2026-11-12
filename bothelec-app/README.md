@@ -198,7 +198,33 @@ tracker are skipped. Dates like 1900-01-00 count as empty, and VOID in the paid 
 The connector was built and tested against a stand-in for the Zoho Books API (v3). Before relying on it, test it once against
 a Zoho Books trial organisation: create a test job with parts & labour, sign it off, and check the draft invoice in Zoho.
 
-## 7. Logins and roles
+## 7. Two companies: Aircon Solutions and Utility Management
+
+The dropdown under **BOTHELEC** in the header switches between **Bothelec Aircon Solutions** and **Bothelec Utility
+Management**. The layout is the same; the menus and data change. Users, technicians, vehicles, dispatch, the billing
+tracker, Zoho and settings are shared. Each building is set to one or both companies (Settings → Buildings →
+*Services for this building*), and every service call belongs to the company it was logged under.
+
+**Utility Management**
+- **Meters** (electricity, water, solar): a register per building with serial, make, location, multiplier / CT ratio,
+  the tenant it is billed to and the tariff. Each meter shows its readings history, a chart and use since the previous reading.
+- **Readings** arrive by: a technician on the meter page or a **reading round** (every meter in a building on one screen,
+  with photos); a meter job's job card; **CSV import** (meter ID or serial, date, time, reading); or a **building link**
+  (Modbus / MQTT / HTTP / edge agent) mapped to the path `meters.<meterId>.reading` (stored at most every 15 minutes).
+  Readings lower than the previous one are flagged.
+- **Tenant billing (recoveries)**: tenants per building; **tariffs** with a fixed charge and rate blocks (water can add sewer
+  as a % of water). The included tariffs are **samples**: replace them with your municipality or landlord rates. A **billing
+  run** for a month takes each tenant's meters, the readings nearest the start and end of the month, and works out
+  consumption × multiplier and the charges, with warnings for missing or suspicious readings. Recalculate after fixing
+  readings; **Approve** emails each tenant a statement and adds a row per tenant to the billing tracker, from where it is
+  invoiced in Zoho Books (the tenant becomes a Zoho customer).
+- **Meter service jobs**: installs, faults and reading jobs use the same call-out, technician and job-card workflow. On a
+  meter job the technician records readings (with photos) on the job card.
+
+**MeterHead**: the meter option "MeterHead" is reserved for the MeterHead communication protocol, which will be added once its
+specification is available. Until then, MeterHead meters can be read manually, by CSV, or through a building link.
+
+## 8. Logins and roles
 
 | Role | Can |
 |---|---|

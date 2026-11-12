@@ -136,7 +136,7 @@ function createServer(env = process.env, opts = {}) {
       building: body.building, equipment: String(body.equipment || 'Other / not sure').slice(0, 120), location: String(body.location || '').slice(0, 120),
       fault: String(body.fault).trim().slice(0, 1000), urgency: ['Low', 'Medium', 'High', 'Critical'].includes(body.urgency) ? body.urgency : 'Medium',
       contact: String(body.contact || u.name).slice(0, 80), contactPhone: body.contactPhone || u.phone || '', contactEmail: body.contactEmail || u.email || '',
-      source: u.role === 'client' ? 'Client app' : 'Service desk',
+      source: u.role === 'client' ? 'Client app' : 'Service desk', division: body.division === 'utility' ? 'utility' : 'aircon',
     }, u);
     if (Array.isArray(body.photos) && body.photos.length) model.addPhotos(j, body.photos);
     send(res, 200, { ok: true, id: j.id });
@@ -227,6 +227,23 @@ function createServer(env = process.env, opts = {}) {
   R('POST', '/api/tracker/import', (req, res, { u, body }) => result(res, model.importTracker(body.building, body.rows, u)), { roles: STAFF });
   R('POST', '/api/tracker/approve', (req, res, { u, body }) => result(res, model.approveTracker(body.ids, u)), { roles: STAFF });
   R('POST', '/api/tracker/bulk', (req, res, { body }) => { if (!['portal', 'paid'].includes(body.action)) return fail(res, 400, 'Unknown action'); result(res, model.bulkTracker(body.ids, body.action, body.date)); }, { roles: STAFF });
+
+  // utility management: meters, readings, tenants, tariffs, recovery billing
+  const U = () => model.util;
+  const meterOk = (u, id) => { const m = U().meter(decodeURIComponent(id)); return m && (u.role === 'tech' || canBuilding(u, m.building)) ? m : null; };
+  R('POST', '/api/meters', (req, res, { body }) => result(res, U().upsertMeter(body.meter || {}, body.originalId)), { roles: STAFF });
+  R('POST', '/api/meters/:id/removed', (req, res, { p, body }) => result(res, U().setMeterRemoved(decodeURIComponent(p.id), !!body.removed)), { roles: STAFF });
+  R('GET', '/api/meters/:id/readings', (req, res, { u, p, url }) => { const m = meterOk(u, p.id); if (!m) return fail(res, 404, 'Not found'); send(res, 200, U().readingsFor(m.id, url.searchParams.get('from'), url.searchParams.get('to'))); }, { roles: ALL });
+  R('POST', '/api/meters/:id/readings', (req, res, { u, p, body }) => { const m = meterOk(u, p.id); if (!m) return fail(res, 404, 'Not found'); result(res, U().addReading(m.id, body, u)); }, { roles: FIELD });
+  R('DELETE', '/api/meters/:id/readings/:ts', (req, res, { p }) => result(res, U().deleteReading(decodeURIComponent(p.id), decodeURIComponent(p.ts))), { roles: STAFF });
+  R('POST', '/api/readings/import', (req, res, { u, body }) => result(res, U().importReadings(body.rows, u)), { roles: STAFF });
+  R('POST', '/api/tenants', (req, res, { body }) => result(res, U().upsertTenant(body)), { roles: STAFF });
+  R('DELETE', '/api/tenants/:id', (req, res, { p }) => result(res, U().deleteTenant(p.id)), { roles: STAFF });
+  R('PUT', '/api/tariffs', (req, res, { body }) => result(res, U().setTariffs(body.tariffs)), { roles: STAFF });
+  R('POST', '/api/recoveries', (req, res, { u, body }) => result(res, U().createRun(body, u)), { roles: STAFF });
+  R('POST', '/api/recoveries/:id/recalc', (req, res, { p }) => result(res, U().recalcRun(p.id)), { roles: STAFF });
+  R('POST', '/api/recoveries/:id/approve', (req, res, { u, p }) => result(res, U().approveRun(p.id, u)), { roles: STAFF });
+  R('DELETE', '/api/recoveries/:id', (req, res, { p }) => result(res, U().deleteRun(p.id)), { roles: STAFF });
 
   // technicians
   R('POST', '/api/techs', (req, res, { body }) => result(res, model.upsertTech(body)), { roles: STAFF });

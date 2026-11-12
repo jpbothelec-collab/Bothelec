@@ -8,6 +8,7 @@
   const EMPTY_BMS = { zones: [], ahus: [], chillers: [], pumps: [], towers: [], fans: [], fcus: [], trend: [], fault: null };
   const ui = { jobFilter: 'open', zoneSel: [], pendingPhotos: [], sigDirty: false, unread: 0, site: null, lastFeed: null, bmsCache: {}, pendingRender: false };
   try { ui.site = localStorage.getItem('bothelec.site'); } catch (e) { /* storage blocked */ }
+  ui.biz = 'aircon'; try { if (localStorage.getItem('bothelec.biz') === 'utility') ui.biz = 'utility'; } catch (e) { /* storage blocked */ }
 
   /* ---------------- helpers ---------------- */
   const $ = (s, r = document) => r.querySelector(s);
@@ -97,16 +98,44 @@
     ['bms/trends', 'Trends', 'trend'], ['bms/points', 'Point Register', 'list'], ['service/documents', 'Documents', 'doc'],
   ];
   const SETTINGS_SIDE = [['settings', 'SMS & email', 'bell'], ['settings/billing', 'Zoho Books & billing', 'doc'], ['settings/buildings', 'Buildings & BMS links', 'building'], ['settings/users', 'Users', 'users'], ['settings/outbox', 'Message log', 'list']];
+  const METER_SIDE = [['meters/overview', 'Sites overview', 'building'], ['meters/register', 'Meter register', 'fcu'], ['meters/capture', 'Record readings', 'check', 'field'], ['meters/import', 'Import readings', 'doc', 'staff']];
+  const REC_SIDE = [['recoveries/runs', 'Billing runs', 'doc'], ['recoveries/tenants', 'Tenants', 'users'], ['recoveries/tariffs', 'Tariffs', 'list', 'staff'], ['service/tracker', 'Billing tracker', 'list', 'staff']];
   const MODULES = [
     { id: 'dashboard', label: 'Dashboard', techLabel: 'My work', icon: 'grid', home: 'dashboard', side: SERVICE_SIDE, sub: 'Operations & Service' },
-    { id: 'bms', label: 'Info Hub', icon: 'info', home: 'bms/overview', side: BMS_SIDE, sub: 'Building Monitoring Centre', roles: ['admin', 'desk', 'client'] },
+    { id: 'meters', label: 'Meters', icon: 'bolt', home: 'meters/overview', side: METER_SIDE, sub: 'Utility Management', biz: 'utility' },
+    { id: 'recoveries', label: 'Tenant billing', short: 'Billing', icon: 'doc', home: 'recoveries/runs', side: REC_SIDE, sub: 'Utility Management', biz: 'utility', roles: ['admin', 'desk', 'client'] },
+    { id: 'bms', biz: 'aircon', label: 'Info Hub', icon: 'info', home: 'bms/overview', side: BMS_SIDE, sub: 'Building Monitoring Centre', roles: ['admin', 'desk', 'client'] },
     { id: 'service', label: 'Service & Maintenance', short: 'Service', techLabel: 'Jobs', icon: 'wrench', home: 'service/live', side: SERVICE_SIDE, sub: 'Operations & Service' },
     { id: 'vehicles', label: 'Vehicles', icon: 'truck', home: 'vehicles', side: [['vehicles', 'Fleet', 'truck']], sub: 'Fleet', roles: ['admin', 'desk'] },
     { id: 'dispatch', label: 'Driver Dispatch', short: 'Dispatch', techLabel: 'Trips', icon: 'pin', home: 'dispatch', side: [['dispatch', 'Trips & deliveries', 'route'], ['dispatch/new', 'New trip', 'plus']], sub: 'Logistics', roles: ['admin', 'desk', 'tech'] },
-    { id: 'assessments', label: 'Assessments', short: 'Assess', icon: 'clipboard', home: 'assessments', side: [['assessments', 'All assessments', 'clipboard'], ['assessments/new', 'New assessment', 'plus']], sub: 'Site assessments', roles: ['admin', 'desk', 'tech'] },
+    { id: 'assessments', biz: 'aircon', label: 'Assessments', short: 'Assess', icon: 'clipboard', home: 'assessments', side: [['assessments', 'All assessments', 'clipboard'], ['assessments/new', 'New assessment', 'plus']], sub: 'Site assessments', roles: ['admin', 'desk', 'tech'] },
     { id: 'settings', label: 'Settings', icon: 'gear', home: 'settings', side: SETTINGS_SIDE, sub: 'Administration', roles: ['admin'] },
   ];
   const role = () => (S && S.me ? S.me.role : 'client');
+  const isUtil = () => ui.biz === 'utility';
+  const divOf = j => j.division || 'aircon';
+  const bizBuildings = () => (S ? S.buildings.filter(b => (b.divisions || ['aircon']).includes(ui.biz)) : []);
+  const bizJobs = () => S.jobs.filter(j => divOf(j) === ui.biz);
+  /* In utility mode the shared Service menu points at meters instead of aircon equipment. */
+  function sideFor(mod) {
+    if (!isUtil() || !(mod.id === 'dashboard' || mod.id === 'service')) return mod.side;
+    return mod.side.filter(x => x[0] !== 'assessments' && x[0] !== 'service/tracker').map(x => (x[0] === 'service/equipment' ? ['meters/register', 'Meters', 'bolt'] : x));
+  }
+  const BIZ = { aircon: 'Aircon Solutions', utility: 'Utility Management' };
+  function renderBiz() {
+    const divs = [...new Set(S.buildings.flatMap(b => b.divisions || ['aircon']))];
+    const choices = role() === 'client' ? divs : ['aircon', 'utility'];
+    $('#brandSub').innerHTML = choices.length > 1 ? `<select id="bizSel" aria-label="Company">${choices.map(d => `<option value="${d}" ${d === ui.biz ? 'selected' : ''}>${BIZ[d]}</option>`).join('')}</select>` : esc(BIZ[ui.biz]);
+    document.title = `Bothelec ${BIZ[ui.biz]}`;
+    document.body.dataset.biz = ui.biz;
+  }
+  async function switchBiz(v) {
+    if (!BIZ[v] || v === ui.biz) return;
+    ui.biz = v; try { localStorage.setItem('bothelec.biz', v); } catch (e) { /* storage blocked */ }
+    const bb = bizBuildings(); if (!bb.find(b => b.id === ui.site) && bb[0]) { ui.site = bb[0].id; if (v === 'aircon') await loadBms().catch(() => {}); }
+    toast(`Bothelec ${BIZ[v]}`, v === 'utility' ? 'Meters, readings and tenant billing' : 'Service, monitoring and maintenance');
+    if (location.hash === '#/dashboard' || !location.hash) render(); else location.hash = '#/dashboard';
+  }
   const isStaff = () => role() === 'admin' || role() === 'desk';
   const isField = () => role() !== 'client';
   const isTech = () => role() === 'tech';
@@ -116,7 +145,8 @@
   const canSim = () => isStaff() && (site().connector || {}).type === 'simulator';
 
   function renderNav(mod, key) {
-    $('#modules').innerHTML = MODULES.filter(m => !m.roles || m.roles.includes(role())).map(m =>
+    renderBiz();
+    $('#modules').innerHTML = MODULES.filter(m => (!m.roles || m.roles.includes(role())) && (!m.biz || m.biz === ui.biz)).map(m =>
       `<a href="#/${m.home}" class="${m.id === mod.id ? 'active' : ''}" title="${esc(m.label)}">${ic(m.icon)}<span class="l">${esc(isTech() && m.techLabel ? m.techLabel : m.label)}</span><span class="s">${esc(isTech() && m.techLabel ? m.techLabel : m.short || m.label)}</span></a>`).join('');
     const b = site();
     $('#siteName').textContent = b.name || 'No building';
@@ -124,11 +154,11 @@
     const activeAlarms = S.alarms.filter(a => a.status === 'Active' && a.building === ui.site).length;
     const conn = (b.connector || {}).type || 'none';
     $('#sidebar').innerHTML = `
-      ${isTech() ? '' : `<div class="site-card">${icS('building')}<div style="min-width:0;flex:1">${S.buildings.length > 1
-        ? `<select data-change="site" aria-label="Building" style="width:100%;background:transparent;border:0;font-weight:650;font-size:12px;padding:0">${S.buildings.map(x => `<option value="${x.id}" ${x.id === ui.site ? 'selected' : ''} style="background:#0d1c21">${esc(x.name)}</option>`).join('')}</select>`
+      ${isTech() ? '' : `<div class="site-card">${icS('building')}<div style="min-width:0;flex:1">${bizBuildings().length > 1
+        ? `<select data-change="site" aria-label="Building" style="width:100%;background:transparent;border:0;font-weight:650;font-size:12px;padding:0">${bizBuildings().map(x => `<option value="${x.id}" ${x.id === ui.site ? 'selected' : ''} style="background:#0d1c21">${esc(x.name)}</option>`).join('')}</select>`
         : `<strong>${esc(b.name || '—')}</strong>`}<small>${esc(b.area || '')}</small>
-        <span class="pill ${conn === 'none' ? 'off' : 'ok'}" style="margin-top:3px;width:max-content"><i></i>${conn === 'none' ? 'No BMS link' : conn === 'simulator' ? 'Simulated' : 'BMS ' + conn}</span></div></div>`}
-      <nav class="side">${mod.side.filter(sideAllowed).map(([href, label, icon]) => {
+        ${isUtil() ? `<span class="pill info" style="margin-top:3px;width:max-content"><i></i>${(n => n + ' meter' + (n === 1 ? '' : 's'))((S.meters || []).filter(m => m.building === b.id && !m.removed).length)}</span>` : `<span class="pill ${conn === 'none' ? 'off' : 'ok'}" style="margin-top:3px;width:max-content"><i></i>${conn === 'none' ? 'No BMS link' : conn === 'simulator' ? 'Simulated' : 'BMS ' + conn}</span>`}</div></div>`}
+      <nav class="side">${sideFor(mod).filter(sideAllowed).map(([href, label, icon]) => {
         const on = key === href || (key.startsWith(href + '/') && href.includes('/')) || (href === 'bms/ahus' && key === 'bms/ahu') || (href === 'service/jobcards' && (key === 'service/job' || key === 'service/report')) || (href === 'bms/alarms' && key === 'bms/alarm') || (href === 'settings/buildings' && key === 'settings/building') || (href === 'settings/users' && key === 'settings/user') || (href === 'service/equipment' && (key === 'service/unit' || key === 'service/unitedit')) || (href === 'service/techs' && key === 'service/tech') || (href === 'service/clients' && key === 'service/building') || (href === 'service/tracker' && (key === 'service/trackrow' || key === 'service/trackimport'));
         const count = href === 'bms/alarms' && activeAlarms ? `<span class="count">${activeAlarms}</span>` : '';
         return `<a href="#/${href}" class="${on ? 'active' : ''}">${ic(icon)}<span>${esc(sideLabel(href, label))}</span>${count}</a>`;
@@ -184,7 +214,10 @@
     const keepBms = S && S.bms;
     S = st;
     S.bms = keepBms || normalizeBms(null);
-    if (!S.buildings.find(b => b.id === ui.site)) ui.site = (S.buildings.find(b => b.connector && b.connector.type !== 'none') || S.buildings[0] || {}).id || null;
+    const divs = [...new Set(S.buildings.flatMap(b => b.divisions || ['aircon']))];
+    if (divs.length && !divs.includes(ui.biz)) ui.biz = divs[0];
+    const bb = S.buildings.filter(b => (b.divisions || ['aircon']).includes(ui.biz));
+    if (!bb.find(b => b.id === ui.site)) ui.site = (bb.find(b => b.connector && b.connector.type !== 'none') || bb[0] || S.buildings[0] || {}).id || null;
     if (!ui.bmsCache[ui.site]) await loadBms(); else S.bms = ui.bmsCache[ui.site];
     if (!es) connectEvents();
     updateBell();
@@ -210,7 +243,7 @@
       if (d.building === ui.site) { S.bms = cur; if (isLive()) rerender(); }
     });
   }
-  const NO_AUTO = new Set(['service/trackimport', 'service/tracker', 'service/trackrow', 'settings/billing', 'service/svbilling', 'service/callout', 'service/tech', 'service/building', 'service/unitedit', 'service/unit', 'dispatch/new', 'assessments/new', 'settings', 'settings/building', 'settings/user', 'settings/users', 'settings/buildings', 'settings/outbox', 'account', 'bms/points']);
+  const NO_AUTO = new Set(['meters/edit', 'meters/capture', 'meters/import', 'meters/meter', 'recoveries/tenant', 'recoveries/tariffs', 'service/trackimport', 'service/tracker', 'service/trackrow', 'settings/billing', 'service/svbilling', 'service/callout', 'service/tech', 'service/building', 'service/unitedit', 'service/unit', 'dispatch/new', 'assessments/new', 'settings', 'settings/building', 'settings/user', 'settings/users', 'settings/buildings', 'settings/outbox', 'account', 'bms/points']);
   function rerender() {
     if (!S) return;
     const a = document.activeElement;
@@ -417,7 +450,7 @@
   /* ---------------- shared fragments ---------------- */
   const head = (title, sub, actions = '') => `<div class="page-head"><h1>${title}</h1>${actions}${sub ? `<div class="sub">${sub}</div>` : ''}</div>`;
   const kpi = (icon, label, value, unit = '') => `<div class="card kpi">${icS(icon)}<div><small>${label}</small><strong>${value}${unit ? `<em>${unit}</em>` : ''}</strong></div></div>`;
-  const openJobs = () => S.jobs.filter(j => j.status !== 'report');
+  const openJobs = () => S.jobs.filter(j => j.status !== 'report' && divOf(j) === ui.biz);
   const activeAlarms = () => S.alarms.filter(a => a.status === 'Active');
 
   function jobsTable(list, compact) {
@@ -466,24 +499,26 @@
 
   /* ---------------- views: service ---------------- */
   function viewLive() {
-    const list = ui.jobFilter === 'open' ? openJobs() : ui.jobFilter === 'done' ? S.jobs.filter(j => j.status === 'report') : S.jobs;
+    const list = ui.jobFilter === 'open' ? openJobs() : ui.jobFilter === 'done' ? bizJobs().filter(j => j.status === 'report') : bizJobs();
     const crit = openJobs().filter(j => j.urgency === 'Critical' || j.urgency === 'High').length;
-    const done = S.jobs.filter(j => j.status === 'report' && Date.now() - new Date(j.steps.report) < 864e5).length;
+    const done = bizJobs().filter(j => j.status === 'report' && Date.now() - new Date(j.steps.report) < 864e5).length;
     return head('Live Jobs', 'Client portfolio · live view', `<a class="btn primary sm" href="#/service/callout">${ic('plus')}New call-out</a>`) +
       `<div class="grid g4" style="margin-bottom:14px">${kpi('wrench', 'Open jobs', openJobs().length)}${kpi('alert', 'High / critical', crit)}${kpi('route', 'On the way', S.jobs.filter(j => j.status === 'enroute').length)}${kpi('check', 'Closed (24 h)', done)}</div>
       <div class="card"><header><h2>Jobs</h2><div class="seg">${[['open', 'Open'], ['all', 'All'], ['done', 'Completed']].map(([k, l]) => `<button data-action="jobfilter" data-v="${k}" class="${ui.jobFilter === k ? 'on' : ''}">${l}</button>`).join('')}</div></header>${jobsTable(list)}</div>`;
   }
   function viewCallout() {
     const pf = ui.prefill; ui.prefill = null;
-    const b = (pf && bld(pf.building).id ? bld(pf.building) : null) || (site().id ? site() : (S.buildings[0] || { equipment: [], locations: [] }));
+    const bb = bizBuildings();
+    const b = (pf && bld(pf.building).id ? bld(pf.building) : null) || bb.find(x => x.id === ui.site) || bb[0] || { equipment: [], locations: [] };
+    const eqList = x => (isUtil() ? x.meterEquipment || ['Other / not sure'] : x.equipment || []);
     ui.pendingPhotos = [];
-    if (!S.buildings.length) return head('New call-out') + '<div class="card empty">No buildings are linked to your account yet.</div>';
+    if (!bizBuildings().length) return head('New call-out') + `<div class="card empty">No buildings use ${isUtil() ? 'utility management' : 'aircon services'} yet.</div>`;
     return head('New call-out', 'Client app → Bothelec service desk') +
       `<div class="grid split">
         <form class="card form" data-form="callout">
           <header><h2>New call-out</h2><span class="pill">DRAFT</span></header>
-          <div class="field"><label for="f-b">Building</label><select id="f-b" name="building" data-change="building">${S.buildings.map(x => `<option value="${x.id}" ${x.id === b.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div>
-          <div class="field"><label for="f-e">Equipment</label><select id="f-e" name="equipment">${(b.equipment || []).map(e => `<option ${pf && pf.equipment === e ? 'selected' : ''}>${esc(e)}</option>`).join('')}</select></div>
+          <div class="field"><label for="f-b">Building</label><select id="f-b" name="building" data-change="building">${bb.map(x => `<option value="${x.id}" ${x.id === b.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div>
+          <div class="field"><label for="f-e">Equipment</label><select id="f-e" name="equipment">${eqList(b).map(e => `<option ${pf && pf.equipment === e ? 'selected' : ''}>${esc(e)}</option>`).join('')}</select></div>
           <div class="field"><label for="f-l">Location</label><select id="f-l" name="location">${(b.locations || []).map(e => `<option>${esc(e)}</option>`).join('')}</select></div>
           <div class="field"><label for="f-f">Fault</label><textarea id="f-f" name="fault" required placeholder="e.g. Office not cooling, warm air"></textarea></div>
           <div class="field"><label>Urgency</label><div class="radio-row">${['Low', 'Medium', 'High', 'Critical'].map(u => `<label><input type="radio" name="urgency" value="${u}" ${u === 'Medium' ? 'checked' : ''}><span>${u}</span></label>`).join('')}</div></div>
@@ -506,7 +541,7 @@
   }
   function viewJobCards() {
     return head('Job Cards', 'Digital job cards — findings, work done, photos and signature') +
-      `<div class="grid g3">${S.jobs.map(j => {
+      `<div class="grid g3">${bizJobs().map(j => {
         const i = stepIdx(j.status);
         return `<a class="card" href="#/service/job/${j.id}" style="color:inherit;display:block"><header><h3>${j.id}</h3>${urgPill(j.urgency)}</header>
           <div><strong>${esc(bld(j.building).name)}</strong><br><small>${esc(j.equipment)} · ${esc(j.location)}</small></div>
@@ -547,6 +582,7 @@
                 <button class="btn primary" data-action="sign" data-id="${j.id}">${ic('check')}Complete &amp; share report</button>` : ''}
               ${j.signature ? `<div class="field"><label>Customer signature · ${esc(j.signedBy)}</label><img class="sig-img" src="${j.signature}" alt="Signature"></div>` : ''}
             </div></div>` : ''}
+          ${divOf(j) === 'utility' ? jobReadingsCard(j, i) : ''}
           ${i >= 3 || isStaff() || ((j.billing || {}).lines || []).length ? billingCard(j, 'job') : ''}
         </div>
         <div class="grid" style="align-content:start">
@@ -595,10 +631,10 @@
       <p class="muted" style="font-size:12px">Which step goes to whom, by SMS or email, is set by the admin under Settings → SMS & email.</p></div></div>`;
   }
   function viewReports() {
-    const done = S.jobs.filter(j => j.status === 'report');
+    const done = bizJobs().filter(j => j.status === 'report');
     const avg = arr => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null;
-    const resp = avg(S.jobs.filter(j => j.steps.onsite).map(j => mins(j.steps.logged, j.steps.onsite)));
-    const site = avg(S.jobs.filter(j => j.steps.completed && j.steps.onsite).map(j => mins(j.steps.onsite, j.steps.completed)));
+    const resp = avg(bizJobs().filter(j => j.steps.onsite).map(j => mins(j.steps.logged, j.steps.onsite)));
+    const site = avg(bizJobs().filter(j => j.steps.completed && j.steps.onsite).map(j => mins(j.steps.onsite, j.steps.completed)));
     return head('Reports', 'Signed service reports and performance') +
       `<div class="grid g4" style="margin-bottom:14px">${kpi('doc', 'Signed reports', done.length)}${kpi('clock', 'Avg. response', dur(resp))}${kpi('wrench', 'Avg. time on site', dur(site))}${kpi('check', 'First-time fix', '100', '%')}</div>
       <div class="card"><div class="table-wrap"><table><thead><tr><th>Report</th><th>Building</th><th class="hide-sm">Equipment</th><th>Technician</th><th>Date</th></tr></thead><tbody>
@@ -639,7 +675,7 @@
     return head('My work', `${esc(S.me.name)} · ${me.status === 'off' ? 'off duty' : me.status === 'on job' ? 'on a job' : 'available for new jobs'}`, duty) +
       (!me.id ? '<div class="banner bad"><span class="grow">Your login is not linked to a technician record yet. Ask the admin to link it (Service → Technicians → Edit → App login).</span></div>' : '') +
       `<div class="tj-list">${open.length ? open.map(j => { const b = bld(j.building), bm = contactsOf(b, 'Building Manager')[0] || {};
-        return `<div class="card tj ${j.urgency === 'Critical' ? 'alert' : ''}"><header><h2><a href="#/service/job/${j.id}" style="color:inherit">${j.id}</a></h2>${urgPill(j.urgency)}${jobStatusPill(j)}</header>
+        return `<div class="card tj ${j.urgency === 'Critical' ? 'alert' : ''}"><header><h2><a href="#/service/job/${j.id}" style="color:inherit">${j.id}</a></h2>${divOf(j) === 'utility' ? '<span class="pill info">Meters</span>' : ''}${urgPill(j.urgency)}${jobStatusPill(j)}</header>
           <div class="tj-where"><strong>${esc(b.name)}</strong><small>${esc(b.area || '')}${j.location ? ' · ' + esc(j.location) : ''}</small></div>
           <p class="tj-fault"><b>${esc(j.equipment)}</b><br>${esc(j.fault)}</p>
           ${techNext(j)}
@@ -686,7 +722,7 @@
     return `<div class="rows">${list.map(c => `<div class="row">${icS(c.role === 'Operations Manager' ? 'gear' : c.role === 'Building Manager' ? 'building' : 'users')}<div class="grow"><strong>${esc(c.name)}</strong><small>${esc(c.role)}${c.notify === false ? ' · notifications off' : ''}</small><small>${telLink(c.phone)}${c.email ? ` · <a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</small></div></div>`).join('')}</div>`;
   }
   function viewClients() {
-    return head('Clients', 'Buildings under service, their managers and equipment') + `<div class="grid g2">${S.buildings.map(b => `<div class="card"><header><h2>${esc(b.name)}</h2></header><small>${esc(b.client || '')} · ${esc(b.area || '')}</small>
+    return head('Clients', 'Buildings under service, their managers and equipment') + `<div class="grid g2">${bizBuildings().map(b => `<div class="card"><header><h2>${esc(b.name)}</h2></header><small>${esc(b.client || '')} · ${esc(b.area || '')}</small>
       ${contactList(b)}
       <dl class="kv" style="margin-top:6px"><dt>Open jobs</dt><dd>${openJobs().filter(j => j.building === b.id).length}</dd><dt>Units</dt><dd>${(b.units || []).filter(u => !u.removed).length}</dd></dl>
       <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">${isStaff() ? `<a class="btn sm primary" href="#/service/building/${b.id}">${ic('users')}Manage contacts</a>` : ''}<a class="btn sm" href="#/service/equipment/${b.id}">${ic('fcu')}Equipment & history</a></div></div>`).join('')}</div>`;
@@ -752,7 +788,7 @@
     const soon = rows.filter(r => r.due && r.due >= today() && (new Date(r.due) - new Date(today())) / 864e5 <= 14).length;
     const removedCount = (b.units || []).filter(u => u.removed).length;
     return head(`Equipment · ${esc(b.name)}`, 'Every aircon unit with its full service history',
-      `${S.buildings.length > 1 ? `<select data-change="eqsite" aria-label="Building" style="padding:8px 10px;background:var(--bg2);border:1px solid var(--line2);border-radius:8px">${S.buildings.map(x => `<option value="${x.id}" ${x.id === b.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : ''}${isStaff() ? `<a class="btn primary sm" href="#/service/unitedit/${b.id}/new">${ic('plus')}Add unit</a>` : ''}`) +
+      `${bizBuildings().length > 1 ? `<select data-change="eqsite" aria-label="Building" style="padding:8px 10px;background:var(--bg2);border:1px solid var(--line2);border-radius:8px">${bizBuildings().map(x => `<option value="${x.id}" ${x.id === b.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : ''}${isStaff() ? `<a class="btn primary sm" href="#/service/unitedit/${b.id}/new">${ic('plus')}Add unit</a>` : ''}`) +
       `<div class="grid g4" style="margin-bottom:14px">${kpi('fcu', 'Units', (b.units || []).filter(u => !u.removed).length)}${kpi('alert', 'Overdue / never serviced', overdue)}${kpi('clock', 'Due in 14 days', soon)}${kpi('wrench', 'Open calls', rows.reduce((s, r) => s + r.open, 0))}</div>
       <div class="card">${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Unit</th><th class="hide-sm">Location</th><th class="hide-sm">Make / model</th><th>Last service</th><th>Next service</th><th class="hide-sm">Open calls</th></tr></thead><tbody>
       ${rows.map(r => `<tr class="click ${r.u.removed ? 'muted' : ''}" data-href="#/service/unit/${b.id}/${encodeURIComponent(r.u.id)}"><td><strong>${esc(r.u.id)}</strong> ${r.live ? dot(r.live.status) : ''}<br><small>${esc(r.u.type || '')}${r.u.removed ? ' · decommissioned' : ''}</small></td><td class="hide-sm">${esc(r.u.location || '—')}</td><td class="hide-sm">${esc([r.u.make, r.u.model].filter(Boolean).join(' ') || '—')}</td><td class="mono">${r.last ? dmy(r.last) : '—'}</td><td>${r.u.removed ? '—' : duePill(r.due, r.last, r.u)}</td><td class="hide-sm">${r.open || ''}</td></tr>`).join('')}
@@ -1054,6 +1090,7 @@
       `<form class="form" data-form="building" data-id="${id === 'new' ? '' : b.id}"><div class="grid g2">
         <div class="card form"><header><h2>Building & contacts</h2></header>
           ${field('Building name', 'name', b.name, 'text', 'required')}${field('Client', 'client', b.client)}${field('Area', 'area', b.area)}${field('Client PO portal (e.g. Vantage)', 'portal', b.portal)}
+          <div class="field"><label>Services for this building</label><div class="radio-row"><label><input type="checkbox" name="divisions" value="aircon" ${(b.divisions || ['aircon']).includes('aircon') ? 'checked' : ''}><span>Bothelec Aircon Solutions</span></label><label><input type="checkbox" name="divisions" value="utility" ${(b.divisions || []).includes('utility') ? 'checked' : ''}><span>Bothelec Utility Management</span></label></div></div>
           <div class="field"><label>Building & operations managers</label>${id === 'new' ? '<p class="muted" style="margin:4px 0">Add contacts after saving the building.</p>' : contactList(b) + `<a class="btn sm" href="#/service/building/${b.id}" style="width:max-content">${ic('users')}Manage contacts</a>`}</div>
           <div class="grid g2">${field('Comfort band low (°C)', 'comfortLo', (b.comfort || [20, 24])[0], 'number', 'step="0.5"')}${field('Comfort band high (°C)', 'comfortHi', (b.comfort || [20, 24])[1], 'number', 'step="0.5"')}</div>
           <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="autoCall" ${b.autoCall !== false ? 'checked' : ''}> Raise a service call automatically for critical alarms</label>
@@ -1257,7 +1294,7 @@
   const TK_CLS = { 'Void': 'off', 'Not approved': 'off', 'Paid': 'ok', 'Overdue': 'bad', 'Loaded to portal': 'info', 'Invoiced': 'info', 'Sending to Zoho': 'warn', 'Approved': 'warn', 'In progress': 'off', 'Needs parts & labour': 'warn', 'Quote / PO': 'off', 'PO pending': 'warn', 'Ready to invoice': 'ok' };
   function trackerRows() {
     const terms = B().termsDays ?? 30;
-    return (S.tracker || []).map(t => {
+    return (S.tracker || []).filter(t => (t.division || (t.jobId && byId(S.jobs, t.jobId) ? divOf(byId(S.jobs, t.jobId)) : 'aircon')) === ui.biz).map(t => {
       const job = t.jobId && byId(S.jobs, t.jobId), sv = t.serviceId && byId(S.services, t.serviceId), rec = job || sv;
       const lines = rec && rec.billing ? rec.billing.lines || [] : [];
       const live = lines.length ? calcTotals(lines) : null;
@@ -1278,7 +1315,7 @@
       else if (t.poStatus === 'Pending') st = 'PO pending';
       else st = 'Ready to invoice';
       const jobDate = job ? (job.steps.completed || job.steps.report || '').slice(0, 10) : sv ? sv.date : (t.legacyJobDate || '');
-      return { t, job, sv, rec, b: bld(t.building), inv, ex, incl, overdue, st, jobDate, ref: job ? job.id : sv ? `${sv.unit} · ${sv.type}` : (t.description || '') };
+      return { t, job, sv, rec, b: bld(t.building), inv, ex, incl, overdue, st, jobDate, ref: job ? job.id : sv ? `${sv.unit} · ${sv.type}` : (t.description || ''), run: t.recoveryId };
     }).sort((a, b) => String(b.t.poDate || b.jobDate || b.t.createdAt).localeCompare(String(a.t.poDate || a.jobDate || a.t.createdAt)));
   }
   const TK_FILTERS = [['open', 'Open'], ['ready', 'Ready to invoice'], ['po', 'Awaiting PO'], ['invoiced', 'Invoiced, unpaid'], ['overdue', 'Overdue'], ['paid', 'Paid'], ['closed', 'Void / not approved'], ['all', 'All']];
@@ -1316,7 +1353,7 @@
           <td><span class="pill ${TK_CLS[r.st] || 'off'}">${esc(r.st)}</span>${r.t.critical ? '<br><span class="pill bad" style="margin-top:3px">Critical</span>' : ''}</td>
           <td>${esc(r.b.client || r.b.name)}<br><small>${esc(r.b.name)}</small></td>
           <td>${r.t.poNumber ? `<span class="tk-po">${esc(r.t.poNumber)}</span>` : '<small class="muted">no PO</small>'}<br><small>${[r.t.poDate ? dmy(r.t.poDate) : '', r.t.poStatus !== 'None' ? r.t.poStatus : ''].filter(Boolean).join(' · ') || '&nbsp;'}</small></td>
-          <td>${r.job ? `<a href="#/service/job/${r.job.id}">${r.job.id}</a>` : r.sv ? `<a href="#/service/svbilling/${r.sv.id}">${esc(r.ref)}</a>` : `<span class="tk-desc">${esc(r.ref)}</span>`}<br><small>${r.jobDate ? dmy(r.jobDate) : '&nbsp;'}</small></td>
+          <td>${r.job ? `<a href="#/service/job/${r.job.id}">${r.job.id}</a>` : r.run ? `<a href="#/recoveries/run/${r.run}" class="tk-desc">${esc(r.ref)}</a>` : r.sv ? `<a href="#/service/svbilling/${r.sv.id}">${esc(r.ref)}</a>` : `<span class="tk-desc">${esc(r.ref)}</span>`}<br><small>${r.jobDate ? dmy(r.jobDate) : '&nbsp;'}</small></td>
           <td>${r.inv ? esc(r.inv.number) : '—'}<br><small>${r.inv && r.inv.date ? dmy(r.inv.date) : '&nbsp;'}</small></td>
           <td class="mono" style="text-align:right">${r.incl != null ? fmtMoney(r.incl) : '—'}<br><small>${r.ex != null ? fmtMoney(r.ex) + ' ex VAT' : '&nbsp;'}</small></td>
           <td class="mono" style="${r.overdue ? 'color:var(--red);font-weight:600' : ''}">${r.overdue ? r.overdue + ' days' : '—'}</td>
@@ -1500,6 +1537,204 @@
     fr.readAsText(file);
   }
 
+  /* ================= Bothelec Utility Management ================= */
+  const UT_LABEL = { electricity: 'Electricity', water: 'Water', solar: 'Solar' };
+  const UT_ICON = { electricity: 'bolt', water: 'wind', solar: 'trend' };
+  const meterById = id => (S.meters || []).find(m => m.id === id);
+  const tenantById = id => (S.tenants || []).find(t => t.id === id);
+  const fmtN = (n, d = 2) => (n == null || isNaN(n) ? '—' : (+n).toLocaleString('en-ZA', { maximumFractionDigits: d }));
+  const lastMonth = () => { const d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7); };
+  const readingAge = m => (m.last ? Math.floor((Date.now() - Date.parse(m.last.ts)) / 864e5) : null);
+  const bizSelect = (bid, change) => bizBuildings().length > 1 ? `<select data-change="${change}" aria-label="Building" class="hsel">${bizBuildings().map(b => `<option value="${b.id}" ${b.id === bid ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select>` : '';
+  const utilBld = id => bld(id || '').id ? bld(id) : (bizBuildings().find(b => b.id === ui.site) || bizBuildings()[0] || {});
+
+  function jobReadingsCard(j, i) {
+    const ms = (S.meters || []).filter(m => m.building === j.building && !m.removed).sort((a, b) => (a.id === j.meter ? -1 : b.id === j.meter ? 1 : 0));
+    const done = j.readings || [];
+    const editable = isField() && i >= 3 && i < 5;
+    return `<div class="card"><header><h2>Meter readings</h2><small>${done.length} recorded on this job</small></header>
+      ${done.length ? `<div class="table-wrap"><table><tbody>${done.map(r => `<tr><td><a href="#/meters/meter/${encodeURIComponent(r.meter)}">${esc(r.meter)}</a></td><td class="mono" style="text-align:right">${fmtN(r.value)}</td><td class="mono">${dmy(r.ts)} ${hhmm(r.ts)}</td><td>${r.photo ? `<a href="${esc(r.photo)}" target="_blank" rel="noopener">photo</a>` : ''}</td></tr>`).join('')}</tbody></table></div>` : ''}
+      ${editable && ms.length ? `<form class="form" data-form="capture" data-bid="${j.building}" data-job="${j.id}" style="margin-top:8px"><input type="hidden" name="date" value="${today()}"><input type="hidden" name="time" value="${new Date().toTimeString().slice(0, 5)}">
+        ${ms.map(m => `<div class="cap-row" data-cap="${esc(m.id)}"><div><strong>${esc(m.id)}</strong> <small class="muted">${UT_LABEL[m.type]} · ${esc(m.location || '')}</small><br><small class="muted">Last: ${m.last ? fmtN(m.last.value) + ' on ' + dmy(m.last.ts) : 'none'}</small></div><input type="number" step="any" min="0" inputmode="decimal" placeholder="${esc(m.unit)}" aria-label="Reading for ${esc(m.id)}"><label class="btn sm cap-photo">${ic('camera')}<input type="file" accept="image/*" capture="environment" hidden data-capphoto="${esc(m.id)}"></label></div>`).join('')}
+        <button class="btn">${ic('check')}Save readings</button></form>` : ''}
+      ${!editable && !done.length ? '<p class="muted" style="margin:0">Readings can be recorded once on site.</p>' : ''}</div>`;
+  }
+  function viewUtilDashboard() {
+    const ms = (S.meters || []).filter(m => !m.removed && bizBuildings().some(b => b.id === m.building));
+    const due = ms.filter(m => readingAge(m) == null || readingAge(m) > 35);
+    const runs = (S.recoveries || []).slice(0, 6);
+    return head('Dashboard', `${esc(S.me.name)} · Bothelec Utility Management`, `<a class="btn sm" href="#/meters/capture">${ic('check')}Record readings</a>${isStaff() ? `<a class="btn primary sm" href="#/recoveries/runs">${ic('doc')}Billing runs</a>` : ''}`) +
+      `<div class="grid g4" style="margin-bottom:14px">${kpi('building', 'Sites', bizBuildings().length)}${kpi('bolt', 'Meters', ms.length)}${kpi('clock', 'Readings due', due.length)}${kpi('wrench', 'Open meter jobs', openJobs().length)}</div>
+      <div class="grid g2">
+        <div class="card"><header><h2>Readings due</h2><small>no reading in 35 days</small></header>${due.length ? `<div class="rows">${due.slice(0, 8).map(m => `<a class="row" href="#/meters/meter/${encodeURIComponent(m.id)}" style="color:inherit">${icS(UT_ICON[m.type])}<div class="grow"><strong>${esc(m.id)}</strong><small>${esc(bld(m.building).name)} · ${esc(m.location || '')}</small></div><small>${m.last ? readingAge(m) + ' days' : 'never'}</small></a>`).join('')}</div>` : '<p class="muted" style="margin:0">All meters have a recent reading.</p>'}</div>
+        <div class="card"><header><h2>Tenant billing</h2><a href="#/recoveries/runs" class="muted">All runs</a></header>${runs.length ? `<div class="rows">${runs.map(r => `<a class="row" href="#/recoveries/run/${r.id}" style="color:inherit"><div class="grow"><strong>${esc(r.label)} · ${esc(bld(r.building).name)}</strong><small>${r.lines.length} tenants${r.warnings ? ' · ' + r.warnings + ' warnings' : ''}</small></div><span class="pill ${r.status === 'approved' ? 'ok' : 'warn'}">${r.status === 'approved' ? 'Approved' : 'Draft'}</span><small class="mono">${fmtMoney(r.total)}</small></a>`).join('')}</div>` : '<p class="muted" style="margin:0">No billing runs yet.</p>'}</div>
+      </div>
+      <div class="card" style="margin-top:14px"><header><h2>Meter jobs</h2><a href="#/service/live" class="muted">View all</a></header>${jobsTable(openJobs().slice(0, 6), true)}</div>`;
+  }
+
+  function viewMetersOverview() {
+    return head('Sites overview', 'Meters, tenants and consumption per site') + `<div class="grid g2">${bizBuildings().map(b => {
+      const ms = (S.meters || []).filter(m => m.building === b.id && !m.removed), ts = (S.tenants || []).filter(t => t.building === b.id && t.active !== false);
+      const sum = type => ms.filter(m => m.type === type && m.use30 != null).reduce((a, m) => a + m.use30, 0);
+      const run = (S.recoveries || []).find(r => r.building === b.id);
+      return `<div class="card"><header><h2>${esc(b.name)}</h2></header><small>${esc(b.client || '')} · ${esc(b.area || '')}</small>
+        <dl class="kv" style="margin-top:10px"><dt>Tenants</dt><dd>${ts.length}</dd><dt>Meters</dt><dd>${['electricity', 'water', 'solar'].map(t => { const n = ms.filter(m => m.type === t).length; return n ? `${n} ${UT_LABEL[t].toLowerCase()}` : ''; }).filter(Boolean).join(' · ') || '—'}</dd>
+        <dt>Electricity (30 days)</dt><dd>${fmtN(sum('electricity'), 0)} kWh</dd><dt>Water (30 days)</dt><dd>${fmtN(sum('water'), 1)} kL</dd>${ms.some(m => m.type === 'solar') ? `<dt>Solar (30 days)</dt><dd>${fmtN(sum('solar'), 0)} kWh</dd>` : ''}
+        <dt>Last billing run</dt><dd>${run ? `<a href="#/recoveries/run/${run.id}">${esc(run.label)}</a>` : '—'}</dd></dl>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><a class="btn sm" href="#/meters/register/${b.id}">${ic('fcu')}Meters</a><a class="btn sm" href="#/meters/capture/${b.id}">${ic('check')}Record readings</a>${isStaff() ? `<a class="btn sm" href="#/recoveries/tenants/${b.id}">${ic('users')}Tenants</a>` : ''}</div></div>`;
+    }).join('') || '<div class="card empty">No buildings use utility management yet. Tick “Utility management” on a building in Settings → Buildings.</div>'}</div>`;
+  }
+
+  function viewMeterRegister(bid) {
+    const b = utilBld(bid); if (!b.id) return head('Meters') + '<div class="card empty">No utility buildings yet.</div>';
+    const ms = (S.meters || []).filter(m => m.building === b.id && (ui.showRemoved || !m.removed));
+    const removed = (S.meters || []).filter(m => m.building === b.id && m.removed).length;
+    return head(`Meters · ${esc(b.name)}`, 'Electricity, water and solar meters', `${bizSelect(b.id, 'msite')}<a class="btn sm" href="#/meters/capture/${b.id}">${ic('check')}Record readings</a>${isStaff() ? `<a class="btn primary sm" href="#/meters/edit/new/${b.id}">${ic('plus')}Add meter</a>` : ''}`) +
+      `<div class="card">${ms.length ? `<div class="table-wrap"><table><thead><tr><th>Meter</th><th class="hide-sm">Location</th><th>Tenant</th><th>Last reading</th><th style="text-align:right">Use (30 days)</th><th class="hide-sm">Readings by</th></tr></thead><tbody>
+        ${ms.map(m => { const t = tenantById(m.tenantId), age = readingAge(m); return `<tr class="click ${m.removed ? 'muted' : ''}" data-href="#/meters/meter/${encodeURIComponent(m.id)}"><td><strong>${esc(m.id)}</strong><br><small>${UT_LABEL[m.type]}${m.multiplier !== 1 ? ' · ×' + m.multiplier : ''}${m.removed ? ' · removed' : ''}</small></td><td class="hide-sm">${esc(m.location || '—')}</td><td>${t ? esc(t.name) + `<br><small>${esc(t.unit || '')}</small>` : '<small class="muted">common / landlord</small>'}</td>
+          <td class="mono">${m.last ? fmtN(m.last.value) + ' ' + esc(m.unit) : '—'}<br><small style="${age != null && age > 35 ? 'color:var(--amber)' : ''}">${m.last ? dmy(m.last.ts) : 'no readings'}</small></td><td class="mono" style="text-align:right">${m.use30 != null ? fmtN(m.use30, 1) + ' ' + esc(m.unit) : '—'}</td><td class="hide-sm"><small>${{ manual: 'Manual / CSV', connector: 'Building link', meterhead: 'MeterHead' }[m.comm] || 'Manual'}</small></td></tr>`; }).join('')}
+      </tbody></table></div>` : `<div class="empty">No meters yet.${isStaff() ? ' Use “Add meter”.' : ''}</div>`}
+      ${removed ? `<p style="margin:10px 0 0"><a href="#" data-action="toggleremoved">${ui.showRemoved ? 'Hide' : 'Show'} ${removed} removed meter${removed > 1 ? 's' : ''}</a></p>` : ''}</div>`;
+  }
+
+  function viewMeter(idRaw) {
+    const m = meterById(decodeURIComponent(idRaw || '')); if (!m) return head('Meter not found');
+    const b = bld(m.building), t = tenantById(m.tenantId);
+    setTimeout(async () => {
+      const el = $('#mreads'); if (!el) return;
+      try {
+        const rs = await api('GET', `/api/meters/${encodeURIComponent(m.id)}/readings`);
+        const pts = rs.slice(-120);
+        const rows = rs.slice().reverse().slice(0, 40).map((r, i, arr) => { const prev = arr[i + 1]; const use = prev ? (r.value - prev.value) * (m.multiplier || 1) : null; return `<tr><td class="mono">${dmy(r.ts)}<br><small>${hhmm(r.ts)}</small></td><td class="mono" style="text-align:right">${fmtN(r.value)}</td><td class="mono" style="text-align:right;${use != null && use < 0 ? 'color:var(--red)' : ''}">${use != null ? fmtN(use, 2) + ' ' + esc(m.unit) : '—'}</td><td><small>${esc(r.source || '')}${r.by ? ' · ' + esc(r.by) : ''}${r.note ? ' · ' + esc(r.note) : ''}</small>${r.photo ? ` · <a href="${esc(r.photo)}" target="_blank" rel="noopener">photo</a>` : ''}</td>${isStaff() ? `<td><button class="btn sm" data-action="delreading" data-meter="${esc(m.id)}" data-ts="${esc(r.ts)}" aria-label="Delete reading">${ic('x')}</button></td>` : ''}</tr>`; }).join('');
+        el.innerHTML = rs.length ? `${pts.length > 1 ? lineChart({ series: [{ label: 'Meter reading', color: 'var(--cyan)', data: pts.map(r => r.value) }], times: pts.map(r => r.ts) }) : ''}
+          <div class="table-wrap"><table><thead><tr><th>Date</th><th style="text-align:right">Reading</th><th style="text-align:right">Use since previous</th><th>Source</th>${isStaff() ? '<th></th>' : ''}</tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="empty">No readings yet.</div>';
+      } catch (e) { el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    }, 0);
+    return head(`${esc(m.id)} <small class="muted" style="font-weight:400">${UT_LABEL[m.type]} meter</small>${m.removed ? ' <span class="pill off">Removed</span>' : ''}`, `${esc(b.name)}${m.location ? ' · ' + esc(m.location) : ''}`,
+      `<a class="btn sm" href="#/meters/register/${b.id}">${ic('back')}Meters</a>${isStaff() ? `<a class="btn sm" href="#/meters/edit/${encodeURIComponent(m.id)}">Edit</a>` : ''}${!m.removed ? `<button class="btn sm primary" data-action="meterjob" data-meter="${esc(m.id)}">${ic('phone')}Log a meter job</button>` : ''}`) +
+      `<div class="grid split"><div class="card"><header><h2>Readings</h2><small>${esc(m.unit)}</small></header><div id="mreads"><div class="empty">Loading…</div></div></div>
+        <div class="grid" style="align-content:start">
+          <div class="card"><header><h3>Meter details</h3></header><dl class="kv"><dt>Tenant</dt><dd>${t ? esc(t.name) + (t.unit ? ' · ' + esc(t.unit) : '') : 'Common area / landlord'}</dd><dt>Serial no.</dt><dd>${esc(m.serial || '—')}</dd><dt>Make / model</dt><dd>${esc([m.make, m.model].filter(Boolean).join(' ') || '—')}</dd>
+            <dt>Multiplier (CT ratio)</dt><dd>${m.multiplier}</dd><dt>Tariff</dt><dd>${esc(((S.tariffs || []).find(x => x.id === m.tariffId) || {}).name || 'Default for ' + UT_LABEL[m.type].toLowerCase())}</dd><dt>Readings by</dt><dd>${{ manual: 'Manual / CSV', connector: 'Building link', meterhead: 'MeterHead' }[m.comm] || 'Manual'}</dd><dt>Installed</dt><dd>${m.installed ? dmy(m.installed) : '—'}</dd>${m.live ? `<dt>Live value</dt><dd>${fmtN(m.live.value)} · ${hhmm(m.live.at)}</dd>` : ''}</dl></div>
+          ${isField() && !m.removed ? `<form class="card form" data-form="reading" data-meter="${esc(m.id)}"><header><h3>Record a reading</h3></header>
+            <div class="grid g2"><div class="field"><label>Date</label><input type="date" name="date" value="${today()}" max="${today()}" required></div><div class="field"><label>Time</label><input type="time" name="time" value="${new Date().toTimeString().slice(0, 5)}"></div></div>
+            <div class="field"><label>Reading (${esc(m.unit)} register)</label><input name="value" type="number" step="any" min="0" inputmode="decimal" required placeholder="${m.last ? 'last: ' + m.last.value : ''}"></div>
+            <div class="field"><label>Photo of the meter (optional)</label><input type="file" accept="image/*" capture="environment" data-mphoto></div>
+            <div class="field"><label>Note (optional)</label><input name="note"></div>
+            <button class="btn primary">${ic('check')}Save reading</button></form>` : ''}
+        </div></div>`;
+  }
+
+  function viewMeterEdit(idRaw, bid) {
+    const isNew = idRaw === 'new', m = isNew ? { type: 'electricity', multiplier: 1, comm: 'manual', building: bid || utilBld().id } : meterById(decodeURIComponent(idRaw || ''));
+    if (!m || !isStaff()) return head('Meter not found');
+    const b = bld(m.building), tenants = (S.tenants || []).filter(t => t.building === m.building);
+    return head(isNew ? 'Add meter' : `Edit ${esc(m.id)}`, esc(b.name || ''), `<a class="btn sm" href="${isNew ? '#/meters/register/' + (b.id || '') : '#/meters/meter/' + encodeURIComponent(m.id)}">${ic('back')}Back</a>`) +
+      `<form class="card form" data-form="meter" data-orig="${isNew ? '' : esc(m.id)}" style="max-width:760px">
+        <div class="grid g2">${field('Meter ID', 'id', m.id, 'text', 'required placeholder="e.g. E-SHOP4"')}<div class="field"><label>Building</label><select name="building" data-change="meterbld">${S.buildings.map(x => `<option value="${x.id}" ${x.id === m.building ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div></div>
+        <div class="grid g3"><div class="field"><label>Type</label><select name="type">${['electricity', 'water', 'solar'].map(t => `<option value="${t}" ${m.type === t ? 'selected' : ''}>${UT_LABEL[t]}</option>`).join('')}</select></div>${field('Multiplier / CT ratio', 'multiplier', m.multiplier, 'number', 'step="any" min="0"')}${field('Serial number', 'serial', m.serial)}</div>
+        <div class="grid g3">${field('Make', 'make', m.make)}${field('Model', 'model', m.model)}${field('Location', 'location', m.location, 'text', 'placeholder="e.g. Shop 4 DB"')}</div>
+        <div class="grid g2"><div class="field"><label>Tenant billed for this meter</label><select name="tenantId"><option value="">Common area / landlord (not billed to a tenant)</option>${tenants.map(t => `<option value="${t.id}" ${m.tenantId === t.id ? 'selected' : ''}>${esc(t.name)}${t.unit ? ' · ' + esc(t.unit) : ''}</option>`).join('')}</select></div>
+          <div class="field"><label>Tariff</label><select name="tariffId"><option value="">Default for the meter type</option>${(S.tariffs || []).map(t => `<option value="${t.id}" ${m.tariffId === t.id ? 'selected' : ''}>${esc(t.name)} (${UT_LABEL[t.type]})</option>`).join('')}</select></div></div>
+        <div class="grid g2"><div class="field"><label>How readings arrive</label><select name="comm"><option value="manual" ${m.comm === 'manual' ? 'selected' : ''}>Manual reading / CSV import</option><option value="connector" ${m.comm === 'connector' ? 'selected' : ''}>Building link (Modbus / MQTT / HTTP)</option><option value="meterhead" ${m.comm === 'meterhead' ? 'selected' : ''}>MeterHead</option></select></div>${field('Installed', 'installed', m.installed, 'date')}</div>
+        <p class="muted" style="margin:0;font-size:12px">Building link: map the meter's register to the path <code>meters.${esc(m.id || 'METER-ID')}.reading</code> in the building's connection settings.</p>
+        <div class="field"><label>Notes</label><textarea name="notes">${esc(m.notes || '')}</textarea></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary">${ic('check')}Save meter</button>${isNew ? '' : `<button type="button" class="btn ${m.removed ? '' : 'danger'}" data-action="meterremoved" data-id="${esc(m.id)}" data-v="${m.removed ? '' : '1'}">${m.removed ? 'Restore meter' : 'Remove meter'}</button>`}</div></form>`;
+  }
+
+  /* Reading round: every meter in a building on one screen (for technicians on site). */
+  function viewReadingsCapture(bid) {
+    const b = utilBld(bid); if (!b.id) return head('Record readings') + '<div class="card empty">No utility buildings yet.</div>';
+    const ms = (S.meters || []).filter(m => m.building === b.id && !m.removed);
+    return head(`Record readings · ${esc(b.name)}`, 'Enter the register reading for each meter; leave blank to skip', bizSelect(b.id, 'capsite')) +
+      `<form class="card form" data-form="capture" data-bid="${b.id}">
+        <div class="grid g2"><div class="field"><label>Date</label><input type="date" name="date" value="${today()}" max="${today()}"></div><div class="field"><label>Time</label><input type="time" name="time" value="${new Date().toTimeString().slice(0, 5)}"></div></div>
+        ${ms.map(m => `<div class="cap-row" data-cap="${esc(m.id)}"><div><strong>${esc(m.id)}</strong> <small class="muted">${UT_LABEL[m.type]} · ${esc(m.location || '')}${m.tenantId ? ' · ' + esc((tenantById(m.tenantId) || {}).name || '') : ''}</small><br><small class="muted">Last: ${m.last ? fmtN(m.last.value) + ' ' + esc(m.unit) + ' on ' + dmy(m.last.ts) : 'none'}</small></div>
+          <input name="v_${esc(m.id)}" type="number" step="any" min="0" inputmode="decimal" placeholder="${esc(m.unit)}" aria-label="Reading for ${esc(m.id)}"><label class="btn sm cap-photo">${ic('camera')}<input type="file" accept="image/*" capture="environment" hidden data-capphoto="${esc(m.id)}"></label></div>`).join('') || '<div class="empty">No meters in this building.</div>'}
+        <button class="btn primary">${ic('check')}Save readings</button></form>`;
+  }
+
+  function viewReadingsImport() {
+    const I = ui.rimp;
+    let body = `<div class="card form" style="max-width:720px"><header><h2>Import meter readings</h2></header>
+      <p style="margin:0">A CSV with columns for the <b>meter</b> (ID or serial number), the <b>date</b>, optionally the <b>time</b>, and the <b>reading</b>. Excel: Save As → CSV.</p>
+      <div class="field"><label>CSV file</label><input type="file" accept=".csv,text/csv" data-rimpfile></div></div>`;
+    if (I) {
+      const rows = rimpRows(), good = rows.filter(r => r.ok);
+      body += `<div class="card" style="margin-top:14px"><header><h2>Columns</h2><small>${esc(I.name)} · ${I.body.length} rows</small></header><div class="grid g4">${[['meter', 'Meter ID / serial'], ['date', 'Date'], ['time', 'Time'], ['value', 'Reading']].map(([k, l]) => `<div class="field"><label>${l}</label><select data-rimpmap="${k}"><option value="">—</option>${I.headers.map((h, i) => `<option value="${i}" ${String(I.map[k]) === String(i) ? 'selected' : ''}>${esc(h || 'Column ' + (i + 1))}</option>`).join('')}</select></div>`).join('')}</div></div>
+        <div class="card" style="margin-top:14px"><header><h2>Preview</h2><small>${good.length} ready · ${rows.length - good.length} with problems</small></header><div class="table-wrap"><table><thead><tr><th>Line</th><th>Meter</th><th>Date</th><th style="text-align:right">Reading</th><th></th></tr></thead><tbody>
+        ${rows.slice(0, 30).map(r => `<tr class="${r.ok ? '' : 'muted'}"><td class="mono">${r.line}</td><td>${esc(r.meter)}</td><td class="mono">${r.date ? dmy(r.date) : '—'} ${esc(r.time || '')}</td><td class="mono" style="text-align:right">${r.value != null ? fmtN(r.value) : '—'}</td><td><small>${r.ok ? '<span class="pill ok">ok</span>' : esc(r.why)}</small></td></tr>`).join('')}</tbody></table></div>
+        <div style="display:flex;gap:8px;margin-top:12px"><button class="btn primary" data-action="rimpgo" ${good.length ? '' : 'disabled'}>${ic('check')}Import ${good.length} readings</button><button class="btn" data-action="rimpclear">Start again</button></div></div>`;
+    }
+    return head('Import readings', 'Bring in readings from a spreadsheet or a meter-reading app') + body;
+  }
+  function rimpRows() {
+    const I = ui.rimp; if (!I) return [];
+    const g = (c, k) => (I.map[k] === '' || I.map[k] == null ? '' : c[+I.map[k]] || '');
+    return I.body.map((c, i) => {
+      const meter = g(c, 'meter').trim(), date = impDate(g(c, 'date')), time = (/^(\d{1,2}):(\d{2})/.exec(g(c, 'time') || g(c, 'date').split(/[ T]/)[1] || '') || []).slice(1, 3).map(x => x.padStart(2, '0')).join(':'), value = impMoney(g(c, 'value'));
+      const m = (S.meters || []).find(x => x.id === meter || (x.serial && x.serial === meter));
+      const why = !m ? 'unknown meter' : !date ? 'no date' : value == null ? 'no reading' : '';
+      return { line: I.headerRow + i + 2, meter, date, time, value, ok: !why, why, meterId: m && m.id };
+    });
+  }
+
+  function viewTenants(bid) {
+    const b = utilBld(bid); if (!b.id) return head('Tenants') + '<div class="card empty">No utility buildings yet.</div>';
+    const ts = (S.tenants || []).filter(t => t.building === b.id);
+    return head(`Tenants · ${esc(b.name)}`, 'Who is billed for which meters', `${bizSelect(b.id, 'tsite')}${isStaff() ? `<a class="btn primary sm" href="#/recoveries/tenant/new/${b.id}">${ic('plus')}Add tenant</a>` : ''}`) +
+      `<div class="card">${ts.length ? `<div class="table-wrap"><table><thead><tr><th>Tenant</th><th>Unit</th><th class="hide-sm">Contact</th><th>Meters</th><th></th></tr></thead><tbody>${ts.map(t => { const ms = (S.meters || []).filter(m => m.tenantId === t.id && !m.removed); return `<tr class="${isStaff() ? 'click' : ''} ${t.active === false ? 'muted' : ''}" ${isStaff() ? `data-href="#/recoveries/tenant/${t.id}"` : ''}><td><strong>${esc(t.name)}</strong>${t.active === false ? '<br><small>moved out</small>' : ''}</td><td>${esc(t.unit || '—')}</td><td class="hide-sm">${esc(t.contact || '')}<br><small>${esc(t.email || 'no email: statement not emailed')}</small></td><td>${ms.map(m => `<a href="#/meters/meter/${encodeURIComponent(m.id)}">${esc(m.id)}</a>`).join(', ') || '<small class="muted">none: assign meters on the meter page</small>'}</td><td>${t.zoho && t.zoho.contactId ? '<span class="pill ok">In Zoho</span>' : ''}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="empty">No tenants yet.</div>'}</div>`;
+  }
+  function viewTenantEdit(id, bid) {
+    const isNew = id === 'new', t = isNew ? { building: bid || utilBld().id, active: true } : tenantById(id);
+    if (!t || !isStaff()) return head('Tenant not found');
+    return head(isNew ? 'Add tenant' : `Edit ${esc(t.name)}`, esc(bld(t.building).name || ''), `<a class="btn sm" href="#/recoveries/tenants/${t.building}">${ic('back')}Tenants</a>`) +
+      `<form class="card form" data-form="tenant" data-id="${isNew ? '' : t.id}" style="max-width:640px">
+        <div class="field"><label>Building</label><select name="building">${bizBuildings().map(x => `<option value="${x.id}" ${x.id === t.building ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div>
+        <div class="grid g2">${field('Tenant (company) name', 'name', t.name, 'text', 'required')}${field('Unit / shop', 'unit', t.unit, 'text', 'placeholder="e.g. Shop 4"')}</div>
+        <div class="grid g2">${field('Contact person', 'contact', t.contact)}${field('Mobile', 'phone', t.phone, 'tel')}</div>
+        <div class="grid g2">${field('Email for statements', 'email', t.email, 'email')}${field('VAT number', 'vatNo', t.vatNo)}</div>
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="active" ${t.active !== false ? 'checked' : ''}> Current tenant (untick when they move out)</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary">${ic('check')}Save tenant</button>${isNew ? '' : `<button type="button" class="btn danger" data-action="deltenant" data-id="${t.id}">Delete</button>`}</div></form>`;
+  }
+
+  function viewRuns() {
+    const runs = S.recoveries || [];
+    return head('Billing runs', 'Monthly tenant recoveries from meter readings') +
+      (isStaff() ? `<form class="card form" data-form="newrun" style="margin-bottom:14px"><header><h2>New billing run</h2></header><div class="grid g3"><div class="field"><label>Building</label><select name="building">${bizBuildings().map(b => `<option value="${b.id}" ${b.id === ui.site ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select></div><div class="field"><label>Month</label><input type="month" name="month" value="${lastMonth()}" required></div><div class="field"><label>&nbsp;</label><button class="btn primary">${ic('check')}Calculate</button></div></div></form>` : '') +
+      `<div class="card">${runs.length ? `<div class="table-wrap"><table><thead><tr><th>Month</th><th>Building</th><th>Tenants</th><th style="text-align:right">Total incl. VAT</th><th>Status</th></tr></thead><tbody>${runs.map(r => `<tr class="click" data-href="#/recoveries/run/${r.id}"><td><strong>${esc(r.label)}</strong></td><td>${esc(bld(r.building).name)}</td><td>${r.lines.length}${r.warnings ? ` <span class="pill warn">${r.warnings} warning${r.warnings > 1 ? 's' : ''}</span>` : ''}</td><td class="mono" style="text-align:right">${fmtMoney(r.total)}</td><td><span class="pill ${r.status === 'approved' ? 'ok' : 'warn'}">${r.status === 'approved' ? 'Approved' : 'Draft'}</span></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No billing runs yet.</div>'}</div>`;
+  }
+  function viewRun(id) {
+    const r = (S.recoveries || []).find(x => x.id === id); if (!r) return head('Billing run not found');
+    const draft = r.status === 'draft';
+    return head(`${esc(r.label)} · ${esc(bld(r.building).name)}`, `${r.lines.length} tenants · total ${fmtMoney(r.total)} incl. VAT${r.approvedAt ? ' · approved by ' + esc(r.approvedBy) + ' ' + dmy(r.approvedAt) : ''}`,
+      `<a class="btn sm" href="#/recoveries/runs">${ic('back')}Billing runs</a>${isStaff() && draft ? `<button class="btn sm" data-action="runrecalc" data-id="${r.id}">Recalculate</button><button class="btn sm danger" data-action="rundelete" data-id="${r.id}">Delete</button><button class="btn sm primary" data-action="runapprove" data-id="${r.id}">${ic('check')}Approve & email statements</button>` : ''}${!draft && isStaff() ? `<a class="btn sm" href="#/service/tracker">${ic('list')}Billing tracker</a>` : ''}`) +
+      (draft && r.warnings ? `<div class="banner bad"><span class="grow"><strong>${r.warnings} warning${r.warnings > 1 ? 's' : ''}.</strong> Check the readings below before approving; meters without enough readings are billed as zero.</span></div>` : '') +
+      (draft ? '<div class="banner ok"><span class="grow">Draft: add or correct readings, then <b>Recalculate</b>. <b>Approve</b> emails each tenant their statement and adds them to the billing tracker for invoicing.</span></div>' : '') +
+      `<div class="grid g2">${r.lines.map(l => `<div class="card"><header><h2>${esc(l.tenant)}</h2><small>${esc(l.unit || '')}</small></header>
+        ${l.items.length ? l.items.map(it => `<div class="ru-item"><div class="ru-head"><a href="#/meters/meter/${encodeURIComponent(it.meterId)}"><strong>${esc(it.meterId)}</strong></a> <small class="muted">${UT_LABEL[it.type]} · ${esc(it.tariff)}</small></div>
+          <small class="mono">${it.open ? fmtN(it.open.value) + ' (' + dmy(it.open.ts) + ')' : '—'} → ${it.close ? fmtN(it.close.value) + ' (' + dmy(it.close.ts) + ')' : '—'}${it.multiplier !== 1 ? ' × ' + it.multiplier : ''} = <b>${fmtN(it.consumption, 2)} ${esc(it.unit)}</b></small>
+          ${it.warnings.map(w => `<div class="ru-warn">${ic('alert')}${esc(w)}</div>`).join('')}
+          ${it.charges.length ? `<table class="ru-ch">${it.charges.map(c => `<tr><td>${esc(c.desc)}</td><td class="mono">${fmtN(c.qty, 3)} × ${fmtMoney(c.rate)}</td><td class="mono" style="text-align:right">${fmtMoney(c.amount)}</td></tr>`).join('')}</table>` : ''}</div>`).join('') : '<p class="muted">No meters assigned to this tenant.</p>'}
+        <dl class="kv ltotals"><dt>Subtotal</dt><dd>${fmtMoney(l.subtotal)}</dd><dt>VAT</dt><dd>${fmtMoney(l.vat)}</dd><dt><strong>Total</strong></dt><dd><strong>${fmtMoney(l.total)}</strong></dd></dl>
+        <small class="muted">${l.emailed ? 'Statement emailed ' + dmy(l.emailed) : (tenantById(l.tenantId) || {}).email ? '' : 'No email address: statement not emailed'}${l.invoice && l.invoice.number ? ' · Zoho invoice ' + esc(l.invoice.number) : ''}</small></div>`).join('')}</div>`;
+  }
+  function viewTariffs() {
+    if (!isStaff()) return head('Tariffs');
+    const tf = S.tariffs || [];
+    return head('Tariffs', 'Rates used to bill tenants (excluding VAT). The sample rates must be replaced with your municipality or landlord rates.') +
+      `<form class="form" data-form="tariffs"><div id="tfrows" class="grid g2">${tf.map(tariffCard).join('')}</div>
+        <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button type="button" class="btn sm" data-action="addtariff">${ic('plus')}Add tariff</button><button class="btn primary">${ic('check')}Save tariffs</button></div></form>`;
+  }
+  const blockRow = b => `<div class="tf-block" data-block><input name="upTo" type="number" step="any" min="0" value="${b.upTo == null ? '' : b.upTo}" placeholder="and above" aria-label="Up to"><input name="rate" type="number" step="any" min="0" value="${b.rate ?? ''}" placeholder="rate" aria-label="Rate"><button type="button" class="btn sm" data-action="rmblock" aria-label="Remove">${ic('x')}</button></div>`;
+  function tariffCard(t) {
+    t = t || { name: '', type: 'electricity', fixed: 0, blocks: [{ upTo: null, rate: '' }], sewerPct: 0 };
+    return `<div class="card form" data-tariff data-id="${esc(t.id || '')}"><div class="grid g2">${field('Name', 't_name', t.name)}<div class="field"><label>Type</label><select name="t_type">${['electricity', 'water', 'solar'].map(x => `<option value="${x}" ${t.type === x ? 'selected' : ''}>${UT_LABEL[x]}</option>`).join('')}</select></div></div>
+      <div class="grid g2">${field('Fixed charge per month (R)', 't_fixed', t.fixed, 'number', 'step="0.01" min="0"')}${field('Sewer % of water (water only)', 't_sewer', t.sewerPct, 'number', 'step="1" min="0" max="200"')}</div>
+      <div class="field"><label>Rate blocks: up to (kWh / kL per month) and rate (R per unit). Leave the last "up to" empty.</label><div data-blocks>${t.blocks.map(blockRow).join('')}</div><button type="button" class="btn sm" data-action="addblock" style="width:max-content">${ic('plus')}Add block</button></div>
+      <button type="button" class="btn sm danger" data-action="rmtariff" style="width:max-content">Remove tariff</button></div>`;
+  }
+
   /* ---------------- intro / product tour (click-through) ---------------- */
   const INTRO_KEY = 'bothelec.introSeen';
   function introBms(fault) {
@@ -1614,7 +1849,7 @@
 
   /* ---------------- router ---------------- */
   const ROUTES = {
-    dashboard: (a1, a2) => (isTech() ? viewTechHome() : viewDashboard(a1, a2)),
+    dashboard: (a1, a2) => (isTech() ? viewTechHome() : isUtil() ? viewUtilDashboard() : viewDashboard(a1, a2)),
     'service/live': viewLive, 'service/callout': viewCallout, 'service/jobcards': viewJobCards, 'service/job': viewJob, 'service/report': viewReport,
     'service/techs': viewTechs, 'service/notifications': viewNotifs, 'service/reports': viewReports, 'service/clients': viewClients, 'service/documents': viewDocs,
     'bms/overview': viewOverview, 'bms/chillers': viewChillers, 'bms/ahus': viewAhus, 'bms/ahu': viewAhu, 'bms/fcus': viewFcus, 'bms/towers': viewTowers,
@@ -1623,6 +1858,8 @@
     assessments: viewAssessments, 'assessments/new': viewAssessNew,
     settings: viewSettings, 'settings/buildings': viewSettingsBuildings, 'settings/building': viewSettingsBuilding, 'settings/users': viewSettingsUsers, 'settings/user': viewSettingsUser, 'settings/outbox': viewOutbox, 'settings/billing': viewSettingsBilling, 'service/tracker': viewTracker, 'service/trackimport': viewTrackImport, 'service/trackrow': viewTrackRow, 'service/svbilling': viewServiceBilling,
     account: viewAccount,
+    'meters/overview': viewMetersOverview, 'meters/register': viewMeterRegister, 'meters/meter': viewMeter, 'meters/edit': viewMeterEdit, 'meters/capture': viewReadingsCapture, 'meters/import': viewReadingsImport,
+    'recoveries/runs': viewRuns, 'recoveries/run': viewRun, 'recoveries/tenants': viewTenants, 'recoveries/tenant': viewTenantEdit, 'recoveries/tariffs': viewTariffs,
     'service/equipment': viewEquipment, 'service/unit': viewUnit, 'service/unitedit': viewUnitEdit, 'service/tech': viewTechEdit, 'service/building': viewBuildingContacts,
   };
   const LIVE = new Set(['dashboard', 'service/live', 'bms/overview', 'bms/chillers', 'bms/ahus', 'bms/ahu', 'bms/fcus', 'bms/towers', 'bms/pumps', 'bms/fans', 'bms/zones', 'bms/alarms', 'bms/alarm', 'bms/trends']);
@@ -1642,6 +1879,7 @@
     current = parse();
     let mod = MODULES.find(m => m.id === current.mod) || MODULES[0];
     const TECH_BLOCKED = ['service/tracker', 'service/trackrow', 'service/trackimport', 'service/reports', 'service/documents', 'service/clients', 'service/building', 'service/techs', 'service/tech', 'service/unitedit'];
+    if (mod.biz && mod.biz !== ui.biz) { const want = mod.biz; ui.biz = want; try { localStorage.setItem('bothelec.biz', want); } catch (e) { /* storage blocked */ } }
     if ((mod.roles && !mod.roles.includes(role())) || (isTech() && TECH_BLOCKED.includes(current.key))) { mod = MODULES[0]; current = { key: 'dashboard', mod: 'dashboard' }; }
     renderNav(mod, current.key);
     const view = $('#view');
@@ -1715,6 +1953,19 @@
     trip: el => act('POST', `/api/trips/${el.dataset.id}/advance`, {}),
     clearalarm: el => { if (confirm('Clear this alarm manually?')) act('POST', `/api/alarms/${el.dataset.id}/clear`, {}, ['Alarm cleared']); },
     tour: () => showIntro(0),
+    meterjob: el => { const m = meterById(el.dataset.meter); const b = bld(m.building); ui.prefill = { building: b.id, equipment: (b.meterEquipment || []).find(e => e.split(' · ')[0] === m.id) }; location.hash = '#/service/callout'; },
+    meterremoved: async el => { const on = !!el.dataset.v; if (on && !confirm('Remove this meter? Its readings are kept.')) return; if (await act('POST', `/api/meters/${encodeURIComponent(el.dataset.id)}/removed`, { removed: on }, [on ? 'Meter removed' : 'Meter restored'])) location.hash = '#/meters/register'; },
+    delreading: async el => { if (confirm('Delete this reading?') && await act('DELETE', `/api/meters/${encodeURIComponent(el.dataset.meter)}/readings/${encodeURIComponent(el.dataset.ts)}`, undefined, ['Reading deleted'])) render(true); },
+    deltenant: async el => { if (confirm('Delete this tenant?') && await act('DELETE', `/api/tenants/${el.dataset.id}`, undefined, ['Tenant deleted'])) location.hash = '#/recoveries/tenants'; },
+    runrecalc: async el => { if (await act('POST', `/api/recoveries/${el.dataset.id}/recalc`, {}, ['Recalculated'])) render(true); },
+    rundelete: async el => { if (confirm('Delete this draft billing run?') && await act('DELETE', `/api/recoveries/${el.dataset.id}`, undefined, ['Billing run deleted'])) location.hash = '#/recoveries/runs'; },
+    runapprove: async el => { const r = (S.recoveries || []).find(x => x.id === el.dataset.id); if (!confirm(`Approve ${r.label}? Each tenant with an email address is sent their statement, and the statements are added to the billing tracker.`)) return; const x = await act('POST', `/api/recoveries/${el.dataset.id}/approve`, {}); if (x) { toast('Billing run approved', `${x.rows} statements · ${x.emailed} emailed · now in the billing tracker`); render(true); } },
+    addtariff: () => $('#tfrows').insertAdjacentHTML('beforeend', tariffCard()),
+    rmtariff: el => el.closest('[data-tariff]').remove(),
+    addblock: el => el.closest('[data-tariff]').querySelector('[data-blocks]').insertAdjacentHTML('beforeend', blockRow({ upTo: null, rate: '' })),
+    rmblock: el => el.closest('[data-block]').remove(),
+    rimpclear: () => { ui.rimp = null; render(true); },
+    rimpgo: async el => { const rows = rimpRows().filter(r => r.ok).map(r => ({ line: r.line, meter: r.meterId, date: r.date, time: r.time, value: r.value })); el.disabled = true; const x = await act('POST', '/api/readings/import', { rows }); if (x) { toast(`${x.imported} readings imported`, x.skipped.length ? x.skipped.length + ' skipped' : ''); ui.rimp = null; location.hash = '#/meters/register'; } else el.disabled = false; },
     zohodisconnect: async () => { if (confirm('Disconnect Zoho Books? Invoices already in Zoho stay there.') && await act('POST', '/api/admin/zoho/disconnect', {}, ['Zoho Books disconnected'])) location.hash = '#/settings/billing'; },
     impclear: () => { ui.imp = null; render(true); },
     impgo: async el => {
@@ -1778,6 +2029,14 @@
   document.addEventListener('change', e => {
     const el = e.target;
     if (el.dataset.change === 'site') switchSite(el.value);
+    if (el.id === 'bizSel') switchBiz(el.value);
+    if (el.dataset.change === 'msite') location.hash = '#/meters/register/' + el.value;
+    if (el.dataset.change === 'capsite') location.hash = '#/meters/capture/' + el.value;
+    if (el.dataset.change === 'tsite') location.hash = '#/recoveries/tenants/' + el.value;
+    if (el.dataset.mphoto && el.files[0]) readPhotos(el.files).then(l => { ui.mphoto = l[0]; toast('Photo attached'); });
+    if (el.dataset.capphoto && el.files[0]) readPhotos(el.files).then(l => { ui.capPhotos = ui.capPhotos || {}; ui.capPhotos[el.dataset.capphoto] = l[0]; el.closest('label').classList.add('primary'); });
+    if (el.matches && el.matches('[data-rimpfile]') && el.files[0]) { const fr = new FileReader(); fr.onload = () => { const all = parseCsv(String(fr.result)).filter(r => r.some(c => c)); const hi = Math.max(0, all.findIndex(r => r.some(c => /meter|serial/i.test(c)))); const h = all[hi] || []; const find = re => { const i = h.findIndex(x => re.test(x)); return i < 0 ? '' : i; }; ui.rimp = { name: el.files[0].name, headers: h, headerRow: hi, body: all.slice(hi + 1), map: { meter: find(/meter|serial/i), date: find(/date|day/i), time: find(/time/i), value: find(/read|value|kwh|kl|register/i) } }; render(true); }; fr.readAsText(el.files[0]); }
+    if (el.dataset.rimpmap && ui.rimp) { ui.rimp.map[el.dataset.rimpmap] = el.value; render(true); }
     if (el.dataset.change === 'addcat' && el.value) {
       const c = B().catalogue.find(x => x.code === el.value), root = el.closest('[data-lines]');
       if (c) { root.querySelector('.lbody').insertAdjacentHTML('beforeend', lineRow({ kind: c.kind, code: c.code, description: c.name, qty: 1, unitPrice: c.rate })); refreshLineTotals(root); }
@@ -1793,7 +2052,7 @@
     if (el.dataset.change === 'eqsite') location.hash = '#/service/equipment/' + el.value;
     if (el.dataset.change === 'building') {
       const b = bld(el.value), f = el.form;
-      f.equipment.innerHTML = (b.equipment || []).map(x => `<option>${esc(x)}</option>`).join('');
+      f.equipment.innerHTML = (isUtil() ? b.meterEquipment || ['Other / not sure'] : b.equipment || []).map(x => `<option>${esc(x)}</option>`).join('');
       f.location.innerHTML = (b.locations || []).map(x => `<option>${esc(x)}</option>`).join('');
     }
     if (el.dataset.change === 'conntpl' && el.value) {
@@ -1826,7 +2085,7 @@
           break;
         }
         case 'callout': {
-          const r = await act('POST', '/api/jobs', { building: d.building, equipment: d.equipment, location: d.location, fault: d.fault, urgency: d.urgency, photos: ui.pendingPhotos, contact: d.contact, contactPhone: d.contactPhone, contactEmail: d.contactEmail }, ['Call logged', 'Your request landed at the Bothelec service desk']);
+          const r = await act('POST', '/api/jobs', { building: d.building, equipment: d.equipment, location: d.location, fault: d.fault, urgency: d.urgency, photos: ui.pendingPhotos, division: ui.biz, contact: d.contact, contactPhone: d.contactPhone, contactEmail: d.contactEmail }, ['Call logged', 'Your request landed at the Bothelec service desk']);
           if (r && r.id) { ui.pendingPhotos = []; location.hash = '#/service/job/' + r.id; }
           break;
         }
@@ -1851,7 +2110,7 @@
         case 'building': {
           const connector = parseJson(d.connector, 'Connector settings'); if (connector === undefined) break;
           const gsm = parseJson(d.gsm, 'GSM settings'); if (gsm === undefined) break;
-          const body = { id: f.dataset.id || undefined, name: d.name, client: d.client, area: d.area, portal: d.portal,
+          const body = { id: f.dataset.id || undefined, name: d.name, client: d.client, area: d.area, portal: d.portal, divisions: new FormData(f).getAll('divisions'),
             comfort: [+d.comfortLo || 20, +d.comfortHi || 24], autoCall: !!d.autoCall, locations: lines(d.locations), connector, gsm, regenToken: !!d.regenToken };
           const r = await act('POST', '/api/admin/buildings', body, ['Building saved', 'BMS connection restarted']);
           if (r && r.building) { ui.bmsCache = {}; if (ui.site === r.building.id) await loadBms(); location.hash = '#/settings/building/' + r.building.id; render(true); }
@@ -1894,6 +2153,42 @@
           const t = tech(f.dataset.tech), u = (S.admin.users || []).find(x => x.id === f.dataset.user);
           const body = u ? { ...u, techId: t.id, password: d.password } : { name: t.name, email: d.email, phone: t.phone, role: 'tech', techId: t.id, password: d.password, buildings: [] };
           if (await act('POST', '/api/admin/users', body, [u ? 'Password reset' : 'Login created', u ? 'Give them the new password' : `${t.name} can now sign in with ${d.email}`])) render(true);
+          break;
+        }
+        case 'reading': {
+          const x = await act('POST', `/api/meters/${encodeURIComponent(f.dataset.meter)}/readings`, { date: d.date, time: d.time, value: d.value, note: d.note, photo: ui.mphoto, jobId: f.dataset.job || undefined });
+          if (x) { toast('Reading saved', x.warning || ''); if (x.warning) toast('Check this reading', x.warning, 'bad'); ui.mphoto = null; render(true); }
+          break;
+        }
+        case 'capture': {
+          let n = 0, warn = [];
+          for (const row of f.querySelectorAll('[data-cap]')) {
+            const id = row.dataset.cap, v = row.querySelector('input[type=number]').value; if (v === '') continue;
+            try { const x = await api('POST', `/api/meters/${encodeURIComponent(id)}/readings`, { date: d.date, time: d.time, value: v, photo: (ui.capPhotos || {})[id], jobId: f.dataset.job || undefined }); n++; if (x.warning) warn.push(id + ': ' + x.warning); } catch (err) { warn.push(id + ': ' + err.message); }
+          }
+          ui.capPhotos = {}; await refresh();
+          toast(`${n} reading${n === 1 ? '' : 's'} saved`, warn.join(' · '), warn.length ? 'bad' : '');
+          if (!f.dataset.job) location.hash = '#/meters/register/' + f.dataset.bid; else render(true);
+          break;
+        }
+        case 'meter': {
+          const r = await act('POST', '/api/meters', { originalId: f.dataset.orig || undefined, meter: { id: d.id, building: d.building, type: d.type, multiplier: d.multiplier, serial: d.serial, make: d.make, model: d.model, location: d.location, tenantId: d.tenantId, tariffId: d.tariffId, comm: d.comm, installed: d.installed, notes: d.notes } }, ['Meter saved']);
+          if (r && r.meter) location.hash = '#/meters/meter/' + encodeURIComponent(r.meter.id);
+          break;
+        }
+        case 'tenant': {
+          const r = await act('POST', '/api/tenants', { id: f.dataset.id || undefined, building: d.building, name: d.name, unit: d.unit, contact: d.contact, phone: d.phone, email: d.email, vatNo: d.vatNo, active: !!d.active }, ['Tenant saved']);
+          if (r) location.hash = '#/recoveries/tenants/' + d.building;
+          break;
+        }
+        case 'newrun': {
+          const r = await act('POST', '/api/recoveries', { building: d.building, month: d.month }, ['Billing run calculated']);
+          if (r && r.run) location.hash = '#/recoveries/run/' + r.run.id;
+          break;
+        }
+        case 'tariffs': {
+          const tariffs = [...f.querySelectorAll('[data-tariff]')].map(c => ({ id: c.dataset.id, name: c.querySelector('[name=t_name]').value, type: c.querySelector('[name=t_type]').value, fixed: c.querySelector('[name=t_fixed]').value, sewerPct: c.querySelector('[name=t_sewer]').value, blocks: [...c.querySelectorAll('[data-block]')].map(b => ({ upTo: b.querySelector('[name=upTo]').value, rate: b.querySelector('[name=rate]').value })) }));
+          if (await act('PUT', '/api/tariffs', { tariffs }, ['Tariffs saved'])) render(true);
           break;
         }
         case 'tech': {

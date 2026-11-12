@@ -554,3 +554,28 @@ tr.muted td { opacity: .55; }
 .tj-go { width: 100%; min-height: 48px; font-size: 15px; }
 .tj-links { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
 @media (max-width: 520px) { .tj-list { grid-template-columns: minmax(0, 1fr); } }
+
+/* company switcher + utility management */
+.brand a { color: inherit; display: flex; }
+.brand-name { text-decoration: none; }
+#bizSel { background: transparent; border: 0; color: var(--accent); font: inherit; font-size: 10px; text-transform: uppercase; letter-spacing: .1em; padding: 0 2px 0 0; cursor: pointer; max-width: 100%; }
+#bizSel option { background: #0d1c21; color: var(--text); text-transform: none; letter-spacing: 0; font-size: 14px; }
+@media (max-width: 900px) { #bizSel { font-size: 9px; } }
+.hsel { padding: 8px 10px; background: var(--bg2); border: 1px solid var(--line2); border-radius: 8px; }
+.cap-row { display: grid; grid-template-columns: minmax(0, 1fr) 140px auto; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.cap-row input[type=number] { padding: 9px 10px; min-height: 42px; background: var(--bg2); border: 1px solid var(--line2); border-radius: 8px; font-size: 16px; width: 100%; }
+.cap-photo { min-height: 42px; }
+.ru-item { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.ru-head { margin-bottom: 2px; }
+.ru-warn { color: var(--amber); font-size: 12px; display: flex; gap: 6px; align-items: center; margin-top: 4px; }
+.ru-warn .i { width: 14px; height: 14px; }
+.ru-ch { width: 100%; font-size: 12.5px; margin-top: 6px; }
+.ru-ch td { padding: 3px 4px; border: 0; }
+.tf-block { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; margin-bottom: 6px; }
+.tf-block input { padding: 8px; background: var(--bg2); border: 1px solid var(--line2); border-radius: 8px; font-size: 15px; min-width: 0; }
+@media (max-width: 520px) { .cap-row { grid-template-columns: minmax(0, 1fr) 110px auto; } }
+
+.brand { min-width: 0; flex-shrink: 1; }
+.brand > span { min-width: 0; overflow: hidden; }
+#bizSel { text-overflow: ellipsis; }
+@media (max-width: 420px) { #bmsPill { display: none; } .brand strong { font-size: 13px; } .topbar { gap: 6px; } }

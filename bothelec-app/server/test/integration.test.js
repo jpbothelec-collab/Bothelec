@@ -704,3 +704,82 @@ test('technician login only gets their own workflow', async () => {
   assert.equal(r.status, 200);
   assert.equal(r.data.service.techName, 'S. van Wyk');
 });
+
+test('utility management: readings, billing run maths, approval → tracker → Zoho invoice to the tenant', async () => {
+  let st = (await req('GET', '/api/state')).data;
+  assert.ok(st.meters.length >= 8 && st.tenants.length >= 3 && st.tariffs.length === 3, 'demo meters, tenants and tariffs');
+  // known readings for a fresh meter + tenant in a fresh month
+  let r = await req('POST', '/api/tenants', { building: 'B4', name: 'Test Tenant', unit: 'Shop 9', email: 'tenant9@bothelec.test' });
+  const tid = r.data.tenant.id;
+  r = await req('POST', '/api/meters', { meter: { id: 'E-T9', building: 'B4', type: 'electricity', tenantId: tid, multiplier: 2 } });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  r = await req('POST', '/api/meters', { meter: { id: 'W-T9', building: 'B4', type: 'water', tenantId: tid } });
+  await req('POST', '/api/meters/E-T9/readings', { date: '2024-03-01', time: '08:00', value: 1000 });
+  await req('POST', '/api/meters/E-T9/readings', { date: '2024-04-01', time: '08:00', value: 1600 }); // (1600-1000) x 2 = 1200 kWh
+  await req('POST', '/api/meters/W-T9/readings', { date: '2024-03-01', value: 10 });
+  await req('POST', '/api/meters/W-T9/readings', { date: '2024-04-01', value: 30 }); // 20 kL
+  r = await req('POST', '/api/meters/W-T9/readings', { date: '2024-04-02', value: 5 });
+  assert.match(r.data.warning, /Lower than the previous reading/);
+  await req('DELETE', `/api/meters/W-T9/readings/${encodeURIComponent(new Date('2024-04-02T12:00:00Z').toISOString())}`);
+  assert.equal((await req('POST', '/api/meters/E-T9/readings', { date: '2999-01-01', value: 1 })).status, 400, 'future date refused');
+  // make sure only our tenant is billed in this month by giving B4's other tenants no readings in 2024 (they get warnings, zero)
+  r = await req('POST', '/api/recoveries', { building: 'B4', month: '2024-03' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const run = r.data.run;
+  const line = run.lines.find(l => l.tenantId === tid);
+  const elec = line.items.find(i => i.meterId === 'E-T9'), water = line.items.find(i => i.meterId === 'W-T9');
+  assert.equal(elec.consumption, 1200);
+  // sample electricity tariff: 1000 x 2.98 + 200 x 3.42 + fixed 285
+  assert.deepEqual(elec.charges.map(c => c.amount), [2980, 684, 285]);
+  // sample water tariff: 6 x 24.5 + 9 x 39.8 + 5 x 54.2 = 147 + 358.2 + 271 = 776.2; sewer 70% = 543.34
+  assert.deepEqual(water.charges.map(c => c.amount), [147, 358.2, 271, 543.34]);
+  assert.equal(line.subtotal, 2980 + 684 + 285 + 776.2 + 543.34);
+  assert.equal(line.total, Math.round(line.subtotal * 1.15 * 100) / 100);
+  assert.ok(run.lines.some(l => l.tenantId !== tid && l.items.some(i => i.warnings.length)), 'tenants without readings get warnings');
+  assert.equal((await req('POST', '/api/recoveries', { building: 'B4', month: '2024-03' })).status, 400, 'one run per building per month');
+  // approve: tenant statement emailed, tracker row added
+  const mailsBefore = smtp.mails.length;
+  r = await req('POST', `/api/recoveries/${run.id}/approve`, {});
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  await until(() => smtp.mails.slice(mailsBefore).some(m => m.to.join(' ').includes('tenant9@bothelec.test') && /Utility statement/.test(m.data)));
+  st = (await req('GET', '/api/state')).data;
+  const row = st.tracker.find(t => t.recoveryId === run.id && t.tenantId === tid);
+  assert.ok(row && row.division === 'utility' && row.amountIncl === line.total, 'tracker row for the tenant');
+  assert.equal((await req('DELETE', `/api/recoveries/${run.id}`)).status, 400, 'approved runs are locked');
+  // approve in the tracker → Zoho invoice to the tenant as customer
+  r = await req('POST', '/api/tracker/approve', { ids: [row.id] });
+  assert.equal(r.data.sent, 1);
+  await until(() => zoho.invoices.some(i => (i.line_items || []).some(l => /E-T9/.test(l.name))));
+  const inv = zoho.invoices.find(i => (i.line_items || []).some(l => /E-T9/.test(l.name)));
+  const cust = zoho.contacts.find(c => c.contact_id === inv.customer_id);
+  assert.equal(cust.contact_name, 'Test Tenant');
+  assert.equal(inv.line_items.length, 7);
+  await until(async () => { const x = (await req('GET', '/api/state')).data.recoveries.find(y => y.id === run.id); return x.lines.find(l => l.tenantId === tid).invoice; });
+});
+
+test('utility management: building link readings, permissions, company per building', async () => {
+  // a building link (HTTP ingest) can deliver meter readings
+  const b4 = (await req('GET', '/api/state')).data.buildings.find(b => b.id === 'B4');
+  let r = await req('POST', '/api/ingest/B4', { values: { 'meters.E-S1.reading': 99999.5 } }, { cookie: '', headers: { Authorization: 'Bearer ' + b4.ingestToken } });
+  assert.equal(r.status, 200);
+  const rs = (await req('GET', '/api/meters/E-S1/readings')).data;
+  assert.equal(rs[rs.length - 1].value, 99999.5); assert.equal(rs[rs.length - 1].source, 'connector');
+  // clients see their own buildings' meters, read only
+  const cc = await login('client2@bothelec.test', 'client-pass-1'); // client of B2
+  const cs = (await req('GET', '/api/state', undefined, { cookie: cc })).data;
+  assert.ok(cs.meters.every(m => m.building === 'B2') && cs.meters.length >= 1);
+  assert.ok(cs.tenants.every(t => t.building === 'B2'));
+  assert.deepEqual(cs.tariffs, []);
+  assert.equal((await req('GET', '/api/meters/E-S1/readings', undefined, { cookie: cc })).status, 404);
+  assert.equal((await req('POST', '/api/meters/E-L1/readings', { value: 1 }, { cookie: cc })).status, 403);
+  assert.equal((await req('POST', '/api/recoveries', { building: 'B2', month: '2024-01' }, { cookie: cc })).status, 403);
+  // a building's companies
+  r = await req('POST', '/api/admin/buildings', { id: 'B3', name: 'Centurion Medical Suites', divisions: [] });
+  assert.equal(r.status, 400);
+  r = await req('POST', '/api/admin/buildings', { id: 'B3', name: 'Centurion Medical Suites', divisions: ['aircon', 'utility'] });
+  assert.deepEqual(r.data.building.divisions, ['aircon', 'utility']);
+  // meter jobs are tagged with the company and linked to the meter
+  r = await req('POST', '/api/jobs', { building: 'B4', division: 'utility', equipment: 'E-S2 · Electricity meter (Shop 2 DB)', fault: 'No display' });
+  const j = (await req('GET', '/api/state')).data.jobs.find(x => x.id === r.data.id);
+  assert.equal(j.division, 'utility'); assert.equal(j.meter, 'E-S2');
+});

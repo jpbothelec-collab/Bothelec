@@ -79,7 +79,7 @@ function demoBms() {
 function seed(demo) {
   const s = {
     meta: { id: 'meta', seq: 1048 },
-    buildings: [], technicians: [], jobs: [], services: [], tracker: [], feed: [], alarms: [], vehicles: [], trips: [], assessments: [], documents: [], bms: {},
+    buildings: [], technicians: [], jobs: [], services: [], tracker: [], meters: [], tenants: [], recoveries: [], readings: [], feed: [], alarms: [], vehicles: [], trips: [], assessments: [], documents: [], bms: {},
   };
   if (!demo) return s;
 
@@ -128,7 +128,44 @@ function seed(demo) {
       connector: { type: 'none' },
     },
   ];
-  s.buildings.forEach(b => { b.equipment = [...b.units.map(u => `${u.id} · ${u.type}`), 'Other / not sure']; });
+  s.buildings.forEach(b => { b.equipment = [...b.units.map(u => `${u.id} · ${u.type}`), 'Other / not sure']; b.divisions = ['aircon']; });
+  s.buildings[1].divisions = ['aircon', 'utility'];
+
+  /* ---------- Bothelec Utility Management demo: a retail centre with tenants, meters and monthly readings ---------- */
+  s.buildings.push({
+    id: 'B4', name: 'Sandton Retail Centre', client: 'Sandton Retail Holdings', area: 'Sandton', divisions: ['utility'],
+    contacts: [contact('N. Pretorius', 'Building Manager', '+27 11 555 0401', 'centre.manager@example.com'), contact('F. Adams', 'Operations Manager', '+27 11 555 0402', '')],
+    units: [], equipment: ['Other / not sure'], locations: ['Main DB room', 'Ground floor', 'Level 1', 'Roof'], autoCall: false, comfort: [20, 24], connector: { type: 'none' },
+  });
+  const tn = (id, building, name, unit, contactName, email) => s.tenants.push({ id, building, name, unit, contact: contactName, email, phone: '', vatNo: '', active: true, createdAt: new Date().toISOString() });
+  tn('TN-CAFE', 'B4', 'Bean There Café', 'Shop 1', 'K. Moodley', 'cafe@example.com');
+  tn('TN-PHARM', 'B4', 'Sandton Pharmacy', 'Shop 2', 'R. Patel', 'pharmacy@example.com');
+  tn('TN-BOUT', 'B4', 'Loom Boutique', 'Shop 3', 'T. Mabaso', '');
+  tn('TN-ROSE1', 'B2', 'Acme Consulting', 'Level 1', 'J. Smith', 'accounts@example.com');
+  const mt = (id, building, type, location, tenantId, serial, multiplier = 1) => s.meters.push({ id, building, type, unit: type === 'water' ? 'kL' : 'kWh', serial, make: type === 'water' ? 'Kent' : 'Landis+Gyr', model: type === 'water' ? 'PSM-T 20mm' : 'E650', location, multiplier, tenantId, tariffId: null, comm: 'manual', installed: '2023-03-01', notes: '', removed: false, createdAt: new Date().toISOString() });
+  mt('E-S1', 'B4', 'electricity', 'Shop 1 DB', 'TN-CAFE', 'LG-881201');
+  mt('E-S2', 'B4', 'electricity', 'Shop 2 DB', 'TN-PHARM', 'LG-881202');
+  mt('E-S3', 'B4', 'electricity', 'Shop 3 DB', 'TN-BOUT', 'LG-881203');
+  mt('E-MAIN', 'B4', 'electricity', 'Main incomer (CT 400/5)', null, 'LG-880001', 80);
+  mt('W-S1', 'B4', 'water', 'Shop 1', 'TN-CAFE', 'KT-55101');
+  mt('W-S2', 'B4', 'water', 'Shop 2', 'TN-PHARM', 'KT-55102');
+  mt('SOL-1', 'B4', 'solar', 'Roof inverter', null, 'SMA-200177');
+  mt('E-L1', 'B2', 'electricity', 'Level 1 DB', 'TN-ROSE1', 'LG-771101');
+  // monthly readings on the 1st of the last 5 months, plus a recent one
+  const now = new Date(), start = { 'E-S1': 41250, 'E-S2': 18830, 'E-S3': 9220, 'E-MAIN': 3120, 'W-S1': 812.4, 'W-S2': 231.7, 'SOL-1': 52300, 'E-L1': 27110 };
+  const perMonth = { 'E-S1': 2350, 'E-S2': 1180, 'E-S3': 640, 'E-MAIN': 61, 'W-S1': 18.6, 'W-S2': 4.2, 'SOL-1': 5100, 'E-L1': 1720 };
+  Object.keys(start).forEach(m => {
+    let v = start[m];
+    for (let k = 5; k >= 0; k--) {
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - k, 1, 7, 30));
+      if (d > now) break;
+      s.readings.push({ meter: m, ts: d.toISOString(), value: +v.toFixed(2), source: 'manual', by: 'S. van Wyk' });
+      v += perMonth[m] * (0.85 + ((k * 7 + m.length) % 5) / 15);
+    }
+    const recent = new Date(now.getTime() - 2 * 864e5);
+    if (recent.getUTCDate() > 3) s.readings.push({ meter: m, ts: recent.toISOString(), value: +(v - perMonth[m] * 0.3).toFixed(2), source: 'manual', by: 'S. van Wyk' });
+  });
+
   s.technicians = [
     { id: 'T1', name: 'J. Mokoena', skill: 'HVAC senior · Chillers & AHUs', phone: '+27 82 555 1001', email: '', status: 'available', vehicle: 'V1' },
     { id: 'T2', name: 'T. Naidoo', skill: 'HVAC technician · VRF & splits', phone: '+27 82 555 1002', email: '', status: 'available', vehicle: 'V2' },
@@ -145,6 +182,7 @@ function seed(demo) {
   mk(1047, { building: 'B2', unit: 'VRF-02', tech: 'T2', techName: 'T. Naidoo', equipment: 'VRF-02 · VRF outdoor unit', location: 'Roof', fault: 'VRF-02 error code E7, no cooling on level 2', urgency: 'High',
     findings: 'Outdoor fan motor capacitor failed.', work: 'Capacitor replaced, unit tested, error cleared.', signedBy: 'M. Khumalo',
     billing: { lines: [{ id: 'm1', kind: 'Call-out', code: 'CALLOUT', description: 'Call-out fee', qty: 1, unitPrice: 650 }, { id: 'm2', kind: 'Labour', code: 'LAB-HR', description: 'Labour (technician)', qty: 2, unitPrice: 550 }, { id: 'm3', kind: 'Part', code: 'CAP-35', description: 'Run capacitor 35 µF', qty: 1, unitPrice: 310 }], notes: '' } }, [4400, 4390, 4360, 4330, 4250, 4245]);
+  mk(1046, { building: 'B4', division: 'utility', meter: 'E-S3', equipment: 'E-S3 · Electricity meter (Shop 3 DB)', location: 'Ground floor', fault: 'Meter display blank, tenant disputes last reading', urgency: 'Medium', tech: 'T3', techName: 'S. van Wyk' }, [180, 170]);
   mk(1049, { building: 'B2', equipment: 'SPL-SR1 · Split unit (server room)', location: 'Server room', fault: 'Unit leaking water onto floor', urgency: 'High', tech: 'T2' }, [70, 62, 35]);
   mk(1050, { building: 'B3', equipment: 'PU-02 · Packaged unit', location: 'Ward A', fault: 'Noisy compressor', urgency: 'Medium', tech: 'T3' }, [40, 31]);
   mk(1051, { building: 'B1', equipment: 'FCU-L2-04 · Fan coil unit', location: 'Level 2 - East zone', fault: 'Thermostat display blank', urgency: 'Low' }, [12]);

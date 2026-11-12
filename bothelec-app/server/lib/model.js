@@ -6,8 +6,9 @@ const path = require('node:path');
 const { nowIso, rid, byId, log, setPath, emptyBms, COLLECTIONS, normalizePhone, clamp } = require('./util');
 const { seed, STEPS, DEFAULT_POLICY, DEFAULT_BILLING } = require('./seed');
 const { hashPassword, isStaff, canBuilding, canJob } = require('./auth');
+const { createUtility } = require('./utility');
 
-const COLLS = ['buildings', 'technicians', 'jobs', 'services', 'tracker', 'feed', 'alarms', 'vehicles', 'trips', 'assessments', 'documents', 'users'];
+const COLLS = ['buildings', 'technicians', 'jobs', 'services', 'tracker', 'meters', 'tenants', 'recoveries', 'feed', 'alarms', 'vehicles', 'trips', 'assessments', 'documents', 'users'];
 const stepIdx = k => STEPS.findIndex(s => s.key === k);
 const stepLabel = k => (STEPS[stepIdx(k)] || {}).label || k;
 const ROLE_LABEL = { manager: 'Building Manager', ops: 'Operations Manager', desk: 'Bothelec service desk', tech: 'Technician', caller: 'Caller' };
@@ -29,10 +30,11 @@ function createModel({ db, env, bus, filesDir }) {
     if (!S.meta) {
       const s = seed(env.SEED_DEMO === 'true');
       db.tx(() => {
-        ['buildings', 'technicians', 'jobs', 'services', 'tracker', 'alarms', 'vehicles', 'trips', 'assessments', 'documents'].forEach(c => s[c].forEach(o => db.put(c, o)));
+        ['buildings', 'technicians', 'jobs', 'services', 'tracker', 'meters', 'tenants', 'recoveries', 'alarms', 'vehicles', 'trips', 'assessments', 'documents'].forEach(c => s[c].forEach(o => db.put(c, o)));
         Object.values(s.bms).forEach(b => db.put('bms', b));
       });
-      Object.assign(S, { buildings: s.buildings, technicians: s.technicians, jobs: s.jobs, services: s.services, tracker: s.tracker, alarms: s.alarms, vehicles: s.vehicles, trips: s.trips, assessments: s.assessments, documents: s.documents, bms: s.bms });
+      (s.readings || []).forEach(r => db.readings.put(r.meter, r.ts, r.value, r.source || 'manual', r.by || '', r.note || '', ''));
+      Object.assign(S, { buildings: s.buildings, technicians: s.technicians, jobs: s.jobs, services: s.services, tracker: s.tracker, meters: s.meters, tenants: s.tenants, recoveries: s.recoveries, alarms: s.alarms, vehicles: s.vehicles, trips: s.trips, assessments: s.assessments, documents: s.documents, bms: s.bms });
       S.meta = s.meta; db.setKv('meta', S.meta);
       log(`[model] initialised ${env.SEED_DEMO === 'true' ? 'with demo data' : 'empty'}`);
     }
@@ -40,7 +42,9 @@ function createModel({ db, env, bus, filesDir }) {
     if (!S.settings.billing) { S.settings.billing = DEFAULT_BILLING(); db.setKv('settings', S.settings); }
     if (!S.settings.billing.trackerV1) { Object.assign(S.settings.billing, { autoInvoice: false, termsDays: S.settings.billing.termsDays || 30, trackerV1: true }); db.setKv('settings', S.settings); }
     S.zohoq = db.all('zohoq').sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    S.buildings.forEach(b => { if (!b.ingestToken) { b.ingestToken = rid(18); db.put('buildings', b); } migrateBuilding(b); });
+    S.buildings.forEach(b => { if (!b.ingestToken) { b.ingestToken = rid(18); db.put('buildings', b); } migrateBuilding(b); if (!Array.isArray(b.divisions)) { b.divisions = ['aircon']; db.put('buildings', b); } });
+    S.jobs.forEach(j => { if (!j.division) { j.division = 'aircon'; db.put('jobs', j); } });
+    S.recoveries.sort((a, b) => b.month.localeCompare(a.month));
     S.services.sort((a, b) => (b.date + b.at).localeCompare(a.date + a.at));
     S.jobs.sort((a, b) => (b.steps.logged || '').localeCompare(a.steps.logged || ''));
     S.alarms.sort((a, b) => b.at.localeCompare(a.at));
@@ -296,8 +300,10 @@ function createModel({ db, env, bus, filesDir }) {
   }
   function newJob(o, actor) {
     const job = Object.assign({ id: 'BA-' + S.meta.seq++, source: 'Client app', urgency: 'Medium', photos: [], findings: '', work: '', signature: null, signedBy: '', notifications: [], steps: {}, createdBy: actor ? actor.id : null }, o);
-    const bu = (bld(job.building).units || []).find(u => u.id === String(job.equipment || '').split(' · ')[0]);
-    if (bu && !job.unit) job.unit = bu.id;
+    job.division = job.division === 'utility' ? 'utility' : 'aircon';
+    const eqId = String(job.equipment || '').split(' · ')[0];
+    if (job.division === 'utility') { const m = S.meters.find(x => x.id === eqId && x.building === job.building); if (m) job.meter = m.id; }
+    else { const bu = (bld(job.building).units || []).find(u => u.id === eqId); if (bu && !job.unit) job.unit = bu.id; }
     saveMeta();
     S.jobs.unshift(job);
     ensureTracker('job', job);
@@ -452,7 +458,10 @@ function createModel({ db, env, bus, filesDir }) {
     if (!S.buildings.find(b => b.id === bid)) return { error: 'Unknown building' };
     const bm = S.bms[bid] || (S.bms[bid] = Object.assign(emptyBms(), { id: bid }));
     let n = 0;
-    for (const [p, v] of Object.entries(values || {})) if (setPath(bm, p, v)) n++;
+    for (const [p, v] of Object.entries(values || {})) {
+      if (String(p).startsWith('meters.')) { if (util.connectorReading(String(p).split('.')[1], typeof v === 'string' ? +v : v)) n++; continue; }
+      if (setPath(bm, p, v)) n++;
+    }
     bm.updatedAt = nowIso();
     connStatus[bid] = Object.assign(connStatus[bid] || {}, { lastSeen: bm.updatedAt, ok: true, error: null, source: source || connStatus[bid]?.source });
     const lost = activeByKey(bid, 'conn:' + bid);
@@ -526,7 +535,7 @@ function createModel({ db, env, bus, filesDir }) {
       const { ingestToken, connector, gsm, ...rest } = b; return { ...rest, connector: { type: (connector || {}).type || 'none' } };
     });
     const jobs = S.jobs.filter(j => canJob(u, j));
-    if (u.role === 'tech') return techState(u, buildings, jobs);
+    if (u.role === 'tech') return { ...techState(u, buildings, jobs), ...util.stateFor(u) };
     const technicians = u.role === 'client' ? S.technicians.map(t => ({ id: t.id, name: t.name, status: t.status })) : S.technicians;
     return {
       me: publicUser(u),
@@ -540,6 +549,7 @@ function createModel({ db, env, bus, filesDir }) {
       vehicles: u.role === 'client' ? [] : S.vehicles,
       trips: u.role === 'client' ? [] : S.trips,
       services: S.services.filter(x => bOk(x.building)),
+      ...util.stateFor(u),
       tracker: staff ? S.tracker : [],
       assessments: S.assessments.filter(a => bOk(a.building)),
       documents: S.documents,
@@ -607,8 +617,10 @@ function createModel({ db, env, bus, filesDir }) {
   function upsertBuilding(data) {
     if (!data.name) return { error: 'Name is required.' };
     let b = data.id && byId(S.buildings, data.id);
-    if (!b) { b = { id: 'B' + Date.now().toString(36), ingestToken: rid(18), contacts: [], units: [], equipment: ['Other / not sure'], locations: ['Plant room'], autoCall: true, comfort: [20, 24], connector: { type: 'none' } }; S.buildings.push(b); }
-    const allowed = ['name', 'client', 'area', 'portal', 'locations', 'autoCall', 'comfort', 'connector', 'gsm'];
+    if (!b) { b = { id: 'B' + Date.now().toString(36), ingestToken: rid(18), divisions: ['aircon'], contacts: [], units: [], equipment: ['Other / not sure'], locations: ['Plant room'], autoCall: true, comfort: [20, 24], connector: { type: 'none' } }; S.buildings.push(b); }
+    if (data.divisions !== undefined) data.divisions = (Array.isArray(data.divisions) ? data.divisions : []).filter(d => ['aircon', 'utility'].includes(d)).slice(0, 2);
+    if (data.divisions && !data.divisions.length) return { error: 'Choose at least one company: aircon and/or utility management.' };
+    const allowed = ['name', 'client', 'area', 'portal', 'divisions', 'locations', 'autoCall', 'comfort', 'connector', 'gsm'];
     allowed.forEach(k => { if (data[k] !== undefined) b[k] = data[k]; });
     if (Array.isArray(data.contacts)) { const r = setContacts(b.id, data.contacts); if (r.error) return r; }
     syncEquipment(b);
@@ -752,6 +764,11 @@ function createModel({ db, env, bus, filesDir }) {
       const label = t.jobId || t.poNumber || t.id;
       if (t.void) { out.skipped.push(`${label}: void`); continue; }
       if (t.invoice) { out.skipped.push(`${label}: already invoiced`); continue; }
+      if (t.recoveryId) {
+        t.approvedAt = nowIso(); t.approvedBy = actor.name; save('tracker', t); out.approved++;
+        if (zoho && zoho.configured) { zEnqueue('invoice', `recovery:${t.recoveryId}~${t.tenantId}`); out.sent++; }
+        continue;
+      }
       const rec = t.jobId ? byId(S.jobs, t.jobId) : t.serviceId ? byId(S.services, t.serviceId) : null;
       if (t.jobId && rec && !['completed', 'report'].includes(rec.status)) { out.skipped.push(`${label}: work not completed`); continue; }
       const lines = rec && rec.billing ? rec.billing.lines || [] : [];
@@ -829,6 +846,7 @@ function createModel({ db, env, bus, filesDir }) {
   }
   async function zInvoice(ref) {
     const [type, id] = String(ref).split(':');
+    if (type === 'recovery') return zInvoiceRecovery(id);
     const rec = type === 'job' ? byId(S.jobs, id) : byId(S.services, id);
     if (!rec) throw Object.assign(new Error('Record not found'), { retry: false });
     if (rec.invoice && rec.invoice.id) return { invoiceId: rec.invoice.id };
@@ -859,6 +877,35 @@ function createModel({ db, env, bus, filesDir }) {
     feed(`Draft invoice ${rec.invoice.number || ''} created in Zoho Books`, `${type === 'job' ? rec.id : rec.unit + ' · ' + rec.type} — ${b.name}`, '', type === 'job' ? '#/service/job/' + rec.id : `#/service/unit/${b.id}/${encodeURIComponent(rec.unit)}`, b.id);
     changed(b.id);
     return { invoiceId: inv.invoice_id, number: rec.invoice.number };
+  }
+  async function zSyncTenant(tenantId) {
+    const t = byId(S.tenants, tenantId); if (!t) throw Object.assign(new Error('Tenant not found'), { retry: false });
+    if (t.zoho && t.zoho.contactId) return t.zoho.contactId;
+    const found = await zoho.findContact(t.name);
+    const id = found ? found.contact_id : (await zoho.createContact({ contact_name: t.name, company_name: t.name, contact_type: 'customer', contact_persons: (t.email || t.phone) ? [{ ...splitName(t.contact || t.name), email: t.email || undefined, mobile: t.phone || undefined }] : [] })).contact_id;
+    t.zoho = { contactId: id, syncedAt: nowIso(), url: zoho.contactUrl(id) }; save('tenants', t);
+    return id;
+  }
+  async function zInvoiceRecovery(key) {
+    const [runId, tenantId] = String(key).split('~');
+    const r = util.recoveryLines(runId, tenantId);
+    if (!r) throw Object.assign(new Error('Billing run or tenant not found'), { retry: false });
+    if (r.line.invoice && r.line.invoice.id) return { invoiceId: r.line.invoice.id };
+    if (!r.lines.length) throw Object.assign(new Error('Nothing to invoice for this tenant'), { retry: false });
+    const customer = await zSyncTenant(tenantId);
+    const tk = S.tracker.find(x => x.recoveryId === runId && x.tenantId === tenantId);
+    const reference = (tk && tk.poNumber) || `UR-${r.run.month}-${(byId(S.tenants, tenantId) || {}).unit || tenantId}`;
+    const B = S.settings.billing, b = byId(S.buildings, r.run.building) || {};
+    let inv = await zoho.findInvoiceByReference(reference);
+    if (!inv) inv = await zoho.createInvoice({ customer_id: customer, reference_number: reference, date: nowIso().slice(0, 10), is_inclusive_tax: false,
+      line_items: r.lines.map(l => ({ name: l.description.slice(0, 100), description: `${b.name || ''} · ${r.run.label}`, rate: l.unitPrice, quantity: l.qty, ...(B.zohoTaxId ? { tax_id: B.zohoTaxId } : {}) })),
+      notes: `Utility recovery for ${r.run.label} · ${b.name || ''}`.slice(0, 2000) });
+    r.line.invoice = { provider: 'zoho', id: inv.invoice_id, number: inv.invoice_number || '', at: nowIso(), url: zoho.invoiceUrl(inv.invoice_id), reference };
+    save('recoveries', r.run);
+    if (tk) { tk.invoice = { number: inv.invoice_number || '', date: nowIso().slice(0, 10), source: 'zoho' }; save('tracker', tk); }
+    feed(`Draft invoice ${inv.invoice_number || ''} created in Zoho Books`, `${r.line.tenant} — utility recovery ${r.run.label}`, '', '#/recoveries/run/' + runId, r.run.building);
+    changed(r.run.building);
+    return { invoiceId: inv.invoice_id, number: inv.invoice_number };
   }
   function requestInvoice(ref) {
     if (!zoho || !zoho.configured) return { error: 'Zoho Books is not connected yet. See Settings → Zoho Books & billing.' };
@@ -891,6 +938,24 @@ function createModel({ db, env, bus, filesDir }) {
   }
 
   load();
+  /* utility management */
+  function addTrackerRowFor(o) {
+    if (S.tracker.find(t => t.recoveryId === o.recoveryId && t.tenantId === o.tenantId)) return;
+    const t = { id: 'TK' + Date.now().toString(36) + rid(4), building: o.building, division: o.division, jobId: null, serviceId: null, recoveryId: o.recoveryId, tenantId: o.tenantId,
+      poNumber: '', poDate: '', poStatus: 'None', critical: false, approvedAt: null, approvedBy: '', invoice: null, amountEx: o.amountEx, amountIncl: o.amountIncl,
+      portalDate: '', paidDate: '', void: false, notes: '', description: o.description, legacyJobDate: o.jobDate, createdAt: nowIso() };
+    S.tracker.unshift(t); save('tracker', t);
+  }
+  function sendStatement(run, l, t, b) {
+    if (!notifier) return;
+    const cur = S.settings.billing.currency, fm = n => cur + ' ' + (+n).toFixed(2);
+    const rows = l.items.map(it => `<tr><td colspan="3" style="padding-top:10px"><b>${escH(it.meterId)}</b> · ${escH(it.type)} · ${it.open ? it.open.value : '—'} → ${it.close ? it.close.value : '—'}${it.multiplier !== 1 ? ' × ' + it.multiplier : ''} = <b>${it.consumption} ${escH(it.unit)}</b></td></tr>` + it.charges.map(c => `<tr><td style="border-bottom:1px solid #e6ecee">${escH(c.desc)}</td><td align="right" style="border-bottom:1px solid #e6ecee">${c.qty} × ${fm(c.rate)}</td><td align="right" style="border-bottom:1px solid #e6ecee">${fm(c.amount)}</td></tr>`).join('')).join('');
+    const extra = `<table width="100%" cellpadding="5" cellspacing="0" style="font-size:13px;border-collapse:collapse;margin-top:12px">${rows}<tr><td colspan="2" align="right">Subtotal</td><td align="right">${fm(l.subtotal)}</td></tr><tr><td colspan="2" align="right">VAT</td><td align="right">${fm(l.vat)}</td></tr><tr><td colspan="2" align="right"><b>Total</b></td><td align="right"><b>${fm(l.total)}</b></td></tr></table>`;
+    const html = emailShell(`Utility statement · ${run.label}`, `${l.tenant}${l.unit ? ' · ' + l.unit : ''} at ${b ? b.name : ''}`, [['Period', run.label], ['Building', b ? b.name : ''], ['Total due (incl. VAT)', fm(l.total)]], extra, null).replace('TRIGON AIR', 'BOTHELEC UTILITY MANAGEMENT').replace('BOTHELEC AIRCON SOLUTIONS', 'BOTHELEC UTILITY MANAGEMENT');
+    notifier.enqueue({ channel: 'email', to: t.email, subject: `[Bothelec Utility Management] Statement ${run.label} · ${l.tenant}`, text: `Utility statement for ${run.label}: total ${fm(l.total)} incl. VAT.`, html, meta: { recoveryId: run.id } });
+  }
+  const util = createUtility({ S, db, save, changed, feed, saveDataUrl, isStaff, canBuilding, addTrackerRowFor, sendStatement });
+  S.buildings.forEach(b => { if ((b.divisions || []).includes('utility')) util.syncMeterEquipment(b); });
   S.jobs.forEach(j => ensureTracker('job', j));
   S.services.filter(x => x.billing && x.billing.lines && x.billing.lines.length).forEach(x => ensureTracker('service', x));
   return {
@@ -902,6 +967,7 @@ function createModel({ db, env, bus, filesDir }) {
     raiseAlarm, clearAlarm, evaluate, applyReadings, setConnStatus, connStatus, gsmInbound,
     stateFor, upsertUser, deleteUser, upsertBuilding, deleteBuilding, updateSettings,
     setContacts, upsertUnit, setUnitRemoved, addService, deleteService, upsertTech, deleteTech, SERVICE_TYPES,
+    util,
     stop() { clearInterval(bmsTimer); clearInterval(wd); clearInterval(zTimer); flushBms(); },
   };
 }

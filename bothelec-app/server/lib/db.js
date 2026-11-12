@@ -10,7 +10,8 @@ function openDb(dir) {
   db.exec(`PRAGMA journal_mode = WAL;
     CREATE TABLE IF NOT EXISTS docs (coll TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY (coll, id));
     CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL);`);
+    CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS readings (meter TEXT NOT NULL, ts TEXT NOT NULL, value REAL NOT NULL, source TEXT, by TEXT, note TEXT, photo TEXT, PRIMARY KEY (meter, ts));`);
   const q = {
     all: db.prepare('SELECT data FROM docs WHERE coll = ?'),
     put: db.prepare('INSERT INTO docs (coll, id, data) VALUES (?, ?, ?) ON CONFLICT (coll, id) DO UPDATE SET data = excluded.data'),
@@ -23,7 +24,25 @@ function openDb(dir) {
     sDelUser: db.prepare('DELETE FROM sessions WHERE user_id = ?'),
     sPurge: db.prepare('DELETE FROM sessions WHERE expires < ?'),
   };
+  const r = {
+    put: db.prepare('INSERT INTO readings (meter, ts, value, source, by, note, photo) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (meter, ts) DO UPDATE SET value = excluded.value, source = excluded.source, by = excluded.by, note = excluded.note, photo = excluded.photo'),
+    latest: db.prepare('SELECT * FROM readings WHERE meter = ? ORDER BY ts DESC LIMIT 1'),
+    before: db.prepare('SELECT * FROM readings WHERE meter = ? AND ts <= ? ORDER BY ts DESC LIMIT 1'),
+    after: db.prepare('SELECT * FROM readings WHERE meter = ? AND ts >= ? ORDER BY ts ASC LIMIT 1'),
+    range: db.prepare('SELECT * FROM readings WHERE meter = ? AND ts >= ? AND ts <= ? ORDER BY ts ASC LIMIT ?'),
+    del: db.prepare('DELETE FROM readings WHERE meter = ? AND ts = ?'),
+    rename: db.prepare('UPDATE readings SET meter = ? WHERE meter = ?'),
+  };
   return {
+    readings: {
+      put: (m, ts, v, source, by, note, photo) => r.put.run(m, ts, v, source || '', by || '', note || '', photo || ''),
+      latest: m => r.latest.get(m) || null,
+      before: (m, ts) => r.before.get(m, ts) || null,
+      after: (m, ts) => r.after.get(m, ts) || null,
+      range: (m, from, to, limit = 5000) => r.range.all(m, from, to, limit),
+      del: (m, ts) => r.del.run(m, ts),
+      rename: (from, to) => r.rename.run(to, from),
+    },
     raw: db,
     all: coll => q.all.all(coll).map(r => JSON.parse(r.data)),
     put: (coll, obj) => q.put.run(coll, String(obj.id), JSON.stringify(obj)),
