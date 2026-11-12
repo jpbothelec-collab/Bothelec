@@ -673,3 +673,32 @@ tr.muted td { opacity: .55; }
   .rp-tiles { grid-template-columns: repeat(4, 1fr); }
   .page-head .sub { color: #333; }
 }
+
+/* tariffs */
+.tf-list { display: grid; gap: 12px; }
+.tf-group { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 18px 2px 8px; }
+.tf-card > summary { display: block; cursor: pointer; list-style: none; }
+.tf-head { display: flex; gap: 12px; align-items: center; }
+.tf-card > summary::-webkit-details-marker { display: none; }
+.tf-card[open] > summary .tf-head .btn { visibility: hidden; }
+.tf-card[open] > summary { margin-bottom: 8px; }
+.tf-lib header { display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; }
+.tf-lib h3 { margin: 0 0 2px; font-size: 15px; }
+.tf-sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 16px; margin: 10px 0; font-size: 13px; }
+.tf-sum small { display: block; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+.tf-notes { margin: 6px 0 10px; padding-left: 18px; font-size: 12.5px; color: var(--muted); }
+.tf-block.pct { grid-template-columns: 1fr 1fr 80px auto; }
+.tf-fixed { display: grid; grid-template-columns: 2fr 1fr auto; gap: 6px; margin-bottom: 6px; }
+.tf-levy { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 6px; }
+.tf-fixed input, .tf-levy input, .tf-try input { padding: 8px; background: var(--bg2); border: 1px solid var(--line2); border-radius: 8px; font-size: 15px; min-width: 0; }
+.tf-check { display: flex; gap: 8px; align-items: center; font-size: 13px; margin: 2px 0 6px; }
+.tf-months { display: flex; flex-wrap: wrap; gap: 6px; }
+.tf-months label { display: flex; gap: 4px; align-items: center; font-size: 12px; padding: 4px 8px; border: 1px solid var(--line2); border-radius: 6px; }
+.tf-try { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 10px; margin: 8px 0; border: 1px dashed var(--line2); border-radius: 8px; }
+.tf-try > label { font-size: 12px; color: var(--muted); }
+.tf-try input[name=tq] { width: 150px; }
+.tf-out { flex-basis: 100%; }
+.tf-q { width: 100%; font-size: 13px; }
+.tf-q td { padding: 3px 4px; }
+.tf-q td.n { text-align: right; white-space: nowrap; }
+@media (max-width: 600px) { .tf-levy { grid-template-columns: 1fr 1fr; } .tf-levy input:first-child { grid-column: 1 / -1; } .tf-try input[name=tq] { flex: 1; width: auto; } }

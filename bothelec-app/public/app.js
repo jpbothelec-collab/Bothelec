@@ -1570,6 +1570,8 @@
   /* ---------------- parts & labour, invoicing ---------------- */
   const LINE_KINDS = ['Call-out', 'Labour', 'Part', 'Other'];
   const B = () => S.billing || { vatRate: 15, pricesIncludeVat: false, currency: 'ZAR', catalogue: [] };
+  /* A unit rate: up to 4 decimals (R 3.8052), at least 2 (R 73.72). */
+  const fmtRate = n => { const [a, d] = (Math.round((+n || 0) * 10000) / 10000).toFixed(4).split('.'); return fmtMoney(0).replace('0.00', '') + a.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + '.' + d.replace(/0{1,2}$/, ''); };
   const fmtMoney = n => (B().currency === 'ZAR' ? 'R ' : B().currency + ' ') + (Math.round((+n || 0) * 100) / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   function calcTotals(lines) {
     const r = n => Math.round(n * 100) / 100, sum = r((lines || []).reduce((a, l) => a + (+l.qty || 0) * (+l.unitPrice || 0), 0)), v = B().vatRate;
@@ -2078,24 +2080,86 @@
         ${l.items.length ? l.items.map(it => `<div class="ru-item"><div class="ru-head"><a href="#/meters/meter/${encodeURIComponent(it.meterId)}"><strong>${esc(it.meterId)}</strong></a> <small class="muted">${UT_LABEL[it.type]} · ${esc(it.tariff)}</small></div>
           <small class="mono">${it.open ? fmtN(it.open.value) + ' (' + dmy(it.open.ts) + ')' : '—'} → ${it.close ? fmtN(it.close.value) + ' (' + dmy(it.close.ts) + ')' : '—'}${it.multiplier !== 1 ? ' × ' + it.multiplier : ''} = <b>${fmtN(it.consumption, 2)} ${esc(it.unit)}</b></small>
           ${it.warnings.map(w => `<div class="ru-warn">${ic('alert')}${esc(w)}</div>`).join('')}
-          ${it.charges.length ? `<table class="ru-ch">${it.charges.map(c => `<tr><td>${esc(c.desc)}</td><td class="mono">${fmtN(c.qty, 3)} × ${fmtMoney(c.rate)}</td><td class="mono" style="text-align:right">${fmtMoney(c.amount)}</td></tr>`).join('')}</table>` : ''}</div>`).join('') : '<p class="muted">No meters assigned to this tenant.</p>'}
+          ${it.charges.length ? `<table class="ru-ch">${it.charges.map(c => `<tr><td>${esc(c.desc)}</td><td class="mono">${fmtN(c.qty, 3)} × ${fmtRate(c.rate)}</td><td class="mono" style="text-align:right">${fmtMoney(c.amount)}</td></tr>`).join('')}</table>` : ''}</div>`).join('') : '<p class="muted">No meters assigned to this tenant.</p>'}
         <dl class="kv ltotals"><dt>Subtotal</dt><dd>${fmtMoney(l.subtotal)}</dd><dt>VAT</dt><dd>${fmtMoney(l.vat)}</dd><dt><strong>Total</strong></dt><dd><strong>${fmtMoney(l.total)}</strong></dd></dl>
         <small class="muted">${l.emailed ? 'Statement emailed ' + dmy(l.emailed) : (tenantById(l.tenantId) || {}).email ? '' : 'No email address: statement not emailed'}${l.invoice && l.invoice.number ? ' · Zoho invoice ' + esc(l.invoice.number) : ''}</small></div>`).join('')}</div>`;
   }
+  /* Tariffs: your tariffs (editable) and the municipal tariff library to copy from. All amounts exclude VAT. */
+  const MONTHS3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const TU = { electricity: 'kWh', water: 'kL', solar: 'kWh' };
   function viewTariffs() {
     if (!isStaff()) return head('Tariffs');
-    const tf = S.tariffs || [];
-    return head('Tariffs', 'Rates used to bill tenants (excluding VAT). The sample rates must be replaced with your municipality or landlord rates.') +
-      `<form class="form" data-form="tariffs"><div id="tfrows" class="grid g2">${tf.map(tariffCard).join('')}</div>
-        <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button type="button" class="btn sm" data-action="addtariff">${ic('plus')}Add tariff</button><button class="btn primary">${ic('check')}Save tariffs</button></div></form>`;
+    if (!ui.tlib) { ui.tlib = { loading: true }; api('GET', '/api/tariffs/library').then(r => { ui.tlib = r; if (current.key === 'recoveries/tariffs') render(true); }).catch(e => { ui.tlib = { error: e.message }; }); }
+    const tf = S.tariffs || [], tab = ui.tfTab || 'mine';
+    const tabs = `<div class="seg noprint" role="tablist">${[['mine', `Your tariffs (${tf.length})`], ['library', 'Gauteng tariff library']].map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-action="tftab" data-v="${k}">${l}</button>`).join('')}</div>`;
+    return head('Tariffs', 'Rates used to bill tenants. All amounts exclude VAT; VAT is added on the statement.') + tabs +
+      (tab === 'library' ? tariffLibraryView() :
+        `<form class="form" data-form="tariffs"><div id="tfrows" class="tf-list">${tf.map(tariffCard).join('') || '<div class="card empty">No tariffs yet. Add one from the Gauteng tariff library.</div>'}</div>
+        <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button type="button" class="btn sm" data-action="tftab" data-v="library">${ic('list')}Add from the library</button><button type="button" class="btn sm" data-action="addtariff">${ic('plus')}Blank tariff</button><button class="btn primary">${ic('check')}Save tariffs</button></div></form>`);
   }
-  const blockRow = b => `<div class="tf-block" data-block><input name="upTo" type="number" step="any" min="0" value="${b.upTo == null ? '' : b.upTo}" placeholder="and above" aria-label="Up to"><input name="rate" type="number" step="any" min="0" value="${b.rate ?? ''}" placeholder="rate" aria-label="Rate"><button type="button" class="btn sm" data-action="rmblock" aria-label="Remove">${ic('x')}</button></div>`;
+  const fmtR = v => fmtRate(v);
+  function tariffSummary(t) {
+    const u = TU[t.type], bl = list => list.map((b, k) => { const from = k ? list[k - 1].upTo : 0; return `${list.length === 1 ? 'all' : b.upTo == null ? `above ${fmtN(from, 0)}` : `${fmtN(from, 0)}–${fmtN(b.upTo, 0)}`}: <strong>${fmtR(b.rate)}</strong>`; }).join(' · ');
+    return `<div class="tf-sum">
+      <div><small>${t.winterBlocks ? `Summer (${MONTHS3.filter((m, k) => !t.winterMonths.includes(k + 1)).length} months)` : 'Rates'} per ${u}</small><div>${bl(t.blocks)}</div></div>
+      ${t.winterBlocks ? `<div><small>Winter (${t.winterMonths.map(m => MONTHS3[m - 1]).join(', ')}) per ${u}</small><div>${bl(t.winterBlocks)}</div></div>` : ''}
+      ${t.fixed.length ? `<div><small>Fixed per month</small><div>${t.fixed.map(x => `${esc(x.desc)} <strong>${fmtMoney(x.amount)}</strong>`).join(' · ')}</div></div>` : ''}
+      ${t.sewer ? `<div><small>Sewer per kL of water</small><div>${t.sewer.blocks.map(b => `${b.upTo == null ? 'rest' : 'to ' + b.upTo + ' kL'}: <strong>${fmtR(b.rate)}</strong>${b.pct !== 100 ? ` on ${b.pct}%` : ''}`).join(' · ')}${t.sewer.fixed.map(x => ` · ${esc(x.desc)} <strong>${fmtMoney(x.amount)}</strong>`).join('')}</div></div>` : t.sewerPct ? `<div><small>Sewer</small><div>${t.sewerPct}% of the water charge</div></div>` : ''}
+      ${t.levy ? `<div><small>Levy</small><div>${esc(t.levy.desc)} <strong>${fmtR(t.levy.rate)}</strong>/${u}${t.levy.freeUnits ? ` above ${t.levy.freeUnits} ${u}` : ''}</div></div>` : ''}
+      ${t.surchargePct ? `<div><small>Surcharge</small><div><strong>${t.surchargePct}%</strong> on the charges</div></div>` : ''}</div>`;
+  }
+  function tariffLibraryView() {
+    const L = ui.tlib;
+    if (!L || L.loading) return '<div class="card empty pulse">Loading the tariff library…</div>';
+    if (L.error) return `<div class="card empty">${esc(L.error)}</div>`;
+    const mine = new Set((S.tariffs || []).map(t => t.libraryKey).filter(Boolean));
+    const groups = [...new Set(L.library.map(t => t.municipality))];
+    return `<div class="banner" style="margin-bottom:14px"><span class="grow">Published 2026/27 tariffs (1 July 2026 – 30 June 2027), excluding VAT. <strong>Add</strong> copies a tariff into your tariffs, where you can change it. Check the figures against the municipality's tariff booklet before billing.</span></div>` +
+      groups.map(g => `<h2 class="tf-group">${esc(g)}</h2><div class="tf-list">${L.library.filter(t => t.municipality === g).map(t => `<div class="card tf-lib" data-libkey="${esc(t.libraryKey)}">
+        <header><div><h3>${esc(t.name)}</h3><small class="muted">${esc(t.category || '')} · ${UT_LABEL[t.type]} · from ${dmy(t.effective)}</small></div>
+          ${mine.has(t.libraryKey) ? '<span class="pill ok"><i></i>In your tariffs</span>' : `<button class="btn primary sm" data-action="tflibadd" data-key="${esc(t.libraryKey)}">${ic('plus')}Add</button>`}</header>
+        ${tariffSummary(t)}
+        ${(t.notes || []).length ? `<ul class="tf-notes">${t.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
+        ${tariffTry(t.libraryKey, t.type)}
+        ${t.source ? `<small class="muted">Source: <a href="${esc(t.source.url)}" target="_blank" rel="noopener">${esc(t.source.title)}</a></small>` : ''}</div>`).join('')}</div>`).join('') +
+      `<div class="card" style="margin-top:14px"><header><h2>Not in the library yet</h2></header><div class="rows">${L.pending.map(p => `<div class="row"><div class="grow"><strong>${esc(p.municipality)}</strong> · ${esc(p.what)}<br><small class="muted">${esc(p.why)}</small></div></div>`).join('')}</div></div>`;
+  }
+  const tariffTry = (id, type) => `<div class="tf-try" data-tftry="${esc(id)}"><label>Try it</label><input type="number" min="0" step="any" name="tq" placeholder="${TU[type]} in a month" aria-label="Consumption in ${TU[type]}"><input type="month" name="tm" value="${today().slice(0, 7)}" aria-label="Month"><button type="button" class="btn sm" data-action="tfquote">Work out</button><div class="tf-out"></div></div>`;
+  const blockRow = (b, pct) => `<div class="tf-block${pct ? ' pct' : ''}" data-block><input name="upTo" type="number" step="any" min="0" value="${b.upTo == null ? '' : b.upTo}" placeholder="and above" aria-label="Up to"><input name="rate" type="number" step="any" min="0" value="${b.rate ?? ''}" placeholder="R per unit" aria-label="Rate in rand per unit">${pct ? `<input name="pct" type="number" step="any" min="0" max="100" value="${b.pct ?? 100}" aria-label="Share of water counted as sewage (%)" title="% of the water counted">` : ''}<button type="button" class="btn sm" data-action="rmblock" aria-label="Remove block" title="Remove block">${ic('x')}</button></div>`;
+  const fixedRow = x => `<div class="tf-fixed" data-fixed><input name="fdesc" value="${esc(x.desc || '')}" placeholder="Description" aria-label="Charge description"><input name="famount" type="number" step="0.01" min="0" value="${x.amount ?? ''}" placeholder="R per month" aria-label="Rand per month"><button type="button" class="btn sm" data-action="rmfixed" aria-label="Remove charge" title="Remove charge">${ic('x')}</button></div>`;
+  const blockList = (attr, list, pct) => `<div data-${attr}>${(list && list.length ? list : [{ upTo: null, rate: '' }]).map(b => blockRow(b, pct)).join('')}</div><button type="button" class="btn sm" data-action="addblock" data-into="${attr}" style="width:max-content">${ic('plus')}Add block</button>`;
   function tariffCard(t) {
-    t = t || { name: '', type: 'electricity', fixed: 0, blocks: [{ upTo: null, rate: '' }], sewerPct: 0 };
-    return `<div class="card form" data-tariff data-id="${esc(t.id || '')}"><div class="grid g2">${field('Name', 't_name', t.name)}<div class="field"><label>Type</label><select name="t_type">${['electricity', 'water', 'solar'].map(x => `<option value="${x}" ${t.type === x ? 'selected' : ''}>${UT_LABEL[x]}</option>`).join('')}</select></div></div>
-      <div class="grid g2">${field('Fixed charge per month (R)', 't_fixed', t.fixed, 'number', 'step="0.01" min="0"')}${field('Sewer % of water (water only)', 't_sewer', t.sewerPct, 'number', 'step="1" min="0" max="200"')}</div>
-      <div class="field"><label>Rate blocks: up to (kWh / kL per month) and rate (R per unit). Leave the last "up to" empty.</label><div data-blocks>${t.blocks.map(blockRow).join('')}</div><button type="button" class="btn sm" data-action="addblock" style="width:max-content">${ic('plus')}Add block</button></div>
-      <button type="button" class="btn sm danger" data-action="rmtariff" style="width:max-content">Remove tariff</button></div>`;
+    t = t || { name: '', type: 'electricity', fixed: [], blocks: [{ upTo: null, rate: '' }], winterBlocks: null, winterMonths: [6, 7, 8], levy: null, surchargePct: 0, sewer: null, sewerPct: 0 };
+    const u = TU[t.type] || 'unit', open = !t.id || ui.tfOpen === t.id;
+    return `<details class="card form tf-card" data-tariff data-id="${esc(t.id || '')}" data-lib="${esc(t.libraryKey || '')}" ${open ? 'open' : ''}>
+      <summary><div class="tf-head"><div class="grow"><strong>${esc(t.name || 'New tariff')}</strong><br><small class="muted">${UT_LABEL[t.type] || ''}${t.municipality ? ' · ' + esc(t.municipality) : ''}${t.effective ? ' · from ' + dmy(t.effective) : ''}${(S.meters || []).filter(m => m.tariffId === t.id && !m.removed).length ? ` · on ${(S.meters || []).filter(m => m.tariffId === t.id && !m.removed).length} meter(s)` : ''}</small></div><span class="btn sm">Edit</span></div>
+      ${t.id ? tariffSummary(t) : ''}${t.source ? `<small class="muted">Source: <a href="${esc(t.source.url)}" target="_blank" rel="noopener">${esc(t.source.title)}</a></small>` : ''}</summary>
+      <div class="grid g2">${field('Name', 't_name', t.name)}<div class="field"><label>Type</label><select name="t_type">${['electricity', 'water', 'solar'].map(x => `<option value="${x}" ${t.type === x ? 'selected' : ''}>${UT_LABEL[x]}</option>`).join('')}</select></div></div>
+      <div class="field"><label>${t.winterBlocks ? 'Summer rates' : 'Rates'}: up to (${u} per month) and rand per ${u}. Leave the last "up to" empty.</label>${blockList('blocks', t.blocks)}</div>
+      <label class="tf-check"><input type="checkbox" name="t_seasonal" data-change="tfseason" ${t.winterBlocks ? 'checked' : ''}> Different rates in winter</label>
+      <div class="tf-winter" ${t.winterBlocks ? '' : 'hidden'}><div class="field"><label>Winter months</label><div class="tf-months">${MONTHS3.map((m, k) => `<label><input type="checkbox" name="t_wm" value="${k + 1}" ${(t.winterMonths && t.winterMonths.length ? t.winterMonths : [6, 7, 8]).includes(k + 1) ? 'checked' : ''}>${m}</label>`).join('')}</div></div>
+        <div class="field"><label>Winter rates per ${u}</label>${blockList('winter', t.winterBlocks || t.blocks)}</div></div>
+      <div class="field"><label>Fixed charges per month (rand, per meter)</label><div data-fixedlist>${(t.fixed || []).map(fixedRow).join('')}</div><button type="button" class="btn sm" data-action="addfixed" style="width:max-content">${ic('plus')}Add fixed charge</button></div>
+      <div class="grid g2">
+        <div class="field"><label>Levy per ${u} (e.g. network surcharge)</label><div class="tf-levy"><input name="l_desc" value="${esc(t.levy ? t.levy.desc : '')}" placeholder="Description" aria-label="Levy description"><input name="l_rate" type="number" step="any" min="0" value="${t.levy ? t.levy.rate : ''}" placeholder="R per ${u}" aria-label="Levy rand per unit"><input name="l_free" type="number" step="any" min="0" value="${t.levy && t.levy.freeUnits ? t.levy.freeUnits : ''}" placeholder="free ${u}" aria-label="Units free of the levy"></div></div>
+        ${field('Surcharge % on the charges', 't_surcharge', t.surchargePct || '', 'number', 'step="0.1" min="0" max="50"')}</div>
+      <div class="tf-sewer" ${t.type === 'water' ? '' : 'hidden'}>
+        <div class="field"><label>Sewer per kL of water: up to (kL), rand per kL, and % of the water counted as sewage</label>${blockList('sewer', t.sewer ? t.sewer.blocks : [], true)}</div>
+        <div class="field"><label>Sewer fixed charges per month</label><div data-sfixedlist>${(t.sewer ? t.sewer.fixed : []).map(fixedRow).join('')}</div><button type="button" class="btn sm" data-action="addfixed" data-into="sfixedlist" style="width:max-content">${ic('plus')}Add sewer charge</button></div>
+        ${!t.sewer && t.sewerPct ? field('Or: sewer as % of the water charge', 't_sewer', t.sewerPct, 'number', 'step="1" min="0" max="200"') : '<input type="hidden" name="t_sewer" value="0">'}</div>
+      ${t.id ? tariffTry(t.id, t.type) : ''}
+      <button type="button" class="btn sm danger" data-action="rmtariff" style="width:max-content">Remove tariff</button></details>`;
+  }
+  function readTariffCard(c) {
+    const v = n => (c.querySelector(`[name=${n}]`) || {}).value;
+    const blocks = attr => [...c.querySelectorAll(`[data-${attr}] [data-block]`)].map(b => ({ upTo: b.querySelector('[name=upTo]').value, rate: b.querySelector('[name=rate]').value, pct: (b.querySelector('[name=pct]') || {}).value })).filter(b => b.rate !== '');
+    const fixed = sel => [...c.querySelectorAll(`[data-${sel}] [data-fixed]`)].map(x => ({ desc: x.querySelector('[name=fdesc]').value, amount: x.querySelector('[name=famount]').value }));
+    const seasonal = c.querySelector('[name=t_seasonal]').checked, type = v('t_type');
+    const keep = (S.tariffs || []).find(t => t.id === c.dataset.id) || {};
+    return { id: c.dataset.id, name: v('t_name'), type, blocks: blocks('blocks'), winterBlocks: seasonal ? blocks('winter') : null, winterMonths: [...c.querySelectorAll('[name=t_wm]:checked')].map(x => +x.value),
+      fixed: fixed('fixedlist'), levy: v('l_rate') ? { desc: v('l_desc'), rate: v('l_rate'), freeUnits: v('l_free') } : null, surchargePct: v('t_surcharge'),
+      sewer: type === 'water' && blocks('sewer').length ? { blocks: blocks('sewer'), fixed: fixed('sfixedlist') } : type === 'water' && fixed('sfixedlist').length ? { blocks: [], fixed: fixed('sfixedlist') } : null, sewerPct: v('t_sewer'),
+      libraryKey: keep.libraryKey, municipality: keep.municipality, category: keep.category, effective: keep.effective, until: keep.until, source: keep.source, notes: keep.notes };
   }
 
   /* ---------------- utility: guided building setup ---------------- */
@@ -2502,9 +2566,23 @@
     runrecalc: async el => { if (await act('POST', `/api/recoveries/${el.dataset.id}/recalc`, {}, ['Recalculated'])) render(true); },
     rundelete: async el => { if (confirm('Delete this draft billing run?') && await act('DELETE', `/api/recoveries/${el.dataset.id}`, undefined, ['Billing run deleted'])) location.hash = '#/recoveries/runs'; },
     runapprove: async el => { const r = (S.recoveries || []).find(x => x.id === el.dataset.id); if (!confirm(`Approve ${r.label}? Each tenant with an email address is sent their statement, and the statements are added to the billing tracker.`)) return; const x = await act('POST', `/api/recoveries/${el.dataset.id}/approve`, {}); if (x) { toast('Billing run approved', `${x.rows} statements · ${x.emailed} emailed · now in the billing tracker`); render(true); } },
-    addtariff: () => $('#tfrows').insertAdjacentHTML('beforeend', tariffCard()),
+    addtariff: () => { const r = $('#tfrows'); r.querySelector('.empty') && r.querySelector('.empty').remove(); r.insertAdjacentHTML('beforeend', tariffCard()); },
     rmtariff: el => el.closest('[data-tariff]').remove(),
-    addblock: el => el.closest('[data-tariff]').querySelector('[data-blocks]').insertAdjacentHTML('beforeend', blockRow({ upTo: null, rate: '' })),
+    addblock: el => { const into = el.dataset.into || 'blocks'; el.closest('[data-tariff]').querySelector(`[data-${into}]`).insertAdjacentHTML('beforeend', blockRow({ upTo: null, rate: '' }, into === 'sewer')); },
+    addfixed: el => el.closest('[data-tariff]').querySelector(`[data-${el.dataset.into || 'fixedlist'}]`).insertAdjacentHTML('beforeend', fixedRow({})),
+    rmfixed: el => el.closest('[data-fixed]').remove(),
+    tftab: el => { ui.tfTab = el.dataset.v; render(true); },
+    tflibadd: async el => { el.disabled = true; const r = await act('POST', '/api/tariffs/library', { key: el.dataset.key }, ['Tariff added', 'Edit it under Your tariffs, then link it to meters.']); if (r && r.tariff) { ui.tfOpen = r.tariff.id; } render(true); },
+    tfquote: async el => {
+      const box = el.closest('[data-tftry]'), out = box.querySelector('.tf-out'), qty = box.querySelector('[name=tq]').value, month = box.querySelector('[name=tm]').value;
+      if (qty === '') { out.innerHTML = '<small class="muted">Enter the consumption first.</small>'; return; }
+      const card = el.closest('[data-tariff]');
+      try {
+        const r = await api('POST', '/api/tariffs/quote', card ? { tariff: readTariffCard(card), consumption: qty, month } : { id: box.dataset.tftry, consumption: qty, month });
+        out.innerHTML = `<table class="tf-q"><tbody>${r.lines.map(l => `<tr><td>${esc(l.desc)}</td><td class="mono n">${l.qty !== 1 ? fmtN(l.qty, 3) + ' × ' + fmtN(l.rate, 4) : ''}</td><td class="mono n">${fmtMoney(l.amount)}</td></tr>`).join('')}
+          <tr class="rp-foot"><td>Excl. VAT${r.winter ? ' · winter rates' : ''}</td><td></td><td class="mono n">${fmtMoney(r.subtotal)}</td></tr><tr><td>VAT</td><td></td><td class="mono n">${fmtMoney(r.vat)}</td></tr><tr class="rp-foot"><td>Total</td><td></td><td class="mono n"><strong>${fmtMoney(r.total)}</strong></td></tr></tbody></table>`;
+      } catch (e) { out.innerHTML = `<small style="color:var(--red)">${esc(e.message)}</small>`; }
+    },
     rmblock: el => el.closest('[data-block]').remove(),
     rimpclear: () => { ui.rimp = null; render(true); },
     rimpgo: async el => { const rows = rimpRows().filter(r => r.ok).map(r => ({ line: r.line, meter: r.meterId, date: r.date, time: r.time, value: r.value })); el.disabled = true; const x = await act('POST', '/api/readings/import', { rows }); if (x) { toast(`${x.imported} readings imported`, x.skipped.length ? x.skipped.length + ' skipped' : ''); ui.rimp = null; location.hash = '#/meters/register'; } else el.disabled = false; },
@@ -2582,6 +2660,8 @@
     if (el.dataset.change === 'rpfrom' && el.value) { ui.rp.from = el.value; render(true); }
     if (el.dataset.change === 'rpto' && el.value) { ui.rp.to = el.value; render(true); }
     if (el.dataset.change === 'rpbld') { ui.rp.building = el.value; render(true); }
+    if (el.dataset.change === 'tfseason') el.closest('[data-tariff]').querySelector('.tf-winter').hidden = !el.checked;
+    if (el.name === 't_type' && el.closest('[data-tariff]')) el.closest('[data-tariff]').querySelector('.tf-sewer').hidden = el.value !== 'water';
     if (el.dataset.change === 'balmonth' && el.value) { ui.balMonth = el.value; render(true); }
     if (el.dataset.change === 'suall' && el.value !== '-') { document.querySelectorAll(`[data-sutariff][data-type="${el.dataset.type}"]`).forEach(x => { x.value = el.value; }); }
     if (el.dataset.change === 'msite') location.hash = '#/meters/register/' + el.value;
@@ -2741,8 +2821,8 @@
           break;
         }
         case 'tariffs': {
-          const tariffs = [...f.querySelectorAll('[data-tariff]')].map(c => ({ id: c.dataset.id, name: c.querySelector('[name=t_name]').value, type: c.querySelector('[name=t_type]').value, fixed: c.querySelector('[name=t_fixed]').value, sewerPct: c.querySelector('[name=t_sewer]').value, blocks: [...c.querySelectorAll('[data-block]')].map(b => ({ upTo: b.querySelector('[name=upTo]').value, rate: b.querySelector('[name=rate]').value })) }));
-          if (await act('PUT', '/api/tariffs', { tariffs }, ['Tariffs saved'])) render(true);
+          const tariffs = [...f.querySelectorAll('[data-tariff]')].map(readTariffCard);
+          if (await act('PUT', '/api/tariffs', { tariffs }, ['Tariffs saved'])) { ui.tfOpen = null; render(true); }
           break;
         }
         case 'sustep1': {

@@ -220,6 +220,24 @@ tracker, Zoho and settings are shared. Each building is set to one or both compa
    in the meter tree, tariff available. **Check meter**: open any meter to see its last readings and take a reading on the spot.
 5. **Tariffs**: link a tariff per meter or apply one to all, or *Skip for now* and link them later.
 
+**Tariffs** (Tenant billing → Tariffs). Amounts exclude VAT; VAT is added on statements.
+- **Gauteng tariff library**: published 2026/27 tariffs (1 July 2026 – 30 June 2027) with their source documents. *Add*
+  copies one into your tariffs, where it can be edited; *Try it* works out a bill for any consumption and month.
+  - City of Johannesburg, City Power electricity: Business conventional & prepaid (≤100 kVA) with summer (Sep–May) and
+    winter (Jun–Aug) blocks, service and network charges, the 6c/kWh network surcharge and the 2% business surcharge;
+    domestic single-phase 60 A, three-phase 80 A and prepaid (network surcharge only above 500 kWh).
+  - City of Johannesburg, Johannesburg Water: commercial water (R73.72/kL to 200 kL, R77.77 above), sewer R58.66 per kL of
+    water, demand management levy and 2% surcharge; domestic water and per-kL sewer.
+  - City of Tshwane: residential electricity blocks, and water with sanitation on a falling share of the water used.
+  - Not yet: Tshwane business, Ekurhuleni, and Joburg large power users (demand / time-of-use). Send the municipal
+    schedules to add them.
+- A tariff can have inclining blocks, separate winter rates and months, several fixed charges per month, a levy per unit
+  (with free units), a surcharge %, and for water a sewer scale per kL with the % of water counted as sewage.
+- Fixed charges are per meter per month. Where tenants are sub-metered off one council account, reduce or remove them on
+  the tenant tariff so the account's fixed charges are not billed to every tenant.
+- Update tariffs every July: add the new year's tariff, link it to the meters, and keep the old one until older months
+  are billed.
+
 **Building balance** (Meters → *Building balance*, or *Balance* on a site): for a month or a date range, each council and
 check meter's consumption is compared with the total of the meters under it (plus solar). The report shows the difference
 in units and %, per level of the tree: **Balanced** within the tolerance, **Losses above tolerance** (possible leak, bypass,

@@ -919,3 +919,41 @@ test('reports: utility figures per month and service-level targets', async () =>
   r = await req('GET', '/api/reports/utility?from=2024-05&to=2024-05', undefined, { cookie: cc });
   assert.ok(r.data.buildings.every(b => b.id === 'B2'), 'client only sees their own buildings');
 });
+
+test('Gauteng tariff library: Joburg and Tshwane bills worked out by hand', async () => {
+  let r = await req('GET', '/api/tariffs/library');
+  assert.equal(r.status, 200);
+  assert.ok(r.data.library.length >= 8 && r.data.pending.length >= 2);
+  const q = async (id, consumption, month) => { const x = await req('POST', '/api/tariffs/quote', { id, consumption, month }); assert.equal(x.status, 200, JSON.stringify(x.data)); return x.data; };
+  const near = (a, b, m) => assert.ok(Math.abs(a - b) < 0.03, `${m}: ${a} ≠ ${b}`);
+  // Joburg business 1 500 kWh in July (winter): 500×3.9837 + 500×4.3370 + 500×4.5306 = 6 425.65; fixed 1 744.17; 2% of 8 169.82 = 163.40; levy 90
+  let b = await q('jhb-el-business', 1500, '2026-07');
+  assert.ok(b.winter); near(b.subtotal, 8423.22, 'Joburg business winter');
+  assert.ok(b.lines.some(l => /Network surcharge/.test(l.desc) && l.amount === 90));
+  // same in January (summer): 6 180.90 + 1 744.17 + 158.50 + 90
+  b = await q('jhb-el-business', 1500, '2027-01');
+  assert.ok(!b.winter); near(b.subtotal, 8173.57, 'Joburg business summer');
+  near(b.total, 8173.57 * 1.15, 'VAT added');
+  // Joburg household: network surcharge only above 500 kWh
+  b = await q('jhb-el-dom-1p60', 600, '2026-09');
+  assert.equal(b.lines.find(l => /Network surcharge/.test(l.desc)).amount, 6);
+  // Joburg commercial water 250 kL: 200×73.72 + 50×77.77 = 18 632.50; sewer 250×58.66 = 14 665; levy 413.84; 2% surcharge 674.23
+  b = await q('jhb-water-business', 250, '2026-09');
+  near(b.subtotal, 34385.57, 'Joburg commercial water & sewer');
+  // Tshwane household water 20 kL: 324.09 + 97.46 water; sewer on 90/75/60% of the blocks; access charges 203.70 + 108
+  b = await q('tsh-water-residential', 20, '2026-09');
+  near(b.subtotal, 421.55 + 2.7 * 23.49 + 4.5 * 23.49 + 1.2 * 23.49 + 311.70, 'Tshwane water & sanitation');
+  // add to my tariffs once; use it on a meter in a billing run
+  r = await req('POST', '/api/tariffs/library', { key: 'jhb-el-business' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal((await req('POST', '/api/tariffs/library', { key: 'jhb-el-business' })).status, 400, 'not added twice');
+  const st = (await req('GET', '/api/state')).data;
+  const t = st.tariffs.find(x => x.libraryKey === 'jhb-el-business');
+  assert.ok(t && t.winterBlocks.length === 5 && t.fixed.length === 2 && t.levy.rate === 0.06 && t.source.url);
+  // edited tariffs keep their extra parts after saving the list again
+  r = await req('PUT', '/api/tariffs', { tariffs: st.tariffs.map(x => (x.id === t.id ? { ...x, fixed: [{ desc: 'Service charge', amount: 0 }] } : x)) });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const t2 = r.data.tariffs.find(x => x.id === t.id);
+  assert.deepEqual([t2.fixed.length, t2.winterBlocks.length, t2.surchargePct], [0, 5, 2], 'fixed charges removed, seasons and surcharge kept');
+  assert.equal((await req('PUT', '/api/tariffs', { tariffs: [{ name: 'Bad', type: 'water', blocks: [{ upTo: 10, rate: 1 }, { upTo: 5, rate: 2 }, { upTo: null, rate: 3 }] }] })).status, 400, 'blocks must go up');
+});

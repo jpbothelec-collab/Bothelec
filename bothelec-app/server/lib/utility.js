@@ -4,6 +4,7 @@
  * Meter communication: manual readings (technicians, with photos), CSV import, and any BMS connector path
  * "meters.<meterId>.reading". The M2M Solutions API plugs in here once its documentation is available. */
 const { nowIso, rid, byId } = require('./util');
+const { LIBRARY, PENDING } = require('./tariff-library');
 
 const TYPES = { electricity: 'kWh', water: 'kL', solar: 'kWh' };
 const TYPE_LABEL = { electricity: 'Electricity', water: 'Water', solar: 'Solar' };
@@ -25,6 +26,7 @@ const DEFAULT_TARIFFS = () => [
 function createUtility(ctx) {
   const { S, db, save, changed, feed, saveDataUrl, isStaff, canBuilding } = ctx;
   if (!S.settings.tariffs) { S.settings.tariffs = DEFAULT_TARIFFS(); db.setKv('settings', S.settings); }
+  // bring tariffs saved in the older shape up to date (single fixed amount → fixed lines, etc.)
 
   /* ---------------- meters ---------------- */
   const meter = id => byId(S.meters, id);
@@ -140,33 +142,108 @@ function createUtility(ctx) {
   }
 
   /* ---------------- tariffs ---------------- */
+  /* Tariffs: see tariff-library.js for the shape. Older tariffs (a single fixed amount, sewer as % of the water
+   * charge) still work. */
+  const num = (v, lo = 0, hi = 1e7) => { const n = +v; return isFinite(n) && n >= lo && n <= hi ? n : null; };
+  function normBlocks(list, name, label, withPct) {
+    const blocks = (Array.isArray(list) ? list : []).map(b => ({ upTo: b.upTo === '' || b.upTo == null ? null : +b.upTo, rate: +b.rate, ...(withPct ? { pct: b.pct === '' || b.pct == null ? 100 : +b.pct } : {}) }))
+      .filter(b => b.rate >= 0 && b.rate !== null && !isNaN(b.rate) && (!withPct || (b.pct >= 0 && b.pct <= 100)));
+    if (!blocks.length) return { blocks };
+    if (blocks.some((b, k) => k < blocks.length - 1 && !(b.upTo > 0))) return { error: `In "${name}" (${label}), every block except the last needs an "up to" amount.` };
+    if (blocks.some((b, k) => k > 0 && k < blocks.length - 1 && b.upTo <= blocks[k - 1].upTo)) return { error: `In "${name}" (${label}), the "up to" amounts must go up.` };
+    blocks[blocks.length - 1].upTo = null;
+    return { blocks };
+  }
+  const normFixed = (list, legacy) => {
+    const out = (Array.isArray(list) ? list : []).map(x => ({ desc: str(x.desc, 80) || 'Fixed charge', amount: r2(+x.amount || 0) })).filter(x => x.amount > 0);
+    if (!out.length && +legacy > 0) out.push({ desc: 'Fixed / basic charge', amount: r2(+legacy) });
+    return out;
+  };
+  function normTariff(t) {
+    const name = str(t.name, 120); if (!name) return null;
+    if (!TYPES[t.type]) return { error: `Choose a type for "${name}".` };
+    const b = normBlocks(t.blocks, name, 'rates'); if (b.error) return b;
+    if (!b.blocks.length) return { error: `Add at least one rate for "${name}".` };
+    let winterBlocks = null;
+    if (t.winterBlocks && t.winterBlocks.length) { const w = normBlocks(t.winterBlocks, name, 'winter rates'); if (w.error) return w; winterBlocks = w.blocks.length ? w.blocks : null; }
+    const winterMonths = winterBlocks ? [...new Set((Array.isArray(t.winterMonths) && t.winterMonths.length ? t.winterMonths : [6, 7, 8]).map(Number).filter(m => m >= 1 && m <= 12))].sort((x, y) => x - y) : [];
+    const levyRate = t.levy ? num(t.levy.rate, 0, 1000) : null;
+    const surchargePct = num(t.surchargePct, 0, 50) || 0;
+    let sewer = null;
+    if (t.type === 'water' && t.sewer && ((t.sewer.blocks || []).length || (t.sewer.fixed || []).length)) {
+      const sb = normBlocks(t.sewer.blocks, name, 'sewer', true); if (sb.error) return sb;
+      sewer = { blocks: sb.blocks, fixed: normFixed(t.sewer.fixed) };
+    }
+    const meta = {};
+    for (const k of ['municipality', 'category', 'effective', 'until', 'libraryKey']) if (t[k]) meta[k] = str(t[k], 120);
+    if (t.source && t.source.url) meta.source = { title: str(t.source.title, 200), url: str(t.source.url, 400) };
+    if (Array.isArray(t.notes)) meta.notes = t.notes.map(n => str(n, 400)).filter(Boolean).slice(0, 8);
+    return { id: str(t.id, 20) || 'TF' + rid(4), name, type: t.type, ...meta, blocks: b.blocks, winterBlocks, winterMonths, fixed: normFixed(t.fixed, typeof t.fixed === 'number' || typeof t.fixed === 'string' ? t.fixed : 0),
+      levy: levyRate ? { desc: str(t.levy.desc, 80) || 'Levy', rate: levyRate, freeUnits: num(t.levy.freeUnits, 0, 1e6) || 0 } : null, surchargePct,
+      sewer, sewerPct: t.type === 'water' && !sewer ? Math.max(0, Math.min(200, +t.sewerPct || 0)) : 0 };
+  }
   function setTariffs(list) {
     if (!Array.isArray(list)) return { error: 'Tariffs must be a list.' };
     const out = [];
-    for (const t of list) {
-      const name = str(t.name, 80); if (!name) continue;
-      if (!TYPES[t.type]) return { error: `Choose a type for "${name}".` };
-      const blocks = (t.blocks || []).map(b => ({ upTo: b.upTo === '' || b.upTo == null ? null : +b.upTo, rate: +b.rate })).filter(b => b.rate >= 0 && !isNaN(b.rate));
-      if (!blocks.length) return { error: `Add at least one rate for "${name}".` };
-      if (blocks.some((b, i) => i < blocks.length - 1 && !(b.upTo > 0))) return { error: `In "${name}", every block except the last needs an "up to" amount.` };
-      blocks[blocks.length - 1].upTo = null;
-      out.push({ id: str(t.id, 20) || 'TF' + rid(4), name, type: t.type, fixed: r2(Math.max(0, +t.fixed || 0)), blocks, sewerPct: t.type === 'water' ? Math.max(0, Math.min(200, +t.sewerPct || 0)) : 0 });
-    }
+    for (const t of list) { const n = normTariff(t); if (!n) continue; if (n.error) return n; out.push(n); }
     S.settings.tariffs = out; db.setKv('settings', S.settings); changed(null);
     return { ok: true, tariffs: out };
   }
-  function charges(tariff, consumption, unit) {
-    const out = []; let left = consumption, from = 0, energy = 0;
-    for (const b of tariff.blocks) {
+  function addFromLibrary(key) {
+    const lib = LIBRARY.find(x => x.key === key); if (!lib) return { error: 'Tariff not found in the library.' };
+    const existing = S.settings.tariffs.find(t => t.libraryKey === key);
+    if (existing) return { error: `"${existing.name}" is already in your tariffs.` };
+    const n = normTariff({ ...lib, id: 'TF' + rid(4), libraryKey: key }); if (n.error) return n;
+    S.settings.tariffs.push(n); db.setKv('settings', S.settings); changed(null);
+    return { ok: true, tariff: n };
+  }
+  /* Block charges on an amount, e.g. kWh or kL. */
+  function blockCharges(blocks, qty, unit, label, rateOf = b => b.rate, qtyOf = (b, size) => size) {
+    const out = []; let left = qty, from = 0;
+    for (const b of blocks) {
       if (left <= 0) break;
       const size = b.upTo == null ? left : Math.max(0, Math.min(left, b.upTo - from));
-      if (size > 0) { const amt = r2(size * b.rate); energy += amt; out.push({ desc: tariff.blocks.length > 1 ? `${b.upTo == null ? 'Above ' + from : from + '–' + b.upTo} ${unit}` : `Consumption`, qty: r3(size), rate: b.rate, amount: amt }); }
+      if (size > 0) { const q = r3(qtyOf(b, size)), amt = r2(q * rateOf(b)); out.push({ desc: `${label}${blocks.length > 1 ? ` ${b.upTo == null ? 'above ' + from : from + '–' + b.upTo} ${unit}` : ''}${b.pct != null && b.pct !== 100 ? ` (${b.pct}% of ${fmt(size)} ${unit})` : ''}`, qty: q, rate: rateOf(b), amount: amt }); }
       left -= size; from = b.upTo == null ? from : b.upTo;
     }
-    if (tariff.sewerPct) out.push({ desc: `Sewer (${tariff.sewerPct}% of water)`, qty: 1, rate: r2(energy * tariff.sewerPct / 100), amount: r2(energy * tariff.sewerPct / 100) });
-    if (tariff.fixed) out.push({ desc: 'Fixed / basic charge', qty: 1, rate: tariff.fixed, amount: tariff.fixed });
     return out;
   }
+  const fmt = n => String(Math.round(n * 1000) / 1000);
+  const isWinter = (tariff, month) => !!(tariff.winterBlocks && month && tariff.winterMonths.includes(+String(month).slice(5, 7)));
+  /* All charges for one meter for one month (month = 'YYYY-MM', for the season). Excludes VAT. */
+  function charges(tariff, consumption, unit, month) {
+    const winter = isWinter(tariff, month);
+    const blocks = winter ? tariff.winterBlocks : tariff.blocks;
+    const out = blockCharges(blocks, consumption, unit, tariff.type === 'water' ? 'Water' : tariff.winterBlocks ? (winter ? 'Energy (winter)' : 'Energy (summer)') : tariff.type === 'solar' ? 'Solar energy' : 'Energy');
+    const energy = out.reduce((a, x) => a + x.amount, 0);
+    let sewerTotal = 0;
+    if (tariff.sewer) {
+      const sw = blockCharges(tariff.sewer.blocks, consumption, unit, 'Sewer', b => b.rate, (b, size) => size * (b.pct ?? 100) / 100).filter(x => x.amount > 0 || x.rate > 0);
+      tariff.sewer.fixed.forEach(x => sw.push({ desc: x.desc, qty: 1, rate: x.amount, amount: x.amount }));
+      sewerTotal = sw.reduce((a, x) => a + x.amount, 0); out.push(...sw);
+    } else if (tariff.sewerPct) { const a = r2(energy * tariff.sewerPct / 100); out.push({ desc: `Sewer (${tariff.sewerPct}% of water)`, qty: 1, rate: a, amount: a }); }
+    const fixed = (tariff.fixed || []);
+    fixed.forEach(x => out.push({ desc: x.desc, qty: 1, rate: x.amount, amount: x.amount }));
+    if (tariff.surchargePct) {
+      const base = energy + sewerTotal + fixed.reduce((a, x) => a + x.amount, 0);
+      if (base > 0) out.push({ desc: `Surcharge ${tariff.surchargePct}%`, qty: 1, rate: r2(base * tariff.surchargePct / 100), amount: r2(base * tariff.surchargePct / 100) });
+    }
+    if (tariff.levy && consumption > (tariff.levy.freeUnits || 0)) {
+      const q = r3(consumption - (tariff.levy.freeUnits || 0));
+      out.push({ desc: tariff.levy.desc, qty: q, rate: tariff.levy.rate, amount: r2(q * tariff.levy.rate) });
+    }
+    return out;
+  }
+  /* Try a tariff on an amount (Tariffs page calculator). */
+  function quote(tariffOrId, consumption, month) {
+    const t = typeof tariffOrId === 'string' ? (S.settings.tariffs.find(x => x.id === tariffOrId) || (LIBRARY.find(x => x.key === tariffOrId) && normTariff({ ...LIBRARY.find(x => x.key === tariffOrId), id: 'tmp' }))) : normTariff(tariffOrId || {});
+    if (!t || t.error) return { error: (t && t.error) || 'Tariff not found.' };
+    const q = num(consumption, 0, 1e9); if (q == null) return { error: 'Enter the consumption.' };
+    const lines = charges(t, q, TYPES[t.type] || '', month || nowIso().slice(0, 7));
+    const sub = r2(lines.reduce((a, x) => a + x.amount, 0)), vat = r2(sub * S.settings.billing.vatRate / 100);
+    return { ok: true, lines, subtotal: sub, vat, total: r2(sub + vat), winter: isWinter(t, month || nowIso().slice(0, 7)) };
+  }
+  const tariffLibrary = () => ({ library: LIBRARY.map(x => normTariff({ ...x, id: x.key, libraryKey: x.key })), pending: PENDING });
 
   /* ---------------- recovery (tenant billing) runs ---------------- */
   function monthBounds(month) {
@@ -193,7 +270,7 @@ function createUtility(ctx) {
         const consumption = ok ? r3((close.value - open.value) * (m.multiplier || 1)) : 0;
         const tariff = S.settings.tariffs.find(x => x.id === m.tariffId) || S.settings.tariffs.find(x => x.type === m.type);
         if (!tariff) warnings.push('No tariff for this meter type');
-        const ch = ok && tariff ? charges(tariff, consumption, m.unit) : [];
+        const ch = ok && tariff ? charges(tariff, consumption, m.unit, run.month) : [];
         return { meterId: m.id, type: m.type, unit: m.unit, multiplier: m.multiplier || 1, open: open && { ts: open.ts, value: open.value }, close: close && { ts: close.ts, value: close.value }, consumption, tariff: tariff ? tariff.name : '', charges: ch, warnings };
       });
       const sub = r2(items.reduce((a, it) => a + it.charges.reduce((x, c) => x + c.amount, 0), 0));
@@ -529,7 +606,8 @@ function createUtility(ctx) {
     return { ...m, last: last ? { ts: last.ts, value: last.value, source: last.source } : null, use30: days >= 1 ? r2((last.value - monthAgo.value) * (m.multiplier || 1) / days * 30) : null };
   }
 
-  return { report, setTree, setTolerance, balance, periodUse, setupRows, checkMeter, checkBuilding, assignTariffs, TYPES, TYPE_LABEL, meter, upsertMeter, setMeterRemoved, addReading, connectorReading, importReadings, deleteReading, readingsFor, upsertTenant, deleteTenant, setTariffs, createRun, recalcRun, deleteRun, approveRun, recoveryLines, stateFor, syncMeterEquipment, meterLabel };
+  if (S.settings.tariffs.some(t => !Array.isArray(t.fixed))) { S.settings.tariffs = S.settings.tariffs.map(normTariff).filter(t => t && !t.error); db.setKv('settings', S.settings); } // older tariff shape
+  return { addFromLibrary, quote, tariffLibrary, report, setTree, setTolerance, balance, periodUse, setupRows, checkMeter, checkBuilding, assignTariffs, TYPES, TYPE_LABEL, meter, upsertMeter, setMeterRemoved, addReading, connectorReading, importReadings, deleteReading, readingsFor, upsertTenant, deleteTenant, setTariffs, createRun, recalcRun, deleteRun, approveRun, recoveryLines, stateFor, syncMeterEquipment, meterLabel };
 }
 
 module.exports = { createUtility, DEFAULT_TARIFFS };
