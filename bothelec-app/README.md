@@ -242,8 +242,8 @@ when readings are missing for the period (those meters are listed).
 - **Meter service jobs**: installs, faults and reading jobs use the same call-out, technician and job-card workflow. On a
   meter job the technician records readings (with photos) on the job card.
 
-**MeterHead**: the meter option "MeterHead" is reserved for the MeterHead communication protocol, which will be added once its
-specification is available. Until then, MeterHead meters can be read manually, by CSV, or through a building link.
+**M2M Solutions**: the meter option "M2M Solutions (API)" is reserved for the link to the M2M Solutions API, which will be
+added once their API documentation is available. Until then, these meters can be read manually, by CSV, or through a building link.
 
 ## 8. Logins and roles
 

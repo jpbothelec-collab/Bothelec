@@ -2,7 +2,7 @@
 /* Bothelec Utility Management: meters, readings, tenants, tariffs and monthly recovery (tenant billing) runs.
  * Readings live in their own SQLite table (they can be frequent when meters report automatically).
  * Meter communication: manual readings (technicians, with photos), CSV import, and any BMS connector path
- * "meters.<meterId>.reading". The MeterHead protocol plugs in here once its specification is available. */
+ * "meters.<meterId>.reading". The M2M Solutions API plugs in here once its documentation is available. */
 const { nowIso, rid, byId } = require('./util');
 
 const TYPES = { electricity: 'kWh', water: 'kL', solar: 'kWh' };
@@ -45,7 +45,7 @@ function createUtility(ctx) {
     if (d.role !== undefined) m.role = ROLES.includes(d.role) ? d.role : 'sub';
     if (!m.role) m.role = 'sub';
     Object.assign(m, { id, building: b.id, type, unit: TYPES[type], serial: str(d.serial, 60), make: str(d.make, 60), model: str(d.model, 60), location: str(d.location, 80),
-      multiplier: mult, tenantId, tariffId, comm: ['manual', 'connector', 'meterhead'].includes(d.comm) ? d.comm : 'manual', installed: isoDate(d.installed), notes: str(d.notes, 1000) });
+      multiplier: mult, tenantId, tariffId, comm: d.comm === 'meterhead' ? 'm2m' : ['manual', 'connector', 'm2m'].includes(d.comm) ? d.comm : 'manual', installed: isoDate(d.installed), notes: str(d.notes, 1000) });
     if (!(b.divisions || []).includes('utility')) { b.divisions = [...(b.divisions || []), 'utility']; save('buildings', b); }
     syncMeterEquipment(b);
     save('meters', m); changed(b.id);
@@ -88,7 +88,7 @@ function createUtility(ctx) {
     m.live = { value, at: nowIso() };
     if (lastAuto[m.id] && Date.now() - lastAuto[m.id] < 15 * 60e3) return true; // store at most every 15 minutes
     lastAuto[m.id] = Date.now();
-    db.readings.put(m.id, nowIso(), value, m.comm === 'meterhead' ? 'meterhead' : 'connector', '', '', '');
+    db.readings.put(m.id, nowIso(), value, m.comm === 'm2m' ? 'm2m' : 'connector', '', '', '');
     return true;
   }
   function importReadings(rows, actor) {
@@ -342,7 +342,7 @@ function createUtility(ctx) {
     else if (!m.tariffId) issues.push({ level: 'info', text: 'Uses the default tariff (link a tariff in step 4)' });
     const council = S.meters.find(x => x.building === m.building && x.type === (m.type === 'solar' ? 'electricity' : m.type) && x.role === 'council' && !x.removed);
     if (m.role !== 'council' && !m.parentId) issues.push(council ? { level: 'warn', text: m.type === 'solar' ? 'Not linked into the meter tree: choose the meter the solar feeds into' : 'Not in the meter tree: choose the meter it is fed from' } : { level: 'info', text: `No council ${m.type === 'solar' ? 'electricity' : m.type} meter yet: the building cannot be balanced` });
-    if (m.comm === 'meterhead') issues.push({ level: 'info', text: 'MeterHead link will be active once the MeterHead protocol is added' });
+    if (m.comm === 'm2m') issues.push({ level: 'info', text: 'M2M Solutions link will be active once their API is connected' });
     const status = issues.some(i => i.level === 'bad') ? 'bad' : issues.some(i => i.level === 'warn') ? 'warn' : 'ok';
     const t = byId(S.tenants, m.tenantId);
     return { id: m.id, type: m.type, serial: m.serial, unit: m.unit, location: m.location, tenant: t ? t.name : '', status, issues, readings: last3.reverse().map(r => ({ ts: r.ts, value: r.value, source: r.source })) };
