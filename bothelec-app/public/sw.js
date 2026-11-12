@@ -1,5 +1,5 @@
 /* Offline cache for the app shell. Bump VERSION when files change. */
-const VERSION = 'bothelec-v19';
+const VERSION = 'bothelec-v20';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'icon.svg', 'manifest.webmanifest'];
 
 self.addEventListener('install', e => {

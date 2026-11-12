@@ -239,6 +239,8 @@ tracker, Zoho and settings are shared. Each building is set to one or both compa
   (with free units), a surcharge %, and for water a sewer scale per kL with the % of water counted as sewage.
 - Fixed charges are per meter per month. Where tenants are sub-metered off one council account, reduce or remove them on
   the tenant tariff so the account's fixed charges are not billed to every tenant.
+- Every tariff dropdown (building tariffs, building setup, meter page) also lists the library, grouped by municipality:
+  picking a library tariff adds it to your tariffs when you save. Ended tariffs are marked.
 - **Building tariffs** (Tenant billing → Building tariffs, or *Tariffs* on a site): the tariffs a building is billed on
   and the tariff per meter. *Edit for this building only* copies a shared tariff for that building and moves its meters
   onto the copy, so other buildings are not affected; *Edit for all buildings* changes the shared tariff. Saving a tariff

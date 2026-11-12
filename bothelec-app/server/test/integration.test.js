@@ -1008,3 +1008,16 @@ test('uploaded Govan Mbeki 2025/26 tariffs: seasons, fixed charges, ended warnin
   r = await q('gmm-el-commercial-3p-2526', 1000, '2025-07');
   assert.ok(r.winter && Math.abs(r.subtotal - 6612.78) < 0.03, String(r.subtotal));
 });
+
+test('a library tariff picked straight from a building dropdown is added once and linked', async () => {
+  let st = (await req('GET', '/api/state')).data;
+  const ms = st.meters.filter(m => m.building === 'B4' && m.type === 'electricity' && m.tenantId && !m.removed).slice(0, 2);
+  const before = st.tariffs.filter(t => t.libraryKey === 'gmm-el-commercial-3p-2526').length;
+  let r = await req('POST', '/api/utility/tariffs/B4', { assign: ms.map(m => ({ meterId: m.id, tariffId: 'lib:gmm-el-commercial-3p-2526' })) });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  st = (await req('GET', '/api/state')).data;
+  const added = st.tariffs.filter(t => t.libraryKey === 'gmm-el-commercial-3p-2526');
+  assert.equal(added.length, Math.max(1, before), 'added once');
+  assert.ok(ms.every(m => st.meters.find(x => x.id === m.id).tariffId === added[0].id));
+  assert.equal((await req('POST', '/api/utility/tariffs/B4', { assign: [{ meterId: ms[0].id, tariffId: 'lib:nope' }] })).status, 400);
+});

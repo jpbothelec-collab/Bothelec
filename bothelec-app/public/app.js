@@ -2000,7 +2000,7 @@
         <div class="grid g3"><div class="field"><label>Type</label><select name="type">${['electricity', 'water', 'solar'].map(t => `<option value="${t}" ${m.type === t ? 'selected' : ''}>${UT_LABEL[t]}</option>`).join('')}</select></div>${field('Multiplier / CT ratio', 'multiplier', m.multiplier, 'number', 'step="any" min="0"')}${field('Serial number', 'serial', m.serial)}</div>
         <div class="grid g3">${field('Make', 'make', m.make)}${field('Model', 'model', m.model)}${field('Location', 'location', m.location, 'text', 'placeholder="e.g. Shop 4 DB"')}</div>
         <div class="grid g2"><div class="field"><label>Tenant billed for this meter</label><select name="tenantId"><option value="">Common area / landlord (not billed to a tenant)</option>${tenants.map(t => `<option value="${t.id}" ${m.tenantId === t.id ? 'selected' : ''}>${esc(t.name)}${t.unit ? ' · ' + esc(t.unit) : ''}</option>`).join('')}</select></div>
-          <div class="field"><label>Tariff</label><select name="tariffId"><option value="">Default for the meter type</option>${(S.tariffs || []).filter(t => !t.building || t.building === m.building).map(t => `<option value="${t.id}" ${m.tariffId === t.id ? 'selected' : ''}>${esc(t.name)} (${UT_LABEL[t.type]})</option>`).join('')}</select></div></div>
+          <div class="field"><label>Tariff</label><select name="tariffId">${m.type ? tariffOptions(m) : `<option value="">Default for the meter type</option>${(S.tariffs || []).filter(t => !t.building || t.building === m.building).map(t => `<option value="${t.id}" ${m.tariffId === t.id ? 'selected' : ''}>${esc(t.name)} (${UT_LABEL[t.type]})</option>`).join('')}`}</select></div></div>
         <div class="grid g2"><div class="field"><label>How readings arrive</label><select name="comm"><option value="manual" ${m.comm === 'manual' ? 'selected' : ''}>Manual reading / CSV import</option><option value="connector" ${m.comm === 'connector' ? 'selected' : ''}>Building link (Modbus / MQTT / HTTP)</option><option value="m2m" ${m.comm === 'm2m' || m.comm === 'meterhead' ? 'selected' : ''}>M2M Solutions (API)</option></select></div>${field('Installed', 'installed', m.installed, 'date')}</div>
         <p class="muted" style="margin:0;font-size:12px">Building link: map the meter's register to the path <code>meters.${esc(m.id || 'METER-ID')}.reading</code> in the building's connection settings.</p>
         <div class="field"><label>Notes</label><textarea name="notes">${esc(m.notes || '')}</textarea></div>
@@ -2093,8 +2093,8 @@
     const tf = S.tariffs || [], tab = ui.tfTab || 'mine';
     const tabs = `<div class="seg noprint" role="tablist">${[['mine', `Your tariffs (${tf.length})`], ['library', 'Tariff library']].map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-action="tftab" data-v="${k}">${l}</button>`).join('')}</div>`;
     return head('Tariffs', 'Rates used to bill tenants. All amounts exclude VAT; VAT is added on the statement.') + tabs +
-      (tab === 'library' ? tariffLibraryView() :
-        `<form class="form" data-form="tariffs"><div id="tfrows" class="tf-list">${tf.map(tariffCard).join('') || '<div class="card empty">No tariffs yet. Add one from the tariff library.</div>'}</div>
+      (tab === 'library' ? tariffLibraryView() : `<div class="banner" style="margin-bottom:12px"><span class="grow">Business, residential and water tariffs for Johannesburg, Tshwane and Govan Mbeki are in the <a href="#" data-action="tftab" data-v="library">Tariff library</a>. You can also pick them straight from a building's tariff dropdowns.</span></div>` +
+`<form class="form" data-form="tariffs"><div id="tfrows" class="tf-list">${tf.map(tariffCard).join('') || '<div class="card empty">No tariffs yet. Add one from the tariff library.</div>'}</div>
         <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button type="button" class="btn sm" data-action="tftab" data-v="library">${ic('list')}Add from the library</button><button type="button" class="btn sm" data-action="addtariff">${ic('plus')}Blank tariff</button><button class="btn primary">${ic('check')}Save tariffs</button></div></form>`);
   }
   const fmtR = v => fmtRate(v);
@@ -2170,7 +2170,19 @@
   const tariffOf = m => (S.tariffs || []).find(t => t.id === m.tariffId && tariffFits(t, m)) || defaultTariffFor(m);
   const tariffChoices = (type, bid) => (S.tariffs || []).filter(t => t.type === type && (!t.building || t.building === bid));
   const tariffUsers = id => [...new Set((S.meters || []).filter(m => !m.removed && (tariffOf(m) || {}).id === id).map(m => m.building))];
-  const tariffOptions = (m, withDefault = true) => { const ch = tariffChoices(m.type, m.building), d = defaultTariffFor(m); return (withDefault ? `<option value="">Default${d ? ' (' + esc(d.name) + ')' : ''}</option>` : '') + ch.map(t => `<option value="${t.id}" ${m.tariffId === t.id ? 'selected' : ''}>${esc(t.name)}${t.building ? ' · this building only' : ''}</option>`).join(''); };
+  /* The tariff library is offered in every tariff dropdown: picking one adds it to your tariffs when you save. */
+  function tariffLib() {
+    if (!ui.tlib && isStaff()) { ui.tlib = { loading: true }; api('GET', '/api/tariffs/library').then(r => { ui.tlib = r; if (['recoveries/btariffs', 'meters/setup'].includes(current.key)) render(true); }).catch(e => { ui.tlib = { error: e.message }; }); }
+    return (ui.tlib && ui.tlib.library) || [];
+  }
+  const tariffOptions = (m, withDefault = true) => {
+    const ch = tariffChoices(m.type, m.building), d = defaultTariffFor(m), have = new Set((S.tariffs || []).map(t => t.libraryKey).filter(Boolean));
+    const lib = tariffLib().filter(t => t.type === m.type && !have.has(t.libraryKey));
+    const groups = [...new Set(lib.map(t => `${t.region || 'Gauteng'} · ${t.municipality}`))];
+    return (withDefault ? `<option value="">Default${d ? ' (' + esc(d.name) + ')' : ''}</option>` : '') +
+      `<optgroup label="Your tariffs">${ch.map(t => `<option value="${t.id}" ${m.tariffId === t.id ? 'selected' : ''}>${esc(t.name)}${t.building ? ' · this building only' : ''}</option>`).join('')}</optgroup>` +
+      groups.map(g => `<optgroup label="Library: ${esc(g)}">${lib.filter(t => `${t.region || 'Gauteng'} · ${t.municipality}` === g).map(t => `<option value="lib:${esc(t.libraryKey)}">${esc(t.category || '')} · ${esc(t.name)}${tfEnded(t) ? ` · ended ${dmy(t.until)}` : ''}</option>`).join('')}</optgroup>`).join('');
+  };
   function viewBuildingTariffs(bid) {
     if (!isStaff()) return head('Building tariffs');
     const b = utilBld(bid); if (!b.id) return head('Building tariffs') + '<div class="card empty">No utility buildings yet.</div>';

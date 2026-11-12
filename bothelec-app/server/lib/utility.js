@@ -41,6 +41,7 @@ function createUtility(ctx) {
     const mult = d.multiplier === '' || d.multiplier == null ? 1 : +d.multiplier;
     if (!(mult > 0 && mult <= 100000)) return { error: 'Multiplier (CT ratio) must be more than 0.' };
     const tenantId = d.tenantId && byId(S.tenants, d.tenantId) && byId(S.tenants, d.tenantId).building === b.id ? d.tenantId : null;
+    if (/^lib:/.test(d.tariffId || '')) { const r = libTariffId(d.tariffId); if (r.error) return r; d.tariffId = r.id; }
     const tariffId = d.tariffId && S.settings.tariffs.find(t => t.id === d.tariffId && tariffFits(t, { type, building: b.id })) ? d.tariffId : null;
     if (!m) { m = { id, removed: false, createdAt: nowIso() }; S.meters.push(m); }
     else if (m.id !== id) { db.readings.rename(m.id, id); S.jobs.filter(j => j.meter === m.id).forEach(j => { j.meter = id; save('jobs', j); }); db.del('meters', m.id); }
@@ -189,6 +190,12 @@ function createUtility(ctx) {
     for (const t of list) { const n = normTariff(t); if (!n) continue; if (n.error) return n; out.push(n); }
     S.settings.tariffs = out; db.setKv('settings', S.settings); changed(null);
     return { ok: true, tariffs: out };
+  }
+  /* 'lib:<key>' = a tariff picked straight from the library: add it to your tariffs once, then use it. */
+  function libTariffId(v) {
+    const key = String(v).slice(4), have = S.settings.tariffs.find(t => t.libraryKey === key && !t.building);
+    if (have) return { id: have.id };
+    const r = addFromLibrary(key); return r.error ? r : { id: r.tariff.id };
   }
   function addFromLibrary(key) {
     const lib = LIBRARY.find(x => x.key === key); if (!lib) return { error: 'Tariff not found in the library.' };
@@ -474,6 +481,7 @@ function createUtility(ctx) {
     let n = 0;
     for (const a of list || []) {
       const m = meter(a.meterId); if (!m || m.building !== bid) continue;
+      if (/^lib:/.test(a.tariffId || '')) { const r = libTariffId(a.tariffId); if (r.error) return r; a.tariffId = r.id; }
       if (a.tariffId && !S.settings.tariffs.find(t => t.id === a.tariffId && tariffFits(t, m))) return { error: `That tariff does not fit ${m.type} meter ${m.serial || m.id}.` };
       m.tariffId = a.tariffId || null; save('meters', m); n++;
     }
