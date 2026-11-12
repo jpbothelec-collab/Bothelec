@@ -245,6 +245,46 @@ when readings are missing for the period (those meters are listed).
 **M2M Solutions**: the meter option "M2M Solutions (API)" is reserved for the link to the M2M Solutions API, which will be
 added once their API documentation is available. Until then, these meters can be read manually, by CSV, or through a building link.
 
+## Reports
+
+**Reports** in the top menu follows the company selected in the header. Every report has the same period filter (this
+month, last month, last 3 / 6 / 12 months, year to date, or chosen months), a building filter, **Export CSV** and
+**Print / PDF**. Figures are compared with the previous period of the same length.
+
+The structure has three levels:
+1. **Scorecard**: a few headline figures with the change against the previous period, 6-month trends, and a
+   *Needs attention* list linking to the detail.
+2. **Focused reports**, one question each.
+3. **Detail tables** under each report (exportable).
+
+**Aircon Solutions**
+- **Scorecard**: calls logged and completed; arrived within SLA; fixed within SLA; first-time fix; average time to
+  arrive and to fix; revenue (clients see "Billed").
+- **Service levels**: per urgency against the targets; open calls by age; how calls came in; every completed job with
+  arrive / fix times and repeat calls. An admin edits the **service-level targets** here (hours to arrive and to fix
+  per urgency; defaults Critical 2 / 8 h, High 4 / 24 h, Medium 24 / 72 h, Low 72 / 168 h).
+- **Technicians** (staff): jobs done, speed, time on site, SLA, first-time fix, repeat calls, revenue.
+- **Clients & buildings**: service per building, maintenance overdue, the unit with the most calls, common faults.
+- **Equipment & maintenance**: planned maintenance on time (from each unit's service interval), overdue units, call-outs
+  and repeat calls per unit.
+- **Billing & revenue** (staff): invoiced, paid, outstanding, overdue, work not invoiced yet, debtors by age,
+  revenue by type (call-out / labour / parts), per client. Based on the billing tracker.
+
+*First-time fix* counts a job as fixed first time when the same unit had no further call within 30 days.
+
+**Utility Management**
+- **Scorecard**: electricity and water from council; billed to tenants (recovery % of supply); losses; solar;
+  amount recovered from tenants.
+- **Consumption**: where the supply went (tenants, common areas, losses) and use per tenant with the change.
+- **Losses & balance**: loss % per building and month, coloured against the building's tolerance; click a month to
+  open the full meter-tree balance.
+- **Tenant recoveries**: billing runs and months not billed yet.
+- **Meter data quality**: meters with no readings, stale readings, readings going backwards, no serial, or not in the tree.
+- **Meter jobs** and **Technicians**: the same service-level reports for meter work.
+
+Clients see the reports for their own buildings only (not billing or technicians). Technicians do not see reports.
+Signed service reports for each job remain under Service → *Signed job reports*.
+
 ## 8. Logins and roles
 
 | Role | Can |

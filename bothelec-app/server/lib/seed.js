@@ -196,6 +196,48 @@ function seed(demo) {
   mk(1050, { building: 'B3', equipment: 'PU-02 · Packaged unit', location: 'Ward A', fault: 'Noisy compressor', urgency: 'Medium', tech: 'T3' }, [40, 31]);
   mk(1051, { building: 'B1', equipment: 'FCU-L2-04 · Fan coil unit', location: 'Level 2 - East zone', fault: 'Thermostat display blank', urgency: 'Low' }, [12]);
   const daysAgo = d => new Date(Date.now() - d * 864e5).toISOString().slice(0, 10);
+  /* Six months of completed call-outs so the reports have history (deterministic, not random per start-up). */
+  let rs = 7; const rnd = () => ((rs = (rs * 16807) % 2147483647) - 1) / 2147483646;
+  const pick = a => a[Math.floor(rnd() * a.length)];
+  const FAULTS = {
+    'Air handling unit': ['Office not cooling, warm air', 'Fan making a loud noise', 'Filter alarm on BMS', 'Low airflow on the floor'],
+    'Air-cooled chiller': ['Chiller tripped on high pressure', 'Chilled water temperature too high', 'Compressor not starting'],
+    'Chilled water pump': ['Pump vibrating and noisy', 'Pump tripped'], 'Cooling tower': ['Tower fan not running', 'Water overflowing from basin'],
+    'Fan coil unit': ['Thermostat display blank', 'Unit dripping water', 'Not cooling'], 'VRF outdoor unit': ['Error code on controller, no cooling', 'Unit tripping the breaker'],
+    'Split unit (server room)': ['Server room too warm', 'Unit leaking water onto floor'], 'Extract fan': ['Fan not running'],
+    'Theatre AHU': ['Theatre pressure alarm', 'Theatre too warm'], Chiller: ['Chiller alarm on BMS', 'High discharge pressure'], 'Packaged unit': ['Noisy compressor', 'Not cooling'],
+  };
+  const WORK = ['Replaced worn part and tested', 'Cleaned coil and drain, unit back in service', 'Reset protection, found loose terminal and tightened', 'Replaced capacitor, unit running normally', 'Topped up refrigerant after leak repair', 'Replaced thermostat and recommissioned'];
+  const RESP = { Critical: [35, 150], High: [50, 280], Medium: [90, 1500], Low: [300, 4500] };
+  const techFor = { 'Air-cooled chiller': 'T1', 'Air handling unit': 'T1', 'Theatre AHU': 'T1', Chiller: 'T4', 'VRF outdoor unit': 'T2', 'Split unit (server room)': 'T2', 'Fan coil unit': 'T2', 'Packaged unit': 'T4' };
+  const hist = [], OPEN_UNITS = new Set(['AHU-02', 'VRF-02', 'SPL-SR1', 'PU-02', 'FCU-L2-04']);
+  let prev = null;
+  for (let n = 0; n < 46; n++) {
+    const day = 182 - n * 3.9 - rnd() * 2;
+    const allUnits = s.buildings.slice(0, 3).flatMap(x => x.units.map(u => ({ b: x, u })));
+    let { b, u } = allUnits[(n * 4) % allUnits.length]; // each unit roughly every two months
+    if (day < 40) for (let k = 1; OPEN_UNITS.has(u.id) && k < allUnits.length; k++) ({ b, u } = allUnits[(n * 4 + k) % allUnits.length]); // recent history avoids units with a call open today
+    if (prev && rnd() < 0.08) ({ b, u } = prev); // now and then a repeat call on the same unit
+    const urgency = pick(['Critical', 'High', 'High', 'Medium', 'Medium', 'Medium', 'Low']);
+    const [r0, r1] = RESP[urgency], resp = Math.round(r0 + rnd() * (r1 - r0)), fix = Math.round(45 + rnd() * 260);
+    const tech = rnd() < 0.7 ? (techFor[u.type] || 'T3') : pick(['T1', 'T2', 'T3', 'T4']);
+    const lt = new Date(Date.now() - day * 864e5); lt.setUTCHours(5 + Math.floor(rnd() * 9), Math.floor(rnd() * 60)); // 07:00–16:00 SAST
+    const logged = Math.max(60 * 24 * 5, Math.round((Date.now() - lt) / 60000));
+    const hrs = Math.max(1, Math.round(fix / 60));
+    const lines = [{ id: 'h1', kind: 'Call-out', code: 'CALLOUT', description: 'Call-out fee', qty: 1, unitPrice: 650 }, { id: 'h2', kind: 'Labour', code: 'LAB-HR', description: 'Labour (technician)', qty: hrs, unitPrice: 550 }];
+    if (rnd() < 0.55) lines.push({ id: 'h3', kind: 'Part', code: 'PART', description: pick(['Run capacitor', 'Fan belt', 'Contactor', 'Thermostat', 'Filter set', 'Refrigerant R410A (kg)']), qty: 1, unitPrice: Math.round(250 + rnd() * 2600) });
+    const id = 'BA-' + (1000 + n);
+    mk(1000 + n, { building: b.id, unit: u.id, equipment: `${u.id} · ${u.type}`, location: u.location, fault: pick(FAULTS[u.type] || ['Not cooling']), urgency, tech, techName: (s.technicians.find(t => t.id === tech) || {}).name,
+      source: pick(['Client app', 'Client app', 'Phone', 'BMS automatic', 'Email']), findings: 'Fault found and diagnosed on site.', work: pick(WORK), signedBy: b.contacts[0].name, signature: null,
+      billing: { lines } }, [logged, logged - 8, logged - 15, logged - resp, logged - resp - fix, logged - resp - fix - 6]);
+    hist.push({ id, b: b.id, lines, day });
+    prev = { b, u };
+  }
+  // utility meter jobs
+  [['E-S1', 'Meter not recording', 150], ['W-S2', 'Water meter leaking at the fitting', 95], ['E-CA', 'Install check meter on common area DB', 60], ['E-S2', 'Tenant query: high consumption', 25]].forEach(([m, fault, day], i) => {
+    const logged = day * 1440, resp = 200 + i * 400, fix = 90;
+    mk(990 + i, { building: 'B4', division: 'utility', meter: m, equipment: `${m} · Meter`, location: 'Ground floor', fault, urgency: i === 1 ? 'High' : 'Medium', tech: 'T3', techName: 'S. van Wyk', findings: 'Checked on site.', work: 'Resolved and test reading taken.', signedBy: 'Centre manager' }, [logged, logged - 10, logged - 20, logged - resp, logged - resp - fix, logged - resp - fix - 5]);
+  });
   const sv = (n, building, unit, d, type, tech, work, notes = '') => s.services.push({ id: 'SV' + n, building, unit, date: daysAgo(d), type, tech, techName: (s.technicians.find(t => t.id === tech) || {}).name || '', work, notes, by: 'Seed', at: new Date(Date.now() - d * 864e5).toISOString() });
   sv(1, 'B1', 'AHU-02', 182, 'Planned maintenance', 'T1', 'Quarterly service: filters replaced, belts checked, coil cleaned, drain flushed.', 'Belt showing early wear.');
   sv(2, 'B1', 'AHU-02', 92, 'Planned maintenance', 'T1', 'Quarterly service: filters replaced, bearings greased, belt re-tensioned.');
@@ -220,6 +262,12 @@ function seed(demo) {
   tk('TK-demo3', { building: 'B3', description: 'Quote: theatre AHU coil replacement', poStatus: 'Not approved', poDate: d(40), amountEx: 221646.61, amountIncl: 254893.6 });
   tk('TK-demo4', { building: 'B2', description: 'Annual maintenance contract — Q3', poNumber: '1045854', poDate: d(120), poStatus: 'Approved', invoice: { number: 'INV-0012323', date: d(75), source: 'manual' }, amountEx: 24692.11, amountIncl: 28395.93, portalDate: d(74) });
   tk('TK-demo5', { building: 'B1', description: 'Annual maintenance contract — Q2', poNumber: '1044321', poDate: d(160), poStatus: 'Approved', invoice: { number: 'INV-0012201', date: d(130), source: 'manual' }, amountEx: 24692.11, amountIncl: 28395.93, portalDate: d(129), paidDate: d(95) });
+  hist.forEach((h, i) => {
+    const ex = h.lines.reduce((a, l) => a + l.qty * l.unitPrice, 0), done = d(Math.floor(h.day));
+    const inv = h.day > 12 ? { number: 'INV-00' + (11800 + i), date: d(Math.floor(h.day) - 3), source: 'manual' } : null;
+    tk('TK-h' + i, { building: h.b, jobId: h.id, poNumber: String(1040000 + i * 37), poDate: done, poStatus: 'Approved', approvedAt: inv ? new Date(Date.now() - (h.day - 2) * 864e5).toISOString() : null, approvedBy: inv ? 'Seed' : '',
+      invoice: inv, amountEx: Math.round(ex * 100) / 100, amountIncl: Math.round(ex * 115) / 100, portalDate: inv ? inv.date : '', paidDate: inv && h.day > 38 && i % 7 ? d(Math.floor(h.day) - 32) : '' });
+  });
   s.technicians[1].status = 'on job'; s.technicians[1].job = 'BA-1049';
   s.technicians[2].status = 'on job'; s.technicians[2].job = 'BA-1050';
 

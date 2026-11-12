@@ -244,6 +244,7 @@ function createServer(env = process.env, opts = {}) {
   R('POST', '/api/utility/tree/:bid', (req, res, { p, body }) => result(res, U().setTree(p.bid, body.items)), { roles: STAFF });
   R('POST', '/api/utility/tolerance/:bid', (req, res, { p, body }) => result(res, U().setTolerance(p.bid, body)), { roles: STAFF });
   R('GET', '/api/utility/balance/:bid', (req, res, { u, p, url }) => { if (u.role === 'tech' || !canBuilding(u, p.bid)) return fail(res, 404, 'Not found'); result(res, U().balance(p.bid, url.searchParams.get('month'), url.searchParams.get('from'), url.searchParams.get('to'))); }, { roles: ALL });
+  R('GET', '/api/reports/utility', (req, res, { u, url }) => { const q = k => url.searchParams.get(k) || ''; const bid = q('building'); if (bid && !canBuilding(u, bid)) return fail(res, 404, 'Not found'); result(res, U().report(u, q('from'), q('to'), bid)); }, { roles: ['admin', 'desk', 'client'] });
   R('POST', '/api/meters', (req, res, { body }) => result(res, U().upsertMeter(body.meter || {}, body.originalId)), { roles: STAFF });
   R('POST', '/api/meters/:id/removed', (req, res, { p, body }) => result(res, U().setMeterRemoved(decodeURIComponent(p.id), !!body.removed)), { roles: STAFF });
   R('GET', '/api/meters/:id/readings', (req, res, { u, p, url }) => { const m = meterOk(u, p.id); if (!m) return fail(res, 404, 'Not found'); send(res, 200, U().readingsFor(m.id, url.searchParams.get('from'), url.searchParams.get('to'))); }, { roles: ALL });

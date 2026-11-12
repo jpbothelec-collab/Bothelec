@@ -1,0 +1,7 @@
+2026-11-12T08:06:39.478Z [model] initialised with demo data
+2026-11-12T08:06:39.603Z [model] created admin user admin@bothelec.test
+2026-11-12T08:06:39.718Z [connector] B1 simulator started
+(node:3016) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+2026-11-12T08:06:39.721Z [server] Bothelec Aircon Solutions listening on :8795 (public URL not set)
+2026-11-12T08:08:21.131Z [server] shutting down

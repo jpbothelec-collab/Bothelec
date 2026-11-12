@@ -5,6 +5,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { nowIso, rid, byId, log, setPath, emptyBms, COLLECTIONS, normalizePhone, clamp } = require('./util');
 const { seed, STEPS, DEFAULT_POLICY, DEFAULT_BILLING } = require('./seed');
+/* Service-level targets in hours, per urgency: arrive on site (respond) and work completed (fix). Edit on Reports → Service levels. */
+const URGENCIES = ['Critical', 'High', 'Medium', 'Low'];
+const DEFAULT_SLA = () => ({ Critical: { respond: 2, fix: 8 }, High: { respond: 4, fix: 24 }, Medium: { respond: 24, fix: 72 }, Low: { respond: 72, fix: 168 } });
 const { hashPassword, isStaff, canBuilding, canJob } = require('./auth');
 const { createUtility } = require('./utility');
 
@@ -15,6 +18,7 @@ const ROLE_LABEL = { manager: 'Building Manager', ops: 'Operations Manager', des
 const escH = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 function createModel({ db, env, bus, filesDir }) {
+  let freshDemo = false;
   const S = {};
   let notifier = null;
   const connStatus = {};
@@ -37,8 +41,10 @@ function createModel({ db, env, bus, filesDir }) {
       Object.assign(S, { buildings: s.buildings, technicians: s.technicians, jobs: s.jobs, services: s.services, tracker: s.tracker, meters: s.meters, tenants: s.tenants, recoveries: s.recoveries, alarms: s.alarms, vehicles: s.vehicles, trips: s.trips, assessments: s.assessments, documents: s.documents, bms: s.bms });
       S.meta = s.meta; db.setKv('meta', S.meta);
       log(`[model] initialised ${env.SEED_DEMO === 'true' ? 'with demo data' : 'empty'}`);
+      freshDemo = env.SEED_DEMO === 'true';
     }
     if (!S.settings) { S.settings = { policy: DEFAULT_POLICY, desk: { phone: env.DESK_PHONE || '', email: env.DESK_EMAIL || '' }, etaMinutes: 25 }; db.setKv('settings', S.settings); }
+    if (!S.settings.sla) { S.settings.sla = DEFAULT_SLA(); db.setKv('settings', S.settings); }
     if (!S.settings.billing) { S.settings.billing = DEFAULT_BILLING(); db.setKv('settings', S.settings); }
     if (!S.settings.billing.trackerV1) { Object.assign(S.settings.billing, { autoInvoice: false, termsDays: S.settings.billing.termsDays || 30, trackerV1: true }); db.setKv('settings', S.settings); }
     S.zohoq = db.all('zohoq').sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -551,6 +557,7 @@ function createModel({ db, env, bus, filesDir }) {
       services: S.services.filter(x => bOk(x.building)),
       ...util.stateFor(u),
       tracker: staff ? S.tracker : [],
+      sla: S.settings.sla,
       assessments: S.assessments.filter(a => bOk(a.building)),
       documents: S.documents,
       bmsSummary: Object.fromEntries(buildings.map(b => [b.id, S.bms[b.id] ? { fault: S.bms[b.id].fault, updatedAt: S.bms[b.id].updatedAt, hasData: true } : { hasData: false }])),
@@ -930,6 +937,16 @@ function createModel({ db, env, bus, filesDir }) {
       if (B.termsDays !== undefined) { const td = Math.round(+B.termsDays); if (!(td >= 0 && td <= 365)) return { error: 'Payment terms must be 0–365 days.' }; cur.termsDays = td; }
       S.settings.billing = { ...cur, vatRate: B.vatRate !== undefined ? vatRate : cur.vatRate, pricesIncludeVat: B.pricesIncludeVat !== undefined ? !!B.pricesIncludeVat : cur.pricesIncludeVat, autoInvoice: B.autoInvoice !== undefined ? !!B.autoInvoice : cur.autoInvoice, currency: str(B.currency || cur.currency, 3).toUpperCase() || 'ZAR', zohoTaxId: B.zohoTaxId !== undefined ? str(B.zohoTaxId, 40) : cur.zohoTaxId, catalogue };
     }
+    if (data.sla) {
+      const sla = {};
+      for (const k of URGENCIES) {
+        const x = data.sla[k] || {}, respond = +x.respond, fix = +x.fix;
+        if (!(respond > 0 && respond <= 720 && fix > 0 && fix <= 2160)) return { error: `${k}: enter the hours to arrive and to fix (more than 0).` };
+        if (fix < respond) return { error: `${k}: the fix time cannot be shorter than the time to arrive.` };
+        sla[k] = { respond, fix };
+      }
+      S.settings.sla = sla;
+    }
     if (data.policy) S.settings.policy = data.policy;
     if (data.desk) S.settings.desk = { phone: data.desk.phone || '', email: data.desk.email || '' };
     if (data.etaMinutes) S.settings.etaMinutes = +data.etaMinutes || 25;
@@ -956,6 +973,13 @@ function createModel({ db, env, bus, filesDir }) {
   }
   const util = createUtility({ S, db, save, changed, feed, saveDataUrl, isStaff, canBuilding, addTrackerRowFor, sendStatement });
   S.buildings.forEach(b => { if ((b.divisions || []).includes('utility')) util.syncMeterEquipment(b); });
+  if (freshDemo) { // demo billing runs for the utility building: two to four months ago, approved (last month is left to run)
+    for (let k = 4; k >= 2; k--) {
+      const d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - k);
+      const r = util.createRun({ building: 'B4', month: d.toISOString().slice(0, 7) }, { name: 'Seed' });
+      if (r.run) Object.assign(r.run, { status: 'approved', approvedAt: nowIso(), approvedBy: 'Seed' }) && save('recoveries', r.run);
+    }
+  }
   S.jobs.forEach(j => ensureTracker('job', j));
   S.services.filter(x => x.billing && x.billing.lines && x.billing.lines.length).forEach(x => ensureTracker('service', x));
   return {

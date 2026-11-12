@@ -448,6 +448,69 @@ function createUtility(ctx) {
     return { ok: true, building: bid, label, from, to, trees };
   }
 
+  /* ---------------- reports ----------------
+   * Monthly figures per building for a range of months: where the council supply went (tenants, common areas, losses),
+   * solar, the balance status per utility, billing runs, and meter data quality. */
+  function report(u, fromMonth, toMonth, bid) {
+    const fm = monthBounds(fromMonth), tm = monthBounds(toMonth);
+    if (!fm || !tm || fromMonth > toMonth) return { error: 'Choose a valid month range.' };
+    const months = [];
+    for (let [y, m] = fromMonth.split('-').map(Number); `${y}-${String(m).padStart(2, '0')}` <= toMonth; m === 12 ? (y++, m = 1) : m++) months.push(`${y}-${String(m).padStart(2, '0')}`);
+    if (months.length > 24) return { error: 'Choose at most 24 months.' };
+    const blds = S.buildings.filter(b => (b.divisions || []).includes('utility') && canBuilding(u, b.id) && (!bid || b.id === bid));
+    const sum = arr => r3(arr.reduce((a, x) => a + (x || 0), 0));
+    const buildings = [], tenants = [], quality = [];
+    const now = Date.now();
+    for (const b of blds) {
+      const ms = S.meters.filter(m => m.building === b.id && !m.removed);
+      const per = months.map(mo => {
+        const mb = monthBounds(mo), use = new Map(ms.map(m => [m.id, periodUse(m, mb.from, mb.to)]));
+        const bal = balance(b.id, mo);
+        const out = { month: mo, label: mb.label };
+        for (const type of ['electricity', 'water']) {
+          const of = f => ms.filter(m => m.type === type && f(m)), u2 = list => sum(list.map(m => use.get(m.id).use));
+          const council = of(m => m.role === 'council'), tenant = of(m => m.tenantId && m.role !== 'council' && m.role !== 'check'), common = of(m => !m.tenantId && (m.role || 'sub') === 'sub');
+          const solar = type === 'electricity' ? ms.filter(m => m.type === 'solar') : [];
+          const cs = (bal.trees && bal.trees[type].councils) || [];
+          const st = cs.map(c => c.balance && c.balance.status).filter(Boolean);
+          const supply = cs.reduce((a, c) => a + ((c.balance && c.balance.supply) || 0), 0), metered = cs.reduce((a, c) => a + ((c.balance && c.balance.metered) || 0), 0);
+          out[type] = {
+            council: council.length ? u2(council) : null, solar: solar.length ? u2(solar) : null, tenants: u2(tenant), common: u2(common),
+            complete: [...council, ...tenant, ...common, ...solar].every(m => use.get(m.id).ok),
+            loss: cs.length ? r3(supply - metered) : null, lossPct: cs.length && supply > 0 ? r2((supply - metered) / supply * 100) : null,
+            status: !cs.length ? 'nocouncil' : st.includes('incomplete') ? 'incomplete' : st.includes('loss') ? 'loss' : st.includes('over') ? 'over' : st.length ? 'ok' : 'notree',
+            tolerance: (bal.trees && bal.trees[type].tolerance) || null,
+          };
+        }
+        out.tenantUse = Object.fromEntries(ms.filter(m => m.tenantId).map(m => [m.id, use.get(m.id).use]));
+        return out;
+      });
+      buildings.push({ id: b.id, name: b.name, client: b.client || '', months: per });
+      for (const t of S.tenants.filter(t => t.building === b.id)) {
+        const tm2 = ms.filter(m => m.tenantId === t.id);
+        if (!tm2.length && t.active === false) continue;
+        tenants.push({ id: t.id, name: t.name, unit: t.unit || '', building: b.id, active: t.active !== false,
+          use: Object.fromEntries(['electricity', 'water'].map(type => [type, per.map(p => { const l = tm2.filter(m => m.type === type).map(m => p.tenantUse[m.id]); return l.length ? sum(l) : null; })])) });
+      }
+      per.forEach(p => { delete p.tenantUse; });
+      for (const m of ms) {
+        const last = db.readings.latest(m.id), issues = [];
+        if (!m.serial) issues.push(['bad', 'No serial number']);
+        if (!last) issues.push(['bad', 'No readings yet']);
+        else if (now - Date.parse(last.ts) > 35 * DAY) issues.push(['warn', `Last reading ${Math.floor((now - Date.parse(last.ts)) / DAY)} days ago`]);
+        const rb = db.readings.range(m.id, fm.from, tm.to); let back = 0;
+        for (let i = 1; i < rb.length; i++) if (rb[i].value < rb[i - 1].value) back++;
+        if (back) issues.push(['bad', `${back} reading${back === 1 ? '' : 's'} lower than the one before`]);
+        if (m.type !== 'solar' && m.role !== 'council' && !m.parentId && ms.some(x => x.role === 'council' && x.type === m.type)) issues.push(['warn', 'Not in the meter tree']);
+        if (m.type !== 'solar' && !m.tenantId && (m.role || 'sub') === 'sub' && !m.location) issues.push(['warn', 'No shop or area recorded']);
+        if (issues.length) quality.push({ meterId: m.id, serial: m.serial || '', type: m.type, building: b.id, location: m.location || '', tenant: (byId(S.tenants, m.tenantId) || {}).name || '', last: last ? last.ts : null, issues: issues.map(([level, text]) => ({ level, text })) });
+      }
+    }
+    const ids = new Set(blds.map(b => b.id));
+    const runs = S.recoveries.filter(r => ids.has(r.building) && months.includes(r.month)).map(r => ({ id: r.id, building: r.building, month: r.month, label: r.label, status: r.status, subtotal: r.subtotal || 0, total: r.total || 0, tenants: (r.lines || []).length }));
+    return { ok: true, months: months.map(mo => ({ key: mo, label: monthBounds(mo).label })), buildings, tenants, quality, runs };
+  }
+
   /* ---------------- views ---------------- */
   function stateFor(u) {
     if (u.role === 'tech') return { meters: S.meters.map(withLast), tenants: [], recoveries: [], tariffs: [] };
@@ -466,7 +529,7 @@ function createUtility(ctx) {
     return { ...m, last: last ? { ts: last.ts, value: last.value, source: last.source } : null, use30: days >= 1 ? r2((last.value - monthAgo.value) * (m.multiplier || 1) / days * 30) : null };
   }
 
-  return { setTree, setTolerance, balance, periodUse, setupRows, checkMeter, checkBuilding, assignTariffs, TYPES, TYPE_LABEL, meter, upsertMeter, setMeterRemoved, addReading, connectorReading, importReadings, deleteReading, readingsFor, upsertTenant, deleteTenant, setTariffs, createRun, recalcRun, deleteRun, approveRun, recoveryLines, stateFor, syncMeterEquipment, meterLabel };
+  return { report, setTree, setTolerance, balance, periodUse, setupRows, checkMeter, checkBuilding, assignTariffs, TYPES, TYPE_LABEL, meter, upsertMeter, setMeterRemoved, addReading, connectorReading, importReadings, deleteReading, readingsFor, upsertTenant, deleteTenant, setTariffs, createRun, recalcRun, deleteRun, approveRun, recoveryLines, stateFor, syncMeterEquipment, meterLabel };
 }
 
 module.exports = { createUtility, DEFAULT_TARIFFS };

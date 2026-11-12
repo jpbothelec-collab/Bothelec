@@ -89,7 +89,7 @@
   const SERVICE_SIDE = [
     ['service/live', 'Live Jobs', 'grid'], ['service/callout', 'Call-outs', 'phone'], ['service/jobcards', 'Job Cards', 'card'], ['service/equipment', 'Equipment & history', 'fcu'],
     ['service/techs', 'Technicians', 'users', 'staff'], ['service/notifications', 'Notifications', 'bell'], ['assessments', 'Assessments', 'clipboard', 'field'],
-    ['service/tracker', 'Billing tracker', 'list', 'staff'], ['service/reports', 'Reports', 'chart', 'notech'], ['service/clients', 'Clients', 'building', 'staff'], ['service/documents', 'Documents', 'doc', 'notech'],
+    ['service/tracker', 'Billing tracker', 'list', 'staff'], ['service/reports', 'Signed job reports', 'card', 'notech'], ['service/clients', 'Clients', 'building', 'staff'], ['service/documents', 'Documents', 'doc', 'notech'],
   ];
   const BMS_SIDE = [
     ['bms/overview', 'Site Overview', 'building'], ['bms/chillers', 'Chiller Plants', 'snow'], ['bms/ahus', 'AHUs & Ventilation', 'wind'],
@@ -109,6 +109,7 @@
     { id: 'vehicles', label: 'Vehicles', icon: 'truck', home: 'vehicles', side: [['vehicles', 'Fleet', 'truck']], sub: 'Fleet', roles: ['admin', 'desk'] },
     { id: 'dispatch', label: 'Driver Dispatch', short: 'Dispatch', techLabel: 'Trips', icon: 'pin', home: 'dispatch', side: [['dispatch', 'Trips & deliveries', 'route'], ['dispatch/new', 'New trip', 'plus']], sub: 'Logistics', roles: ['admin', 'desk', 'tech'] },
     { id: 'assessments', biz: 'aircon', label: 'Assessments', short: 'Assess', icon: 'clipboard', home: 'assessments', side: [['assessments', 'All assessments', 'clipboard'], ['assessments/new', 'New assessment', 'plus']], sub: 'Site assessments', roles: ['admin', 'desk', 'tech'] },
+    { id: 'reports', label: 'Reports', icon: 'chart', home: 'reports/overview', side: [], sub: 'Reports & performance', roles: ['admin', 'desk', 'client'] },
     { id: 'settings', label: 'Settings', icon: 'gear', home: 'settings', side: SETTINGS_SIDE, sub: 'Administration', roles: ['admin'] },
   ];
   const role = () => (S && S.me ? S.me.role : 'client');
@@ -118,6 +119,7 @@
   const bizJobs = () => S.jobs.filter(j => divOf(j) === ui.biz);
   /* In utility mode the shared Service menu points at meters instead of aircon equipment. */
   function sideFor(mod) {
+    if (mod.id === 'reports') return isUtil() ? REPORT_UTILITY : REPORT_AIRCON;
     if (!isUtil() || !(mod.id === 'dashboard' || mod.id === 'service')) return mod.side;
     return mod.side.filter(x => x[0] !== 'assessments' && x[0] !== 'service/tracker').map(x => (x[0] === 'service/equipment' ? ['meters/register', 'Meters', 'bolt'] : x));
   }
@@ -631,15 +633,375 @@
       <p class="muted" style="font-size:12px">Which step goes to whom, by SMS or email, is set by the admin under Settings → SMS & email.</p></div></div>`;
   }
   function viewReports() {
-    const done = bizJobs().filter(j => j.status === 'report');
-    const avg = arr => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null;
-    const resp = avg(bizJobs().filter(j => j.steps.onsite).map(j => mins(j.steps.logged, j.steps.onsite)));
-    const site = avg(bizJobs().filter(j => j.steps.completed && j.steps.onsite).map(j => mins(j.steps.onsite, j.steps.completed)));
-    return head('Reports', 'Signed service reports and performance') +
-      `<div class="grid g4" style="margin-bottom:14px">${kpi('doc', 'Signed reports', done.length)}${kpi('clock', 'Avg. response', dur(resp))}${kpi('wrench', 'Avg. time on site', dur(site))}${kpi('check', 'First-time fix', '100', '%')}</div>
-      <div class="card"><div class="table-wrap"><table><thead><tr><th>Report</th><th>Building</th><th class="hide-sm">Equipment</th><th>Technician</th><th>Date</th></tr></thead><tbody>
+    const done = bizJobs().filter(j => j.status === 'report').sort((a, b) => String(b.steps.report).localeCompare(String(a.steps.report)));
+    return head('Signed job reports', `${done.length} signed service report${done.length === 1 ? '' : 's'}`, `<a class="btn sm" href="#/reports/overview">${ic('chart')}Performance reports</a>`) +
+      `<div class="card"><div class="table-wrap"><table><thead><tr><th>Report</th><th>Building</th><th class="hide-sm">Equipment</th><th>Technician</th><th>Date</th></tr></thead><tbody>
       ${done.map(j => `<tr class="click" data-href="#/service/report/${j.id}"><td><strong>${j.id}</strong></td><td>${esc(bld(j.building).name)}</td><td class="hide-sm">${esc(j.equipment)}</td><td>${esc(techName(j) || '—')}</td><td>${dmy(j.steps.report)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">No signed reports yet.</td></tr>'}
       </tbody></table></div></div>`;
+  }
+  /* ---------------- reports ----------------
+   * Three levels, the same for both companies:
+   *   1. Scorecard: a handful of headline figures for the period, each against the previous period, plus 6-month trends
+   *      and a short "needs attention" list.
+   *   2. Focused reports: one question each (service levels, technicians, buildings, equipment, billing / consumption,
+   *      losses, recoveries, meter data quality).
+   *   3. Detail tables under each report, with CSV export and print / PDF.
+   * Every report uses the same period and building filters. */
+  const REPORT_AIRCON = [['reports/overview', 'Scorecard', 'grid'], ['reports/service', 'Service levels', 'clock'], ['reports/techs', 'Technicians', 'users', 'staff'], ['reports/buildings', 'Clients & buildings', 'building'], ['reports/equipment', 'Equipment & maintenance', 'fcu'], ['reports/finance', 'Billing & revenue', 'doc', 'staff'], ['service/reports', 'Signed job reports', 'card']];
+  const REPORT_UTILITY = [['reports/overview', 'Scorecard', 'grid'], ['reports/consumption', 'Consumption', 'bolt'], ['reports/losses', 'Losses & balance', 'trend'], ['reports/recoveries', 'Tenant recoveries', 'doc'], ['reports/quality', 'Meter data quality', 'alert'], ['reports/service', 'Meter jobs', 'clock'], ['reports/techs', 'Technicians', 'users', 'staff']];
+  const RP_PERIODS = [['month', 'This month'], ['last', 'Last month'], ['3m', 'Last 3 months'], ['6m', 'Last 6 months'], ['ytd', 'Year to date'], ['12m', 'Last 12 months'], ['custom', 'Choose months']];
+  const addM = (m, k) => { const [y, mo] = m.split('-').map(Number); return new Date(Date.UTC(y, mo - 1 + k, 1)).toISOString().slice(0, 7); };
+  const monthsBetween = (a, b) => { const out = []; for (let m = a; m <= b && out.length < 36; m = addM(m, 1)) out.push(m); return out; };
+  const mShort = m => new Date(m + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' });
+  const mLong = m => new Date(m + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const pctOf = (n, d) => (d ? Math.round(n / d * 1000) / 10 : null);
+  const fmtPct = v => (v == null ? '—' : fmtN(v, 1) + '%');
+  const fmtDur = m => (m == null ? '—' : m >= 2880 ? fmtN(m / 1440, 1) + ' days' : dur(Math.round(m)));
+  function rpRange() {
+    const r = ui.rp || (ui.rp = { period: 'last', building: '' });
+    const cur = today().slice(0, 7);
+    let a, b;
+    switch (r.period) {
+      case 'month': a = b = cur; break;
+      case 'last': a = b = addM(cur, -1); break;
+      case '3m': a = addM(cur, -2); b = cur; break;
+      case '6m': a = addM(cur, -5); b = cur; break;
+      case 'ytd': a = cur.slice(0, 4) + '-01'; b = cur; break;
+      case '12m': a = addM(cur, -11); b = cur; break;
+      default: a = r.from || addM(cur, -2); b = r.to || cur; if (a > b) [a, b] = [b, a]; if (b > cur) b = cur; if (monthsBetween(a, b).length > 12) a = addM(b, -11);
+    }
+    const months = monthsBetween(a, b), n = months.length, pa = addM(a, -n);
+    return { a, b, months, from: a + '-01T00:00:00.000Z', to: addM(b, 1) + '-01T00:00:00.000Z', label: n === 1 ? mLong(a) : `${mShort(a)} – ${mShort(b)}`,
+      prev: { a: pa, b: addM(a, -1), from: pa + '-01T00:00:00.000Z', to: a + '-01T00:00:00.000Z', label: n === 1 ? mLong(pa) : `${mShort(pa)} – ${mShort(addM(a, -1))}` },
+      trend: monthsBetween(addM(b, -5), b) };
+  }
+  const mRange = m => ({ from: m + '-01T00:00:00.000Z', to: addM(m, 1) + '-01T00:00:00.000Z' });
+  const inP = (ts, p) => !!ts && ts >= p.from && ts < p.to;
+  const rpBld = () => (ui.rp && ui.rp.building && bizBuildings().some(b => b.id === ui.rp.building) ? ui.rp.building : '');
+  function rpHead(title, what) {
+    const R = rpRange(), bid = rpBld();
+    return head(title, `${what} · <strong>${esc(R.label)}</strong>${bid ? ' · ' + esc(bld(bid).name) : bizBuildings().length > 1 ? ' · all buildings' : ''} <span class="print-only">· Bothelec ${BIZ[ui.biz]} · printed ${dmy(new Date().toISOString())}</span>`);
+  }
+  function rpBar(o = {}) {
+    const r = ui.rp, R = rpRange(), cur = today().slice(0, 7);
+    return `<div class="rp-bar noprint">
+      <select class="hsel" data-change="rpperiod" aria-label="Period">${RP_PERIODS.map(([k, l]) => `<option value="${k}" ${k === r.period ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      ${r.period === 'custom' ? `<input type="month" class="hsel" data-change="rpfrom" value="${R.a}" max="${cur}" aria-label="From month"><span class="muted">to</span><input type="month" class="hsel" data-change="rpto" value="${R.b}" max="${cur}" aria-label="To month">` : ''}
+      ${bizBuildings().length > 1 && !o.noBuilding ? `<select class="hsel" data-change="rpbld" aria-label="Building"><option value="">All buildings</option>${bizBuildings().map(b => `<option value="${b.id}" ${b.id === rpBld() ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select>` : ''}
+      <span class="grow"></span>
+      ${o.csv ? `<button class="btn sm" data-action="rpcsv">${ic('doc')}Export CSV</button>` : ''}<button class="btn sm" data-action="rpprint">${ic('print')}Print / PDF</button></div>`;
+  }
+  /* A headline figure with its change against the previous period. good: 'up' | 'down' | null (neutral). */
+  function rpTile(label, value, now, before, good, o = {}) {
+    let d = '', vs = false;
+    const has = v => v != null && isFinite(v);
+    if (has(now) && has(before) && (o.pts || before !== 0)) {
+      const diff = now - before, rel = o.pts ? diff : diff / Math.abs(before) * 100;
+      vs = true;
+      if (Math.abs(rel) < 0.05) d = '<span class="rp-delta">no change</span>';
+      else { const better = good == null ? null : (good === 'up') === (diff > 0); d = `<span class="rp-delta ${better == null ? '' : better ? 'good' : 'bad'}">${diff > 0 ? '▲' : '▼'} ${fmtN(Math.abs(rel), 1)}${o.pts ? ' pts' : '%'}</span>`; }
+    } else if (has(now) && !o.note && good !== undefined && !o.noCmp) d = '<span class="rp-delta">no earlier data</span>';
+    return `<div class="card rp-tile${o.warn ? ' warn' : ''}"><small>${label}</small><strong>${value}</strong><div class="rp-sub">${d}${o.note ? `<span>${o.note}</span>` : vs ? '<span>vs previous period</span>' : ''}</div></div>`;
+  }
+  const compact = v => (Math.abs(v) >= 1e6 ? fmtN(v / 1e6, 1) + 'M' : Math.abs(v) >= 1e4 ? fmtN(v / 1e3, 0) + 'k' : Math.abs(v) >= 1e3 ? fmtN(v / 1e3, 1) + 'k' : fmtN(v, 1));
+  /* Grouped bars per month, with an optional percentage line on the right-hand axis. */
+  function barChart({ labels, series, line, h = 190, unit = '' }) {
+    const W = 600, L = 42, Rr = line ? 34 : 10, T = 12, B = 22;
+    const vals = series.flatMap(s => s.data).filter(v => v != null && isFinite(v));
+    if (!vals.length && !(line && line.data.some(v => v != null))) return '<div class="empty">No data for this period</div>';
+    const raw = Math.max(1, ...vals) * 1.05, p10 = Math.pow(10, Math.floor(Math.log10(raw / 4))), f = raw / 4 / p10, step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p10, max = Math.max(4, step * 4), n = labels.length, gw = (W - L - Rr) / n, bw = Math.min(26, (gw - 10) / series.length);
+    const Y = v => T + (h - T - B) * (1 - v / max), Yp = v => T + (h - T - B) * (1 - v / 100);
+    let g = '';
+    for (let k = 0; k <= 4; k++) { const v = max * k / 4; g += `<line x1="${L}" x2="${W - Rr}" y1="${Y(v)}" y2="${Y(v)}" stroke="#1c3a41" stroke-width=".6"/><text x="${L - 6}" y="${Y(v) + 3}" text-anchor="end">${compact(v)}</text>`; if (line) g += `<text x="${W - Rr + 4}" y="${Yp(k * 25) + 3}">${k * 25}%</text>`; }
+    labels.forEach((lb, i) => {
+      const x0 = L + gw * i + (gw - bw * series.length) / 2;
+      series.forEach((s, j) => { const v = s.data[i]; if (v == null || !isFinite(v)) return; g += `<rect x="${(x0 + j * bw).toFixed(1)}" y="${Y(Math.max(0, v)).toFixed(1)}" width="${(bw - 2).toFixed(1)}" height="${(Y(0) - Y(Math.max(0, v))).toFixed(1)}" rx="2" fill="${s.color}"><title>${esc(s.label)} · ${esc(lb)}: ${fmtN(v, 1)}${unit}</title></rect>`; });
+      g += `<text x="${L + gw * i + gw / 2}" y="${h - 6}" text-anchor="middle">${esc(lb)}</text>`;
+    });
+    if (line) {
+      const pts = line.data.map((v, i) => (v == null ? null : [L + gw * i + gw / 2, Yp(Math.max(0, Math.min(100, v)))]));
+      const segs = pts.filter(Boolean).map(p => p.map(x => x.toFixed(1)).join(',')).join(' ');
+      g += `<polyline points="${segs}" fill="none" stroke="${line.color}" stroke-width="2" stroke-dasharray="${line.dash ? '4 3' : ''}"/>`;
+      pts.forEach((p, i) => { if (p) g += `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="${line.color}"><title>${esc(line.label)} · ${esc(labels[i])}: ${fmtN(line.data[i], 1)}%</title></circle>`; });
+    }
+    const legend = [...series.map(s => [s.label, s.color, false]), ...(line ? [[line.label + ' (right axis)', line.color, true]] : [])];
+    return `<div class="rp-legend">${legend.map(([l, c, ln]) => `<span><i style="background:${c};${ln ? 'height:3px' : ''}"></i>${esc(l)}</span>`).join('')}</div><svg class="chart" viewBox="0 0 ${W} ${h}" style="height:auto" role="img" aria-label="${esc(series.map(s => s.label).join(', '))} by month">${g}</svg>`;
+  }
+  function rpTable(id, headRow, rows, csv, o = {}) {
+    if (csv) ui.rpCsv = { name: csv, head: headRow.map(h => (Array.isArray(h) ? h[0] : h)), rows: rows.map(r => r.map(c => (c && typeof c === 'object' ? c.csv : c))) };
+    const cell = c => (c && typeof c === 'object' ? c.html : esc(c == null ? '—' : c));
+    const num = headRow.map(h => Array.isArray(h) && h[1] === 'n');
+    return `<div class="table-wrap"><table id="${id}" class="rp-table"><thead><tr>${headRow.map((h, i) => `<th${num[i] ? ' class="n"' : ''}>${esc(Array.isArray(h) ? h[0] : h)}</th>`).join('')}</tr></thead><tbody>
+      ${rows.length ? rows.map(r => `<tr${o.href ? ` class="click" data-href="${o.href(r)}"` : ''}>${r.map((c, i) => `<td${num[i] ? ' class="n mono"' : ''}>${cell(c)}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${headRow.length}" class="empty">${o.empty || 'Nothing for this period.'}</td></tr>`}
+      ${o.foot ? `<tr class="rp-foot">${o.foot.map((c, i) => `<td${num[i] ? ' class="n mono"' : ''}>${cell(c)}</td>`).join('')}</tr>` : ''}</tbody></table></div>`;
+  }
+  const H = (html, csv) => ({ html, csv });
+  const okMark = v => (v == null ? H('—', '') : v ? H('<span style="color:var(--accent)">✓</span>', 'Yes') : H('<span style="color:var(--red)">✗</span>', 'No'));
+  function downloadCsv(name, head, rows) {
+    const q = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+    const blob = new Blob(['﻿' + [head.map(q).join(','), ...rows.map(r => r.map(q).join(','))].join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${name}-${today()}.csv`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+
+  /* ---------- Aircon: service maths ---------- */
+  const SLA_DEFAULT = { Critical: { respond: 2, fix: 8 }, High: { respond: 4, fix: 24 }, Medium: { respond: 24, fix: 72 }, Low: { respond: 72, fix: 168 } };
+  const URGS = ['Critical', 'High', 'Medium', 'Low'];
+  const slaOf = j => (S.sla || SLA_DEFAULT)[j.urgency] || (S.sla || SLA_DEFAULT).Medium;
+  const rpJobs = () => bizJobs().filter(j => !rpBld() || j.building === rpBld());
+  const jobRev = j => (j.billing && j.billing.lines && j.billing.lines.length ? calcTotals(j.billing.lines).subtotal : 0);
+  const respM = j => (j.steps.onsite ? mins(j.steps.logged, j.steps.onsite) : null);
+  const fixM = j => (j.steps.completed ? mins(j.steps.logged, j.steps.completed) : null);
+  const respOk = j => (j.steps.onsite ? respM(j) <= slaOf(j).respond * 60 : null);
+  const fixOk = j => (j.steps.completed ? fixM(j) <= slaOf(j).fix * 60 : null);
+  const realUnit = j => { const k = unitKey(j); return k && !/^Other/i.test(k) ? k : ''; };
+  /* First-time fix: no further call on the same unit within 30 days of the work being completed. */
+  function repeatOf(j) {
+    if (!j.steps.completed || !realUnit(j)) return null;
+    const t0 = Date.parse(j.steps.completed);
+    return S.jobs.find(x => x !== j && x.building === j.building && realUnit(x) === realUnit(j) && Date.parse(x.steps.logged) > t0 && Date.parse(x.steps.logged) - t0 <= 30 * 864e5) || null;
+  }
+  function svcStats(jobs, p) {
+    const done = jobs.filter(j => inP(j.steps.completed, p));
+    const withResp = done.filter(j => j.steps.onsite);
+    const reps = done.filter(repeatOf);
+    const rev = done.reduce((a, j) => a + jobRev(j), 0);
+    return { logged: jobs.filter(j => inP(j.steps.logged, p)).length, done: done.length, list: done, repeats: reps,
+      avgResp: avgOf(withResp.map(respM)), avgFix: avgOf(done.map(fixM)), avgSite: avgOf(done.filter(j => j.steps.onsite).map(j => mins(j.steps.onsite, j.steps.completed))),
+      respPct: pctOf(withResp.filter(respOk).length, withResp.length), fixPct: pctOf(done.filter(fixOk).length, done.length), ftf: pctOf(done.length - reps.length, done.length), rev };
+  }
+  const openNow = jobs => jobs.filter(j => !['completed', 'report'].includes(j.status));
+  const ageM = j => mins(j.steps.logged, new Date().toISOString());
+
+  function viewReportsHome() { return isUtil() ? viewUtilScorecard() : viewSvcScorecard(); }
+  function viewSvcScorecard() {
+    const R = rpRange(), jobs = rpJobs(), c = svcStats(jobs, R), p = svcStats(jobs, R.prev);
+    const open = openNow(jobs), late = open.filter(j => (j.steps.onsite ? fixOk({ ...j, steps: { ...j.steps, completed: new Date().toISOString() } }) === false : ageM(j) > slaOf(j).respond * 60));
+    const tr = R.trend.map(m => svcStats(jobs, mRange(m)));
+    const units = bizBuildings().filter(b => !rpBld() || b.id === rpBld()).flatMap(b => (b.units || []).filter(u => !u.removed && u.intervalMonths).map(u => ({ b, u, due: nextDue(u, lastServiced(b.id, u.id)), last: lastServiced(b.id, u.id) })));
+    const overdue = units.filter(x => !x.last || (x.due && x.due < today()));
+    const ppm = pctOf(units.length - overdue.length, units.length);
+    const breaches = c.list.filter(j => respOk(j) === false || fixOk(j) === false);
+    return rpHead('Reports', 'Service scorecard') + rpBar() +
+      `<div class="rp-tiles">
+        ${rpTile('Calls logged', c.logged, c.logged, p.logged, null)}
+        ${rpTile('Calls completed', c.done, c.done, p.done, 'up')}
+        ${rpTile('Arrived within SLA', fmtPct(c.respPct), c.respPct, p.respPct, 'up', { pts: true, warn: c.respPct != null && c.respPct < 90 })}
+        ${rpTile('Fixed within SLA', fmtPct(c.fixPct), c.fixPct, p.fixPct, 'up', { pts: true, warn: c.fixPct != null && c.fixPct < 90 })}
+        ${rpTile('First-time fix', fmtPct(c.ftf), c.ftf, p.ftf, 'up', { pts: true, warn: c.ftf != null && c.ftf < 80 })}
+        ${rpTile('Avg. time to arrive', fmtDur(c.avgResp), c.avgResp, p.avgResp, 'down')}
+        ${rpTile('Avg. time to fix', fmtDur(c.avgFix), c.avgFix, p.avgFix, 'down', { note: 'call logged → work done' })}
+        ${rpTile(role() === 'client' ? 'Billed (excl. VAT)' : 'Revenue (excl. VAT)', fmtMoney(c.rev), c.rev, p.rev, role() === 'client' ? null : 'up')}
+      </div>
+      <div class="grid g2">
+        <div class="card"><header><h2>Calls per month</h2><a class="btn sm noprint" href="#/reports/service">Service levels</a></header>
+          ${barChart({ labels: R.trend.map(mShort), series: [{ label: 'Logged', color: '#3fd2e3', data: tr.map(t => t.logged) }, { label: 'Completed', color: '#b6d433', data: tr.map(t => t.done) }], line: { label: 'Fixed within SLA', color: '#f5b93b', data: tr.map(t => t.fixPct) } })}</div>
+        <div class="card"><header><h2>Needs attention</h2></header><div class="rows">
+          ${rpAttn('alert', `${open.length} open call${open.length === 1 ? '' : 's'}`, late.length ? `${late.length} past the service level now` : 'none past the service level', '#/service/live', late.length ? 'bad' : 'ok')}
+          ${rpAttn('clock', `${breaches.length} completed call${breaches.length === 1 ? '' : 's'} outside the SLA`, 'in this period', '#/reports/service', breaches.length ? 'warn' : 'ok')}
+          ${rpAttn('reset', `${c.repeats.length} repeat call${c.repeats.length === 1 ? '' : 's'}`, 'same unit called out again within 30 days', '#/reports/equipment', c.repeats.length ? 'warn' : 'ok')}
+          ${rpAttn('fcu', `${overdue.length} unit${overdue.length === 1 ? '' : 's'} overdue for maintenance`, `planned maintenance on time: ${fmtPct(ppm)}`, '#/reports/equipment', overdue.length ? 'warn' : 'ok')}
+          ${isStaff() ? (() => { const rows = trackerRows().filter(r => !rpBld() || r.b.id === rpBld()); const ready = rows.filter(r => r.st === 'Ready to invoice' || r.st === 'Needs parts & labour'), od = rows.filter(r => r.st === 'Overdue'); return rpAttn('doc', `${ready.length} completed job${ready.length === 1 ? '' : 's'} not invoiced yet`, `${od.length} invoice${od.length === 1 ? '' : 's'} overdue · ${fmtMoney(od.reduce((a, r) => a + (r.incl || 0), 0))}`, '#/reports/finance', ready.length || od.length ? 'warn' : 'ok'); })() : ''}
+        </div></div>
+      </div>
+      <p class="muted rp-note">Service levels use the targets on <a href="#/reports/service">Service levels</a>. First-time fix counts a job as fixed first time when the same unit had no further call within 30 days. Changes compare with ${esc(R.prev.label)}.</p>`;
+  }
+  const rpAttn = (icon, title, sub, href, lvl) => `<a class="row" href="${href}" style="color:inherit"><span class="rp-dot ${lvl}">${ic(icon)}</span><div class="grow"><strong>${title}</strong><br><small class="muted">${sub}</small></div></a>`;
+
+  function viewSvcLevels() {
+    const R = rpRange(), jobs = rpJobs(), c = svcStats(jobs, R), sla = S.sla || SLA_DEFAULT;
+    const byU = URGS.map(u => { const l = c.list.filter(j => j.urgency === u), wr = l.filter(j => j.steps.onsite); return [u, l, wr]; });
+    const open = openNow(jobs).sort((a, b) => ageM(b) - ageM(a));
+    const buckets = [['Under 4 h', 0, 240], ['4–24 h', 240, 1440], ['1–3 days', 1440, 4320], ['3–7 days', 4320, 10080], ['Over 7 days', 10080, Infinity]].map(([l, a, b]) => [l, open.filter(j => ageM(j) >= a && ageM(j) < b).length]);
+    const src = [...new Set(c.list.map(j => j.source || 'Other'))].map(s => [s, c.list.filter(j => (j.source || 'Other') === s).length]).sort((a, b) => b[1] - a[1]);
+    const detail = c.list.slice().sort((a, b) => String(b.steps.completed).localeCompare(String(a.steps.completed))).map(j => [H(`<strong>${esc(j.id)}</strong>`, j.id), bld(j.building).name, j.equipment || '', j.urgency, H(fmtDur(respM(j)), respM(j) ?? ''), okMark(respOk(j)), H(fmtDur(fixM(j)), fixM(j)), okMark(fixOk(j)), H(repeatOf(j) ? `<span class="pill warn">${esc(repeatOf(j).id)}</span>` : '', repeatOf(j) ? repeatOf(j).id : ''), techName(j) || '—']);
+    return rpHead(isUtil() ? 'Meter jobs' : 'Service levels', 'Response and fix times against the agreed targets') + rpBar({ csv: true }) +
+      `<div class="card"><header><h2>By urgency</h2></header>${rpTable('rp-sla', ['Urgency', ['Target: arrive', 'n'], ['Target: fix', 'n'], ['Jobs', 'n'], ['Arrived in time', 'n'], ['Fixed in time', 'n'], ['Avg. arrive', 'n'], ['Avg. fix', 'n']],
+        byU.map(([u, l, wr]) => [u, sla[u].respond + ' h', sla[u].fix + ' h', l.length, fmtPct(pctOf(wr.filter(respOk).length, wr.length)), fmtPct(pctOf(l.filter(fixOk).length, l.length)), fmtDur(avgOf(wr.map(respM))), fmtDur(avgOf(l.map(fixM)))]), null,
+        { foot: [H('<strong>All</strong>', 'All'), '', '', c.done, fmtPct(c.respPct), fmtPct(c.fixPct), fmtDur(c.avgResp), fmtDur(c.avgFix)] })}
+      ${role() === 'admin' ? `<details class="noprint" style="margin-top:10px"><summary>Change the service-level targets</summary><form class="form" data-form="rpsla" style="margin-top:10px"><div class="rp-slaform">${URGS.map(u => `<div><strong>${u}</strong><label>Arrive within (hours)<input type="number" name="${u}_respond" min="0.5" step="0.5" value="${sla[u].respond}"></label><label>Fixed within (hours)<input type="number" name="${u}_fix" min="0.5" step="0.5" value="${sla[u].fix}"></label></div>`).join('')}</div><div><button class="btn primary sm">Save targets</button></div></form></details>` : ''}</div>
+      <div class="grid g2">
+        <div class="card"><header><h2>Open calls by age</h2><span class="pill ${open.length ? 'warn' : 'ok'}"><i></i>${open.length} open now</span></header>
+          ${barChart({ labels: buckets.map(b => b[0]), series: [{ label: 'Open calls', color: '#f5b93b', data: buckets.map(b => b[1]) }], h: 160 })}
+          ${open.length ? `<div class="rows">${open.slice(0, 6).map(j => `<a class="row" href="#/service/job/${j.id}" style="color:inherit"><div class="grow"><strong>${esc(j.id)}</strong> · ${esc(bld(j.building).name)}<br><small class="muted">${esc(j.urgency)} · ${esc(j.fault || '')}</small></div><span class="pill ${ageM(j) > slaOf(j).fix * 60 ? 'bad' : ageM(j) > slaOf(j).respond * 60 && !j.steps.onsite ? 'warn' : 'info'}">${fmtDur(ageM(j))}</span></a>`).join('')}</div>` : ''}</div>
+        <div class="card"><header><h2>How calls came in</h2></header>${rpTable('rp-src', ['Source', ['Completed jobs', 'n'], ['Share', 'n']], src.map(([s, n]) => [s, n, fmtPct(pctOf(n, c.done))]))}</div>
+      </div>
+      <div class="card"><header><h2>Completed jobs</h2><small class="muted">${c.done} in this period</small></header>${rpTable('rp-jobs', ['Job', 'Building', 'Equipment', 'Urgency', ['Arrived after', 'n'], 'In time', ['Fixed after', 'n'], 'In time', 'Repeat call', 'Technician'], detail, 'service-levels', { href: r => '#/service/job/' + r[0].csv })}</div>`;
+  }
+  function viewRpTechs() {
+    const R = rpRange(), jobs = rpJobs();
+    const rows = S.technicians.map(t => {
+      const mine = jobs.filter(j => j.tech === t.id), c = svcStats(mine, R), p = svcStats(mine, R.prev);
+      return [H(`<strong>${esc(t.name)}</strong><br><small class="muted">${esc(t.skill || '')}</small>`, t.name), c.done, H(`${c.done - p.done > 0 ? '+' : ''}${c.done - p.done}`, c.done - p.done), fmtDur(c.avgResp), fmtDur(c.avgSite), fmtPct(c.respPct), fmtPct(c.fixPct), fmtPct(c.ftf), c.repeats.length, openNow(mine).length, H(fmtMoney(c.rev), c.rev.toFixed(2))];
+    }).sort((a, b) => b[1] - a[1]);
+    const R6 = R.trend;
+    return rpHead('Technicians', 'Workload, speed and quality per technician') + rpBar({ csv: true }) +
+      `<div class="card">${rpTable('rp-techs', ['Technician', ['Jobs done', 'n'], ['vs prev.', 'n'], ['Avg. arrive', 'n'], ['Avg. on site', 'n'], ['Arrived in time', 'n'], ['Fixed in time', 'n'], ['First-time fix', 'n'], ['Repeat calls', 'n'], ['Open now', 'n'], ['Revenue excl. VAT', 'n']], rows, 'technicians')}</div>
+      <div class="card"><header><h2>Jobs done per month</h2></header>${barChart({ labels: R6.map(mShort), series: S.technicians.slice(0, 6).map((t, i) => ({ label: t.name, color: ['#b6d433', '#3fd2e3', '#f5b93b', '#c58cff', '#ff8a8e', '#7fb0ff'][i], data: R6.map(m => jobs.filter(j => j.tech === t.id && inP(j.steps.completed, mRange(m))).length) })) })}</div>
+      <p class="muted rp-note">"On site" is from arriving to work completed. Revenue is the parts & labour on the job cards, excluding VAT.</p>`;
+  }
+  function viewRpBuildings() {
+    const R = rpRange(), all = bizJobs();
+    const list = bizBuildings().filter(b => !rpBld() || b.id === rpBld());
+    const rows = list.map(b => {
+      const jobs = all.filter(j => j.building === b.id), c = svcStats(jobs, R);
+      const units = (b.units || []).filter(u => !u.removed && u.intervalMonths), od = units.filter(u => { const l = lastServiced(b.id, u.id), d = nextDue(u, l); return !l || (d && d < today()); }).length;
+      const top = Object.entries(c.list.reduce((a, j) => { const k = realUnit(j); if (k) a[k] = (a[k] || 0) + 1; return a; }, {})).sort((x, y) => y[1] - x[1])[0];
+      return [H(`<strong>${esc(b.name)}</strong><br><small class="muted">${esc(b.client || '')}</small>`, b.name), b.client || '', c.logged, c.done, fmtPct(c.respPct), fmtPct(c.fixPct), fmtPct(c.ftf), c.repeats.length, openNow(jobs).length, od ? H(`<span class="pill warn">${od}</span>`, od) : 0, top ? `${top[0]} (${top[1]})` : '—', H(fmtMoney(c.rev), c.rev.toFixed(2))];
+    });
+    const faults = Object.entries(svcStats(rpJobs(), R).list.reduce((a, j) => { const k = (j.fault || '').replace(/\s*\(BMS alarm\)$/, ''); a[k] = (a[k] || 0) + 1; return a; }, {})).sort((x, y) => y[1] - x[1]).slice(0, 8);
+    return rpHead('Clients & buildings', 'Service delivered per building') + rpBar({ csv: true }) +
+      `<div class="card">${rpTable('rp-blds', ['Building', 'Client', ['Calls logged', 'n'], ['Completed', 'n'], ['Arrived in time', 'n'], ['Fixed in time', 'n'], ['First-time fix', 'n'], ['Repeat calls', 'n'], ['Open now', 'n'], ['Maintenance overdue', 'n'], 'Most calls', [role() === 'client' ? 'Billed excl. VAT' : 'Revenue excl. VAT', 'n']], rows, 'buildings', { href: r => '#/service/building/' + (list.find(b => b.name === r[0].csv) || {}).id })}</div>
+      <div class="card"><header><h2>Most common faults</h2></header>${rpTable('rp-faults', ['Fault reported', ['Jobs', 'n']], faults)}</div>`;
+  }
+  function viewRpEquipment() {
+    const R = rpRange(), list = bizBuildings().filter(b => !rpBld() || b.id === rpBld());
+    const done = svcStats(rpJobs(), R).list;
+    const units = list.flatMap(b => (b.units || []).filter(u => !u.removed).map(u => {
+      const last = lastServiced(b.id, u.id), due = nextDue(u, last), calls = done.filter(j => j.building === b.id && realUnit(j) === u.id), reps = calls.filter(repeatOf);
+      const st = !u.intervalMonths ? 'none' : !last ? 'never' : due < today() ? 'overdue' : (new Date(due) - new Date(today())) / 864e5 <= 30 ? 'soon' : 'ok';
+      return { b, u, last, due, calls, reps, st };
+    }));
+    const sched = units.filter(x => x.st !== 'none'), onTime = sched.filter(x => x.st === 'ok' || x.st === 'soon').length;
+    const planned = S.services.filter(s => list.some(b => b.id === s.building) && s.date >= R.a + '-01' && s.date < addM(R.b, 1) + '-01');
+    const ST = { ok: ['ok', 'Up to date'], soon: ['warn', 'Due within 30 days'], overdue: ['bad', 'Overdue'], never: ['bad', 'No service recorded'], none: ['off', 'No schedule'] };
+    const order = { overdue: 0, never: 1, soon: 2, ok: 3, none: 4 };
+    const rows = units.sort((a, b) => order[a.st] - order[b.st] || b.calls.length - a.calls.length).map(x => [H(`<strong>${esc(x.u.id)}</strong><br><small class="muted">${esc(x.u.type)}</small>`, x.u.id), x.b.name, x.u.intervalMonths ? `${x.u.intervalMonths} mo` : '—', x.last ? H(dmy(x.last), x.last) : '—', x.due ? H(dmy(x.due), x.due) : '—', H(`<span class="pill ${ST[x.st][0]}">${ST[x.st][1]}</span>`, ST[x.st][1]), x.calls.length, x.reps.length ? H(`<span class="pill warn">${x.reps.length}</span>`, x.reps.length) : 0]);
+    return rpHead('Equipment & maintenance', 'Planned maintenance on time, and the units that break down most') + rpBar({ csv: true }) +
+      `<div class="rp-tiles">${rpTile('Planned maintenance on time', fmtPct(pctOf(onTime, sched.length)), null, null, null, { note: `${onTime} of ${sched.length} scheduled units`, warn: sched.length && onTime / sched.length < 0.9 })}
+        ${rpTile('Overdue now', sched.filter(x => x.st === 'overdue' || x.st === 'never').length, null, null, null, { note: 'units past their service date' })}
+        ${rpTile('Maintenance visits', planned.length, null, null, null, { note: 'service records in the period' })}
+        ${rpTile('Breakdown calls', done.length, null, null, null, { note: `${units.filter(x => x.reps.length).length} unit(s) with repeat calls` })}</div>
+      <div class="card"><header><h2>Units</h2><small class="muted">Overdue first, then most call-outs</small></header>${rpTable('rp-units', ['Unit', 'Building', ['Interval', 'n'], ['Last service', 'n'], ['Next due', 'n'], 'Status', ['Calls in period', 'n'], ['Repeat calls', 'n']], rows, 'equipment', { href: r => `#/service/unit/${(units.find(x => x.u.id === r[0].csv) || { b: {} }).b.id}/${encodeURIComponent(r[0].csv)}` })}</div>`;
+  }
+  function viewRpFinance() {
+    const R = rpRange(), rows = trackerRows().filter(r => !r.t.void && (!rpBld() || r.b.id === rpBld()));
+    const inv = r => r.inv && r.inv.date ? r.inv.date + 'T12:00:00.000Z' : null;
+    const billed = rows.filter(r => inP(inv(r), R)), billedP = rows.filter(r => inP(inv(r), R.prev));
+    const paid = rows.filter(r => r.t.paidDate && inP(r.t.paidDate + 'T12:00:00.000Z', R));
+    const unpaid = rows.filter(r => r.inv && !r.t.paidDate);
+    const sum = l => l.reduce((a, r) => a + (r.incl || 0), 0);
+    const ready = rows.filter(r => ['Ready to invoice', 'Needs parts & labour', 'Approved', 'PO pending'].includes(r.st));
+    const ageD = r => Math.floor((new Date(today()) - new Date(r.inv.date)) / 864e5);
+    const aged = [['0–30 days', 0, 31], ['31–60 days', 31, 61], ['61–90 days', 61, 91], ['Over 90 days', 91, 1e9]].map(([l, a, b]) => [l, unpaid.filter(r => ageD(r) >= a && ageD(r) < b)]);
+    const kinds = {}; svcStats(rpJobs(), R).list.forEach(j => ((j.billing || {}).lines || []).forEach(l => { kinds[l.kind] = (kinds[l.kind] || 0) + l.qty * l.unitPrice; }));
+    const kTot = Object.values(kinds).reduce((a, b) => a + b, 0);
+    const trend = R.trend.map(m => sum(rows.filter(r => inP(inv(r), mRange(m)))));
+    const clients = [...new Set(rows.map(r => r.b.id))].map(id => { const l = rows.filter(r => r.b.id === id); return [bld(id).name, H(fmtMoney(sum(l.filter(r => inP(inv(r), R)))), sum(l.filter(r => inP(inv(r), R))).toFixed(2)), H(fmtMoney(sum(l.filter(r => r.t.paidDate && inP(r.t.paidDate + 'T12:00:00.000Z', R)))), ''), H(fmtMoney(sum(l.filter(r => r.inv && !r.t.paidDate))), sum(l.filter(r => r.inv && !r.t.paidDate)).toFixed(2)), H(fmtMoney(sum(l.filter(r => r.st === 'Overdue'))), sum(l.filter(r => r.st === 'Overdue')).toFixed(2)), l.filter(r => ready.includes(r)).length]; });
+    return rpHead('Billing & revenue', 'Invoiced, paid and outstanding (amounts incl. VAT unless stated)') + rpBar({ csv: true }) +
+      `<div class="rp-tiles">${rpTile('Invoiced', fmtMoney(sum(billed)), sum(billed), sum(billedP), 'up', { note: `${billed.length} invoice${billed.length === 1 ? '' : 's'}` })}
+        ${rpTile('Paid', fmtMoney(sum(paid)), null, null, null, { note: `${paid.length} payment${paid.length === 1 ? '' : 's'} in the period` })}
+        ${rpTile('Outstanding now', fmtMoney(sum(unpaid)), null, null, null, { note: `${unpaid.length} unpaid invoice${unpaid.length === 1 ? '' : 's'}` })}
+        ${rpTile('Overdue now', fmtMoney(sum(rows.filter(r => r.st === 'Overdue'))), null, null, null, { note: `terms ${B().termsDays ?? 30} days`, warn: rows.some(r => r.st === 'Overdue') })}
+        ${rpTile('Work not invoiced yet', ready.length, null, null, null, { note: fmtMoney(sum(ready)) + ' waiting', warn: ready.length > 0 })}</div>
+      <div class="grid g2">
+        <div class="card"><header><h2>Invoiced per month</h2><a class="btn sm noprint" href="#/service/tracker">Billing tracker</a></header>${barChart({ labels: R.trend.map(mShort), series: [{ label: 'Invoiced (incl. VAT)', color: '#b6d433', data: trend }] })}</div>
+        <div class="card"><header><h2>Debtors by age</h2></header>${rpTable('rp-aged', ['Since invoice', ['Invoices', 'n'], ['Amount', 'n']], aged.map(([l, x]) => [l, x.length, H(fmtMoney(sum(x)), sum(x).toFixed(2))]), null, { foot: [H('<strong>Total</strong>', ''), unpaid.length, H(`<strong>${fmtMoney(sum(unpaid))}</strong>`, '')] })}
+          <h3 style="margin:14px 0 6px">Job revenue by type (excl. VAT)</h3>${rpTable('rp-kinds', ['Type', ['Amount', 'n'], ['Share', 'n']], Object.entries(kinds).sort((a, b) => b[1] - a[1]).map(([k, v]) => [k, H(fmtMoney(v), v.toFixed(2)), fmtPct(pctOf(v, kTot))]))}</div>
+      </div>
+      <div class="card"><header><h2>Per client</h2></header>${rpTable('rp-clients', ['Building', ['Invoiced in period', 'n'], ['Paid in period', 'n'], ['Outstanding', 'n'], ['Overdue', 'n'], ['Not invoiced yet', 'n']], clients, 'billing-by-client')}</div>`;
+  }
+
+  /* ---------- Utility ---------- */
+  function urep() {
+    const R = rpRange(), from = [R.prev.a, R.trend[0]].sort()[0], key = `${from}|${R.b}|${rpBld()}`;
+    if (!ui.urep || ui.urep.key !== key) {
+      ui.urep = { key, loading: true };
+      api('GET', `/api/reports/utility?from=${from}&to=${R.b}${rpBld() ? '&building=' + rpBld() : ''}`).then(r => { ui.urep = { key, r }; if (current.key.startsWith('reports/')) render(true); }).catch(e => { ui.urep = { key, error: e.message }; if (current.key.startsWith('reports/')) render(true); });
+    }
+    return ui.urep;
+  }
+  const uWait = (u, title, what) => rpHead(title, what) + rpBar() + (u.error ? `<div class="card empty">${esc(u.error)}</div>` : '<div class="card empty pulse">Working out the figures…</div>');
+  /* Totals over a set of months: council, solar, tenants, common, loss per utility. */
+  function uSum(r, months, type) {
+    const o = { council: 0, solar: 0, tenants: 0, common: 0, loss: 0, supply: 0, complete: true, hasCouncil: false, tenantsC: 0, supplyC: 0 };
+    r.buildings.forEach(b => b.months.filter(m => months.includes(m.month)).forEach(m => { const x = m[type]; o.council += x.council || 0; o.solar += x.solar || 0; o.tenants += x.tenants || 0; o.common += x.common || 0; if (x.loss != null) { o.loss += x.loss; o.hasCouncil = true; } if (x.council != null) { o.tenantsC += x.tenants || 0; o.supplyC += (x.council || 0) + (x.solar || 0); } if (!x.complete) o.complete = false; }));
+    o.supply = o.council + o.solar;
+    o.lossPct = o.hasCouncil && o.supply > 0 ? Math.round(o.loss / o.supply * 1000) / 10 : null;
+    o.recovery = o.supplyC > 0 ? Math.round(o.tenantsC / o.supplyC * 1000) / 10 : null; // only buildings with a council meter
+    return o;
+  }
+  const UNIT = { electricity: 'kWh', water: 'kL', solar: 'kWh' };
+  function viewUtilScorecard() {
+    const u = urep(); if (!u.r) return uWait(u, 'Reports', 'Utility scorecard');
+    const R = rpRange(), r = u.r;
+    const e = uSum(r, R.months, 'electricity'), ep = uSum(r, monthsBetween(R.prev.a, R.prev.b), 'electricity');
+    const w = uSum(r, R.months, 'water'), wp = uSum(r, monthsBetween(R.prev.a, R.prev.b), 'water');
+    const runs = r.runs.filter(x => R.months.includes(x.month)), runsP = r.runs.filter(x => x.month >= R.prev.a && x.month <= R.prev.b);
+    const billed = runs.reduce((a, x) => a + x.total, 0), billedP = runsP.reduce((a, x) => a + x.total, 0);
+    const tr = R.trend.map(m => uSum(r, [m], 'electricity')), trw = R.trend.map(m => uSum(r, [m], 'water'));
+    const bad = r.quality.filter(q => q.issues.some(i => i.level === 'bad')).length;
+    const lossMonths = r.buildings.flatMap(b => b.months.filter(m => R.months.includes(m.month)).flatMap(m => ['electricity', 'water'].filter(t => m[t].status === 'loss' || m[t].status === 'over').map(t => ({ b, m, t }))));
+    const missingRuns = r.buildings.flatMap(b => R.months.filter(m => m < today().slice(0, 7) && !r.runs.some(x => x.building === b.id && x.month === m)).map(m => ({ b, m })));
+    return rpHead('Reports', 'Utility scorecard') + rpBar() +
+      `<div class="rp-tiles">
+        ${rpTile('Electricity from council', fmtN(e.council, 0) + ' kWh', e.council, ep.council, null)}
+        ${rpTile('Electricity billed to tenants', fmtN(e.tenants, 0) + ' kWh', e.tenants, ep.tenants, 'up', { note: `recovery ${fmtPct(e.recovery)} of supply` })}
+        ${rpTile('Electricity losses', fmtPct(e.lossPct), e.lossPct, ep.lossPct, 'down', { pts: true, warn: e.lossPct != null && e.lossPct > 5 })}
+        ${rpTile('Solar generated', e.solar ? fmtN(e.solar, 0) + ' kWh' : '—', e.solar || null, ep.solar || null, 'up')}
+        ${rpTile('Water from council', fmtN(w.council, 1) + ' kL', w.council, wp.council, null)}
+        ${rpTile('Water billed to tenants', fmtN(w.tenants, 1) + ' kL', w.tenants, wp.tenants, 'up', { note: `recovery ${fmtPct(w.recovery)} of supply` })}
+        ${rpTile('Water losses', fmtPct(w.lossPct), w.lossPct, wp.lossPct, 'down', { pts: true, warn: w.lossPct != null && w.lossPct > 10 })}
+        ${rpTile('Recovered from tenants', fmtMoney(billed), billed, billedP, 'up', { note: `${runs.length} billing run${runs.length === 1 ? '' : 's'} · incl. VAT` })}
+      </div>
+      <div class="grid g2">
+        <div class="card"><header><h2>Electricity per month</h2><a class="btn sm noprint" href="#/reports/consumption">Consumption</a></header>${barChart({ labels: R.trend.map(mShort), series: [{ label: 'Council + solar', color: '#3fd2e3', data: tr.map(t => t.supply) }, { label: 'Billed to tenants', color: '#b6d433', data: tr.map(t => t.tenants) }], line: { label: 'Losses %', color: '#ff5a5f', data: tr.map(t => t.lossPct) }, unit: ' kWh' })}</div>
+        <div class="card"><header><h2>Water per month</h2><a class="btn sm noprint" href="#/reports/losses">Losses</a></header>${barChart({ labels: R.trend.map(mShort), series: [{ label: 'Council', color: '#3fd2e3', data: trw.map(t => t.supply) }, { label: 'Billed to tenants', color: '#b6d433', data: trw.map(t => t.tenants) }], line: { label: 'Losses %', color: '#ff5a5f', data: trw.map(t => t.lossPct) }, unit: ' kL' })}</div>
+      </div>
+      <div class="card"><header><h2>Needs attention</h2></header><div class="rows">
+        ${rpAttn('trend', `${lossMonths.length} month${lossMonths.length === 1 ? '' : 's'} outside the loss tolerance`, lossMonths.slice(0, 3).map(x => `${esc(x.b.name)} ${UT_LABEL[x.t].toLowerCase()} ${mShort(x.m.month)}`).join(' · ') || 'all buildings balance', '#/reports/losses', lossMonths.length ? 'bad' : 'ok')}
+        ${rpAttn('alert', `${r.quality.length} meter${r.quality.length === 1 ? '' : 's'} with data issues`, `${bad} serious (no readings, readings going backwards, no serial)`, '#/reports/quality', bad ? 'bad' : r.quality.length ? 'warn' : 'ok')}
+        ${rpAttn('doc', `${missingRuns.length} month${missingRuns.length === 1 ? '' : 's'} not billed yet`, missingRuns.slice(0, 3).map(x => `${esc(x.b.name)} ${mShort(x.m)}`).join(' · ') || 'every completed month has a billing run', '#/reports/recoveries', missingRuns.length ? 'warn' : 'ok')}
+        ${rpAttn('clock', `${openNow(rpJobs()).length} open meter job${openNow(rpJobs()).length === 1 ? '' : 's'}`, 'installs, faults and reading jobs', '#/reports/service', openNow(rpJobs()).length ? 'warn' : 'ok')}
+      </div></div>
+      <p class="muted rp-note">Supply is the council meter plus solar. Losses are supply less the meters under it (see Losses & balance). Recovery is the share of supply billed to tenants; the rest is common areas and losses. Changes compare with ${esc(R.prev.label)}.</p>`;
+  }
+  function viewRpConsumption() {
+    const u = urep(); if (!u.r) return uWait(u, 'Consumption', 'Where the supply went');
+    const R = rpRange(), r = u.r, pm = monthsBetween(R.prev.a, R.prev.b);
+    const idx = ms => ms.map(m => r.months.findIndex(x => x.key === m)).filter(i => i >= 0);
+    const sumIdx = (arr, ii) => { const v = ii.map(i => arr[i]).filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) : null; };
+    const flows = ['electricity', 'water'].map(t => { const o = uSum(r, R.months, t); return [H(`<strong>${UT_LABEL[t]}</strong>`, UT_LABEL[t]), H(fmtN(o.council, 1), o.council), t === 'electricity' ? H(fmtN(o.solar, 1), o.solar) : '—', H(fmtN(o.tenants, 1), o.tenants), H(fmtN(o.common, 1), o.common), o.hasCouncil ? H(fmtN(o.loss, 1), o.loss) : '—', fmtPct(o.recovery), UNIT[t]]; });
+    const tRows = r.tenants.map(t => {
+      const e = sumIdx(t.use.electricity, idx(R.months)), ep = sumIdx(t.use.electricity, idx(pm)), w = sumIdx(t.use.water, idx(R.months)), wp = sumIdx(t.use.water, idx(pm));
+      const ch = (a, b) => (a != null && b ? H(`<span class="rp-delta ${a > b * 1.2 ? 'bad' : ''}">${a >= b ? '▲' : '▼'} ${fmtN(Math.abs((a - b) / b * 100), 0)}%</span>`, Math.round((a - b) / b * 100) + '%') : H('—', ''));
+      return [H(`<strong>${esc(t.name)}</strong>${t.active ? '' : ' <span class="pill off">moved out</span>'}`, t.name), t.unit, bld(t.building).name, H(fmtN(e, 1), e ?? ''), ch(e, ep), H(fmtN(w, 2), w ?? ''), ch(w, wp)];
+    }).sort((a, b) => (+b[3].csv || 0) - (+a[3].csv || 0));
+    const blRows = r.buildings.map(b => { const ii = idx(R.months); const s = t => b.months.filter((m, i) => ii.includes(i)).reduce((a, m) => a + (m[t].council || 0) + (m[t].solar || 0), 0); return [b.name, H(fmtN(s('electricity'), 0), s('electricity')), H(fmtN(s('water'), 1), s('water'))]; });
+    return rpHead('Consumption', 'Where the council supply went, and use per tenant') + rpBar({ csv: true }) +
+      `<div class="card"><header><h2>Supply and where it went</h2></header>${rpTable('rp-flow', ['Utility', ['From council', 'n'], ['Solar', 'n'], ['Billed to tenants', 'n'], ['Common areas', 'n'], ['Losses / unmetered', 'n'], ['Recovery', 'n'], 'Unit'], flows)}</div>
+      ${r.buildings.length > 1 ? `<div class="card"><header><h2>Per building</h2></header>${rpTable('rp-bsupply', ['Building', ['Electricity supply (kWh)', 'n'], ['Water supply (kL)', 'n']], blRows)}</div>` : ''}
+      <div class="card"><header><h2>Per tenant</h2><small class="muted">Change vs ${esc(R.prev.label)}; red when up more than 20%</small></header>${rpTable('rp-tenants', ['Tenant', 'Shop', 'Building', ['Electricity kWh', 'n'], ['vs prev.', 'n'], ['Water kL', 'n'], ['vs prev.', 'n']], tRows, 'tenant-consumption', { empty: 'No tenants with meters.' })}</div>`;
+  }
+  const LSTAT = { ok: ['ok', 'Balanced'], loss: ['bad', 'Loss'], over: ['bad', 'Over'], incomplete: ['warn', 'Readings missing'], nocouncil: ['off', 'No council meter'], notree: ['off', 'No tree'] };
+  function viewRpLosses() {
+    const u = urep(); if (!u.r) return uWait(u, 'Losses & balance', 'Each building against its council meters');
+    const R = rpRange(), r = u.r;
+    const cell = (b, m, t) => { const x = m[t]; const s = LSTAT[x.status] || ['off', x.status]; return H(`<a href="#/meters/balance/${b.id}" data-balm="${m.month}" class="pill ${s[0]}" title="${s[1]}${x.tolerance != null ? ' · tolerance ' + x.tolerance + '%' : ''}">${x.lossPct != null && x.status !== 'incomplete' ? fmtPct(x.lossPct) : s[1]}</a>`, x.lossPct != null ? x.lossPct : s[1]); };
+    const rows = r.buildings.flatMap(b => ['electricity', 'water'].map(t => [H(`<strong>${esc(b.name)}</strong>`, b.name), UT_LABEL[t], ...b.months.filter(m => R.months.includes(m.month)).map(m => cell(b, m, t)), (() => { const o = uSum({ buildings: [b] }, R.months, t); return H(`<strong>${fmtPct(o.lossPct)}</strong>`, o.lossPct ?? ''); })()]));
+    const lossVal = r.buildings.flatMap(b => ['electricity', 'water'].map(t => ({ b, t, o: uSum({ buildings: [b] }, R.months, t) }))).filter(x => x.o.loss > 0);
+    return rpHead('Losses & balance', 'Council supply against the meters under it, per month') + rpBar({ csv: true }) +
+      `<div class="card"><div class="table-wrap">${rpTable('rp-loss', ['Building', 'Utility', ...R.months.map(m => [mShort(m), 'n']), ['Period', 'n']], rows, 'losses')}</div>
+        <p class="muted" style="margin:10px 0 0">Click a month to open the building balance with the full meter tree. Green is within the building's tolerance (default 5% electricity, 10% water).</p></div>
+      <div class="card"><header><h2>Units lost in the period</h2></header>${rpTable('rp-lossu', ['Building', 'Utility', ['Supply', 'n'], ['Lost', 'n'], ['Loss %', 'n']], lossVal.map(x => [x.b.name, UT_LABEL[x.t], H(fmtN(x.o.supply, 1) + ' ' + UNIT[x.t], x.o.supply), H(fmtN(x.o.loss, 1) + ' ' + UNIT[x.t], x.o.loss), fmtPct(x.o.lossPct)]), null, { empty: 'No losses recorded.' })}</div>`;
+  }
+  function viewRpRecoveries() {
+    const u = urep(); if (!u.r) return uWait(u, 'Tenant recoveries', 'Billing runs');
+    const R = rpRange(), r = u.r, runs = r.runs.filter(x => R.months.includes(x.month)).sort((a, b) => b.month.localeCompare(a.month));
+    const missing = r.buildings.flatMap(b => R.months.filter(m => m < today().slice(0, 7) && !r.runs.some(x => x.building === b.id && x.month === m)).map(m => [b.name, mLong(m)]));
+    const tot = runs.reduce((a, x) => a + x.total, 0), appr = runs.filter(x => x.status === 'approved');
+    return rpHead('Tenant recoveries', 'What was billed to tenants') + rpBar({ csv: true }) +
+      `<div class="rp-tiles">${rpTile('Billed (incl. VAT)', fmtMoney(tot), null, null, null, { note: `${runs.length} run${runs.length === 1 ? '' : 's'}` })}${rpTile('Approved', fmtMoney(appr.reduce((a, x) => a + x.total, 0)), null, null, null, { note: `${appr.length} approved, ${runs.length - appr.length} draft` })}${rpTile('Months not billed', missing.length, null, null, null, { warn: missing.length > 0, note: 'completed months without a run' })}</div>
+      <div class="card"><header><h2>Billing runs</h2><a class="btn sm noprint" href="#/recoveries/runs">All billing runs</a></header>${rpTable('rp-runs', ['Month', 'Building', 'Status', ['Tenants', 'n'], ['Excl. VAT', 'n'], ['Incl. VAT', 'n']], runs.map(x => [H(`<strong>${esc(x.label)}</strong>`, x.label), bld(x.building).name, H(`<span class="pill ${x.status === 'approved' ? 'ok' : 'warn'}">${x.status === 'approved' ? 'Approved' : 'Draft'}</span>`, x.status), x.tenants, H(fmtMoney(x.subtotal), x.subtotal.toFixed(2)), H(fmtMoney(x.total), x.total.toFixed(2))]), 'recoveries', { href: row => '#/recoveries/run/' + (runs.find(x => x.label === row[0].csv && bld(x.building).name === row[1]) || {}).id, foot: [H('<strong>Total</strong>', ''), '', '', '', H(fmtMoney(runs.reduce((a, x) => a + x.subtotal, 0)), ''), H(`<strong>${fmtMoney(tot)}</strong>`, '')] })}</div>
+      ${missing.length ? `<div class="card"><header><h2>Not billed yet</h2></header>${rpTable('rp-miss', ['Building', 'Month'], missing)}</div>` : ''}`;
+  }
+  function viewRpQuality() {
+    const u = urep(); if (!u.r) return uWait(u, 'Meter data quality', 'Meters that need a look');
+    const r = u.r, all = (S.meters || []).filter(m => !m.removed && r.buildings.some(b => b.id === m.building));
+    const counts = {}; r.quality.forEach(q => q.issues.forEach(i => { const k = i.text.replace(/\d+/g, 'n'); counts[k] = (counts[k] || 0) + 1; }));
+    const rows = r.quality.slice().sort((a, b) => (b.issues.some(i => i.level === 'bad') - a.issues.some(i => i.level === 'bad'))).map(q => [H(`<strong class="mono">${esc(q.serial || q.meterId)}</strong>`, q.serial || q.meterId), UT_LABEL[q.type], bld(q.building).name, q.location || '—', q.tenant || '—', q.last ? H(dmy(q.last), q.last.slice(0, 10)) : '—', H(q.issues.map(i => `<span class="pill ${i.level}">${esc(i.text)}</span>`).join(' '), q.issues.map(i => i.text).join('; '))]);
+    return rpHead('Meter data quality', 'Clean readings make accurate bills and balances') + rpBar({ csv: true }) +
+      `<div class="rp-tiles">${rpTile('Meters', all.length, null, null, null, { note: 'in the selected buildings' })}${rpTile('Without issues', fmtPct(pctOf(all.length - r.quality.length, all.length)), null, null, null, { note: `${all.length - r.quality.length} of ${all.length}`, warn: r.quality.length > 0 })}${Object.entries(counts).slice(0, 2).map(([k, n]) => rpTile(esc(k.replace(/ n /g, ' … ').replace(/^n /, '')), n, null, null, null, { note: 'meters' })).join('')}</div>
+      <div class="card"><header><h2>Meters to look at</h2><a class="btn sm noprint" href="#/meters/capture">Record readings</a></header>${rpTable('rp-quality', ['Meter', 'Utility', 'Building', 'Shop / area', 'Tenant', ['Last reading', 'n'], 'Issues'], rows, 'meter-data-quality', { href: row => '#/meters/meter/' + encodeURIComponent((r.quality.find(q => (q.serial || q.meterId) === row[0].csv) || {}).meterId || ''), empty: 'All meters look good.' })}</div>`;
   }
   /* ---------------- views: technicians ---------------- */
   const techName = j => ((j && tech(j.tech)) || {}).name || (j && j.techName) || '';
@@ -2019,6 +2381,8 @@
   const ROUTES = {
     dashboard: (a1, a2) => (isTech() ? viewTechHome() : isUtil() ? viewUtilDashboard() : viewDashboard(a1, a2)),
     'service/live': viewLive, 'service/callout': viewCallout, 'service/jobcards': viewJobCards, 'service/job': viewJob, 'service/report': viewReport,
+    'reports/overview': viewReportsHome, 'reports/service': viewSvcLevels, 'reports/techs': viewRpTechs, 'reports/buildings': viewRpBuildings, 'reports/equipment': viewRpEquipment, 'reports/finance': viewRpFinance,
+    'reports/consumption': viewRpConsumption, 'reports/losses': viewRpLosses, 'reports/recoveries': viewRpRecoveries, 'reports/quality': viewRpQuality,
     'service/techs': viewTechs, 'service/notifications': viewNotifs, 'service/reports': viewReports, 'service/clients': viewClients, 'service/documents': viewDocs,
     'bms/overview': viewOverview, 'bms/chillers': viewChillers, 'bms/ahus': viewAhus, 'bms/ahu': viewAhu, 'bms/fcus': viewFcus, 'bms/towers': viewTowers,
     'bms/pumps': viewPumps, 'bms/fans': viewFans, 'bms/zones': viewZones, 'bms/alarms': viewAlarms, 'bms/alarm': viewAlarm, 'bms/trends': viewTrends, 'bms/points': viewPoints,
@@ -2050,7 +2414,9 @@
     if (/^(meters|recoveries)\//.test(current.key) && current.arg && S.buildings.some(b => b.id === current.arg)) ui.site = current.arg; // sidebar follows the building on screen
     if (mod.biz && mod.biz !== ui.biz) { const want = mod.biz; ui.biz = want; try { localStorage.setItem('bothelec.biz', want); } catch (e) { /* storage blocked */ } }
     if ((mod.roles && !mod.roles.includes(role())) || (isTech() && TECH_BLOCKED.includes(current.key))) { mod = MODULES[0]; current = { key: 'dashboard', mod: 'dashboard' }; }
+    if (!isStaff() && ['reports/finance', 'reports/techs'].includes(current.key)) current = { key: 'reports/overview', mod: 'reports' };
     renderNav(mod, current.key);
+    ui.rpCsv = null;
     const view = $('#view');
     const bmsView = current.key.startsWith('bms/') && !['bms/alarms', 'bms/alarm'].includes(current.key);
     try {
@@ -2153,6 +2519,8 @@
     },
     tkfilter: el => { ui.tkFilter = el.dataset.v; render(true); },
     tkcsv: () => trackerCsv(),
+    rpcsv: () => { const c = ui.rpCsv; if (!c) return toast('Nothing to export', '', 'bad'); const R = rpRange(); downloadCsv(`${c.name}-${R.a}${R.b !== R.a ? '-to-' + R.b : ''}`, c.head, c.rows); },
+    rpprint: () => window.print(),
     tkapprove: async () => { const ids = tkSelected(); if (!ids.length) return toast('Select rows first', 'Tick the rows you want to approve.', 'bad'); await tkApprove(ids); },
     tkapproveone: async el => { if (await tkApprove([el.dataset.id])) location.hash = '#/service/tracker'; },
     tkportal: async () => { const ids = tkSelected(); if (!ids.length) return toast('Select rows first', '', 'bad'); const r = await act('POST', '/api/tracker/bulk', { ids, action: 'portal' }); if (r) { toast(`${r.updated} marked as loaded to portal`, 'Only invoiced rows are updated'); render(true); } },
@@ -2181,6 +2549,7 @@
   document.addEventListener('click', e => {
     const a = e.target.closest('[data-action]');
     if (a) { e.preventDefault(); ACTIONS[a.dataset.action] && ACTIONS[a.dataset.action](a); return; }
+    const bm = e.target.closest('[data-balm]'); if (bm) ui.balMonth = bm.dataset.balm;
     const r = e.target.closest('tr[data-href]');
     if (r && !e.target.closest('a,button,input,label,select')) location.hash = r.dataset.href;
   });
@@ -2207,6 +2576,10 @@
     if (el.dataset.change === 'sukind') { const row = el.closest('[data-surow]'); row.classList.toggle('is-common', el.value !== 'shop'); const u = row.querySelector('[name=unit]'); if (!u.value) u.value = { common: 'Common area', council: 'Council supply' }[el.value] || ''; }
     if (el.dataset.change === 'treechg') { const row = el.closest('[data-tree]'); const roleSel = row.querySelector('[name=role]'); const par = row.querySelector('[name=parent]'); if (roleSel) { par.disabled = roleSel.value === 'council'; if (roleSel.value === 'council') par.value = ''; } ['electricity', 'water'].forEach(drawTreePreview); }
     if (el.dataset.change === 'balsite') { location.hash = '#/meters/balance/' + el.value; }
+    if (el.dataset.change === 'rpperiod') { ui.rp.period = el.value; if (el.value === 'custom') { const R0 = rpRange(); ui.rp.from = R0.a; ui.rp.to = R0.b; } render(true); }
+    if (el.dataset.change === 'rpfrom' && el.value) { ui.rp.from = el.value; render(true); }
+    if (el.dataset.change === 'rpto' && el.value) { ui.rp.to = el.value; render(true); }
+    if (el.dataset.change === 'rpbld') { ui.rp.building = el.value; render(true); }
     if (el.dataset.change === 'balmonth' && el.value) { ui.balMonth = el.value; render(true); }
     if (el.dataset.change === 'suall' && el.value !== '-') { document.querySelectorAll(`[data-sutariff][data-type="${el.dataset.type}"]`).forEach(x => { x.value = el.value; }); }
     if (el.dataset.change === 'msite') location.hash = '#/meters/register/' + el.value;
@@ -2385,6 +2758,11 @@
             toast('Shops and meters saved', `${r.tenants} shops · ${r.created} meters added · ${r.linked} linked${r.unlinked ? ` · ${r.unlinked} replaced (history kept)` : ''}`);
             ui.suCheck = {}; await refresh(); location.hash = `#/meters/setup/${f.dataset.bid}/3`;
           } catch (err) { $('#suerr').innerHTML = `<div class="banner bad" style="margin:0"><span class="grow" style="white-space:pre-line">${esc(err.message)}</span></div>`; $('#suerr').scrollIntoView({ block: 'center' }); }
+          break;
+        }
+        case 'rpsla': {
+          const sla = Object.fromEntries(URGS.map(u => [u, { respond: +d[u + '_respond'], fix: +d[u + '_fix'] }]));
+          if (await act('PUT', '/api/admin/settings', { sla }, ['Service-level targets saved'])) render(true);
           break;
         }
         case 'sutree': {

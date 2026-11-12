@@ -897,3 +897,24 @@ test('meter tree and building balance against the council meter', async () => {
   const cc = await login('client2@bothelec.test', 'client-pass-1');
   assert.equal((await req('GET', `/api/utility/balance/${bid}?month=2024-05`, undefined, { cookie: cc })).status, 404);
 });
+
+test('reports: utility figures per month and service-level targets', async () => {
+  const st = (await req('GET', '/api/state')).data;
+  assert.ok(st.sla && st.sla.Critical.respond > 0, 'service-level targets are in the state');
+  assert.equal((await req('PUT', '/api/admin/settings', { sla: { ...st.sla, Low: { respond: 10, fix: 5 } } })).status, 400, 'fix shorter than arrive refused');
+  let r = await req('PUT', '/api/admin/settings', { sla: { ...st.sla, Critical: { respond: 3, fix: 8 } } });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal((await req('GET', '/api/state')).data.sla.Critical.respond, 3);
+  const bid = st.buildings.find(b => b.name === 'Balance Test Centre').id;
+  r = await req('GET', `/api/reports/utility?from=2024-05&to=2024-05&building=${bid}`);
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const m = r.data.buildings[0].months[0];
+  assert.equal(m.electricity.council > 0 || m.electricity.status === 'incomplete', true);
+  assert.ok(Array.isArray(r.data.quality) && Array.isArray(r.data.tenants) && Array.isArray(r.data.runs));
+  assert.equal((await req('GET', '/api/reports/utility?from=2020-01&to=2024-05')).status, 400, 'more than 24 months refused');
+  assert.equal((await req('GET', '/api/reports/utility?from=2024-06&to=2024-05')).status, 400, 'range backwards refused');
+  const cc = await login('client2@bothelec.test', 'client-pass-1');
+  assert.equal((await req('GET', `/api/reports/utility?from=2024-05&to=2024-05&building=${bid}`, undefined, { cookie: cc })).status, 404, 'client cannot report on another building');
+  r = await req('GET', '/api/reports/utility?from=2024-05&to=2024-05', undefined, { cookie: cc });
+  assert.ok(r.data.buildings.every(b => b.id === 'B2'), 'client only sees their own buildings');
+});
