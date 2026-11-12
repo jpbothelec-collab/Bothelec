@@ -99,7 +99,7 @@
   ];
   const SETTINGS_SIDE = [['settings', 'SMS & email', 'bell'], ['settings/billing', 'Zoho Books & billing', 'doc'], ['settings/buildings', 'Buildings & BMS links', 'building'], ['settings/users', 'Users', 'users'], ['settings/outbox', 'Message log', 'list']];
   const METER_SIDE = [['meters/setup', 'Building setup', 'plus', 'staff'], ['meters/overview', 'Sites overview', 'building'], ['meters/balance', 'Building balance', 'trend'], ['meters/register', 'Meter register', 'fcu'], ['meters/capture', 'Record readings', 'check', 'field'], ['meters/import', 'Import readings', 'doc', 'staff']];
-  const REC_SIDE = [['recoveries/runs', 'Billing runs', 'doc'], ['recoveries/tenants', 'Tenants', 'users'], ['recoveries/tariffs', 'Tariffs', 'list', 'staff'], ['service/tracker', 'Billing tracker', 'list', 'staff']];
+  const REC_SIDE = [['recoveries/runs', 'Billing runs', 'doc'], ['recoveries/tenants', 'Tenants', 'users'], ['recoveries/btariffs', 'Building tariffs', 'building', 'staff'], ['recoveries/tariffs', 'All tariffs', 'list', 'staff'], ['service/tracker', 'Billing tracker', 'list', 'staff']];
   const MODULES = [
     { id: 'dashboard', label: 'Dashboard', techLabel: 'My work', icon: 'grid', home: 'dashboard', side: SERVICE_SIDE, sub: 'Operations & Service' },
     { id: 'meters', label: 'Meters', icon: 'bolt', home: 'meters/overview', side: METER_SIDE, sub: 'Utility Management', biz: 'utility' },
@@ -248,7 +248,7 @@
       if (d.building === ui.site) { S.bms = cur; if (isLive()) rerender(); }
     });
   }
-  const NO_AUTO = new Set(['meters/setup', 'meters/edit', 'meters/capture', 'meters/import', 'meters/meter', 'recoveries/tenant', 'recoveries/tariffs', 'service/trackimport', 'service/tracker', 'service/trackrow', 'settings/billing', 'service/svbilling', 'service/callout', 'service/tech', 'service/building', 'service/unitedit', 'service/unit', 'dispatch/new', 'assessments/new', 'settings', 'settings/building', 'settings/user', 'settings/users', 'settings/buildings', 'settings/outbox', 'account', 'bms/points']);
+  const NO_AUTO = new Set(['recoveries/btariffs', 'recoveries/tariff', 'meters/setup', 'meters/edit', 'meters/capture', 'meters/import', 'meters/meter', 'recoveries/tenant', 'recoveries/tariffs', 'service/trackimport', 'service/tracker', 'service/trackrow', 'settings/billing', 'service/svbilling', 'service/callout', 'service/tech', 'service/building', 'service/unitedit', 'service/unit', 'dispatch/new', 'assessments/new', 'settings', 'settings/building', 'settings/user', 'settings/users', 'settings/buildings', 'settings/outbox', 'account', 'bms/points']);
   function rerender() {
     if (!S) return;
     const a = document.activeElement;
@@ -1946,7 +1946,7 @@
         <dl class="kv" style="margin-top:10px"><dt>Tenants</dt><dd>${ts.length}</dd><dt>Meters</dt><dd>${['electricity', 'water', 'solar'].map(t => { const n = ms.filter(m => m.type === t).length; return n ? `${n} ${UT_LABEL[t].toLowerCase()}` : ''; }).filter(Boolean).join(' · ') || '—'}</dd>
         <dt>Electricity (30 days)</dt><dd>${fmtN(sum('electricity'), 0)} kWh</dd><dt>Water (30 days)</dt><dd>${fmtN(sum('water'), 1)} kL</dd>${ms.some(m => m.type === 'solar') ? `<dt>Solar (30 days)</dt><dd>${fmtN(sum('solar'), 0)} kWh</dd>` : ''}
         <dt>Last billing run</dt><dd>${run ? `<a href="#/recoveries/run/${run.id}">${esc(run.label)}</a>` : '—'}</dd></dl>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">${isStaff() ? `<a class="btn sm primary" href="#/meters/setup/${b.id}/2">${ic('gear')}Setup</a>` : ''}<a class="btn sm" href="#/meters/balance/${b.id}">${ic('trend')}Balance</a><a class="btn sm" href="#/meters/register/${b.id}">${ic('fcu')}Meters</a><a class="btn sm" href="#/meters/capture/${b.id}">${ic('check')}Record readings</a>${isStaff() ? `<a class="btn sm" href="#/recoveries/tenants/${b.id}">${ic('users')}Tenants</a>` : ''}</div></div>`;
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">${isStaff() ? `<a class="btn sm primary" href="#/meters/setup/${b.id}/2">${ic('gear')}Setup</a>` : ''}<a class="btn sm" href="#/meters/balance/${b.id}">${ic('trend')}Balance</a>${isStaff() ? `<a class="btn sm" href="#/recoveries/btariffs/${b.id}">${ic('list')}Tariffs</a>` : ''}<a class="btn sm" href="#/meters/register/${b.id}">${ic('fcu')}Meters</a><a class="btn sm" href="#/meters/capture/${b.id}">${ic('check')}Record readings</a>${isStaff() ? `<a class="btn sm" href="#/recoveries/tenants/${b.id}">${ic('users')}Tenants</a>` : ''}</div></div>`;
     }).join('') || `<div class="card empty">No buildings use utility management yet.${isStaff() ? ' <a href="#/meters/setup/new">Set up your first building</a>.' : ''}</div>`}</div>`;
   }
 
@@ -2000,7 +2000,7 @@
         <div class="grid g3"><div class="field"><label>Type</label><select name="type">${['electricity', 'water', 'solar'].map(t => `<option value="${t}" ${m.type === t ? 'selected' : ''}>${UT_LABEL[t]}</option>`).join('')}</select></div>${field('Multiplier / CT ratio', 'multiplier', m.multiplier, 'number', 'step="any" min="0"')}${field('Serial number', 'serial', m.serial)}</div>
         <div class="grid g3">${field('Make', 'make', m.make)}${field('Model', 'model', m.model)}${field('Location', 'location', m.location, 'text', 'placeholder="e.g. Shop 4 DB"')}</div>
         <div class="grid g2"><div class="field"><label>Tenant billed for this meter</label><select name="tenantId"><option value="">Common area / landlord (not billed to a tenant)</option>${tenants.map(t => `<option value="${t.id}" ${m.tenantId === t.id ? 'selected' : ''}>${esc(t.name)}${t.unit ? ' · ' + esc(t.unit) : ''}</option>`).join('')}</select></div>
-          <div class="field"><label>Tariff</label><select name="tariffId"><option value="">Default for the meter type</option>${(S.tariffs || []).map(t => `<option value="${t.id}" ${m.tariffId === t.id ? 'selected' : ''}>${esc(t.name)} (${UT_LABEL[t.type]})</option>`).join('')}</select></div></div>
+          <div class="field"><label>Tariff</label><select name="tariffId"><option value="">Default for the meter type</option>${(S.tariffs || []).filter(t => !t.building || t.building === m.building).map(t => `<option value="${t.id}" ${m.tariffId === t.id ? 'selected' : ''}>${esc(t.name)} (${UT_LABEL[t.type]})</option>`).join('')}</select></div></div>
         <div class="grid g2"><div class="field"><label>How readings arrive</label><select name="comm"><option value="manual" ${m.comm === 'manual' ? 'selected' : ''}>Manual reading / CSV import</option><option value="connector" ${m.comm === 'connector' ? 'selected' : ''}>Building link (Modbus / MQTT / HTTP)</option><option value="m2m" ${m.comm === 'm2m' || m.comm === 'meterhead' ? 'selected' : ''}>M2M Solutions (API)</option></select></div>${field('Installed', 'installed', m.installed, 'date')}</div>
         <p class="muted" style="margin:0;font-size:12px">Building link: map the meter's register to the path <code>meters.${esc(m.id || 'METER-ID')}.reading</code> in the building's connection settings.</p>
         <div class="field"><label>Notes</label><textarea name="notes">${esc(m.notes || '')}</textarea></div>
@@ -2073,7 +2073,7 @@
     const r = (S.recoveries || []).find(x => x.id === id); if (!r) return head('Billing run not found');
     const draft = r.status === 'draft';
     return head(`${esc(r.label)} · ${esc(bld(r.building).name)}`, `${r.lines.length} tenants · total ${fmtMoney(r.total)} incl. VAT${r.approvedAt ? ' · approved by ' + esc(r.approvedBy) + ' ' + dmy(r.approvedAt) : ''}`,
-      `<a class="btn sm" href="#/recoveries/runs">${ic('back')}Billing runs</a>${isStaff() && draft ? `<button class="btn sm" data-action="runrecalc" data-id="${r.id}">Recalculate</button><button class="btn sm danger" data-action="rundelete" data-id="${r.id}">Delete</button><button class="btn sm primary" data-action="runapprove" data-id="${r.id}">${ic('check')}Approve & email statements</button>` : ''}${!draft && isStaff() ? `<a class="btn sm" href="#/service/tracker">${ic('list')}Billing tracker</a>` : ''}`) +
+      `<a class="btn sm" href="#/recoveries/runs">${ic('back')}Billing runs</a>${isStaff() && draft ? `<a class="btn sm" href="#/recoveries/btariffs/${r.building}">Tariffs</a><button class="btn sm" data-action="runrecalc" data-id="${r.id}">Recalculate</button><button class="btn sm danger" data-action="rundelete" data-id="${r.id}">Delete</button><button class="btn sm primary" data-action="runapprove" data-id="${r.id}">${ic('check')}Approve & email statements</button>` : ''}${!draft && isStaff() ? `<a class="btn sm" href="#/service/tracker">${ic('list')}Billing tracker</a>` : ''}`) +
       (draft && r.warnings ? `<div class="banner bad"><span class="grow"><strong>${r.warnings} warning${r.warnings > 1 ? 's' : ''}.</strong> Check the readings below before approving; meters without enough readings are billed as zero.</span></div>` : '') +
       (draft ? '<div class="banner ok"><span class="grow">Draft: add or correct readings, then <b>Recalculate</b>. <b>Approve</b> emails each tenant their statement and adds them to the billing tracker for invoicing.</span></div>' : '') +
       `<div class="grid g2">${r.lines.map(l => `<div class="card"><header><h2>${esc(l.tenant)}</h2><small>${esc(l.unit || '')}</small></header>
@@ -2132,7 +2132,7 @@
     t = t || { name: '', type: 'electricity', fixed: [], blocks: [{ upTo: null, rate: '' }], winterBlocks: null, winterMonths: [6, 7, 8], levy: null, surchargePct: 0, sewer: null, sewerPct: 0 };
     const u = TU[t.type] || 'unit', open = !t.id || ui.tfOpen === t.id;
     return `<details class="card form tf-card" data-tariff data-id="${esc(t.id || '')}" data-lib="${esc(t.libraryKey || '')}" ${open ? 'open' : ''}>
-      <summary><div class="tf-head"><div class="grow"><strong>${esc(t.name || 'New tariff')}</strong><br><small class="muted">${UT_LABEL[t.type] || ''}${t.municipality ? ' · ' + esc(t.municipality) : ''}${t.effective ? ' · from ' + dmy(t.effective) : ''}${(S.meters || []).filter(m => m.tariffId === t.id && !m.removed).length ? ` · on ${(S.meters || []).filter(m => m.tariffId === t.id && !m.removed).length} meter(s)` : ''}</small></div><span class="btn sm">Edit</span></div>
+      <summary><div class="tf-head"><div class="grow"><strong>${esc(t.name || 'New tariff')}</strong><br><small class="muted">${UT_LABEL[t.type] || ''}${t.building ? ` · <span class="pill info"><i></i>Only ${esc(bld(t.building).name)}</span>` : t.municipality ? ' · ' + esc(t.municipality) : ''}${t.effective ? ' · from ' + dmy(t.effective) : ''}${(S.meters || []).filter(m => m.tariffId === t.id && !m.removed).length ? ` · on ${(S.meters || []).filter(m => m.tariffId === t.id && !m.removed).length} meter(s)` : ''}</small></div><span class="btn sm">Edit</span></div>
       ${t.id ? tariffSummary(t) : ''}${t.source ? `<small class="muted">Source: <a href="${esc(t.source.url)}" target="_blank" rel="noopener">${esc(t.source.title)}</a></small>` : ''}</summary>
       <div class="grid g2">${field('Name', 't_name', t.name)}<div class="field"><label>Type</label><select name="t_type">${['electricity', 'water', 'solar'].map(x => `<option value="${x}" ${t.type === x ? 'selected' : ''}>${UT_LABEL[x]}</option>`).join('')}</select></div></div>
       <div class="field"><label>${t.winterBlocks ? 'Summer rates' : 'Rates'}: up to (${u} per month) and rand per ${u}. Leave the last "up to" empty.</label>${blockList('blocks', t.blocks)}</div>
@@ -2159,7 +2159,46 @@
     return { id: c.dataset.id, name: v('t_name'), type, blocks: blocks('blocks'), winterBlocks: seasonal ? blocks('winter') : null, winterMonths: [...c.querySelectorAll('[name=t_wm]:checked')].map(x => +x.value),
       fixed: fixed('fixedlist'), levy: v('l_rate') ? { desc: v('l_desc'), rate: v('l_rate'), freeUnits: v('l_free') } : null, surchargePct: v('t_surcharge'),
       sewer: type === 'water' && blocks('sewer').length ? { blocks: blocks('sewer'), fixed: fixed('sfixedlist') } : type === 'water' && fixed('sfixedlist').length ? { blocks: [], fixed: fixed('sfixedlist') } : null, sewerPct: v('t_sewer'),
-      libraryKey: keep.libraryKey, municipality: keep.municipality, category: keep.category, effective: keep.effective, until: keep.until, source: keep.source, notes: keep.notes };
+      building: keep.building, libraryKey: keep.libraryKey, municipality: keep.municipality, category: keep.category, effective: keep.effective, until: keep.until, source: keep.source, notes: keep.notes };
+  }
+
+  /* ---------------- tariffs per building ---------------- */
+  const tariffFits = (t, m) => t.type === m.type && (!t.building || t.building === m.building);
+  const defaultTariffFor = m => (S.tariffs || []).find(t => t.type === m.type && t.building === m.building) || (S.tariffs || []).find(t => t.type === m.type && !t.building);
+  const tariffOf = m => (S.tariffs || []).find(t => t.id === m.tariffId && tariffFits(t, m)) || defaultTariffFor(m);
+  const tariffChoices = (type, bid) => (S.tariffs || []).filter(t => t.type === type && (!t.building || t.building === bid));
+  const tariffUsers = id => [...new Set((S.meters || []).filter(m => !m.removed && (tariffOf(m) || {}).id === id).map(m => m.building))];
+  const tariffOptions = (m, withDefault = true) => { const ch = tariffChoices(m.type, m.building), d = defaultTariffFor(m); return (withDefault ? `<option value="">Default${d ? ' (' + esc(d.name) + ')' : ''}</option>` : '') + ch.map(t => `<option value="${t.id}" ${m.tariffId === t.id ? 'selected' : ''}>${esc(t.name)}${t.building ? ' · this building only' : ''}</option>`).join(''); };
+  function viewBuildingTariffs(bid) {
+    if (!isStaff()) return head('Building tariffs');
+    const b = utilBld(bid); if (!b.id) return head('Building tariffs') + '<div class="card empty">No utility buildings yet.</div>';
+    const ms = (S.meters || []).filter(m => m.building === b.id && !m.removed && m.type !== 'solar').sort((x, y) => String(x.location).localeCompare(String(y.location), undefined, { numeric: true }) || x.type.localeCompare(y.type));
+    const used = [...new Map(ms.map(m => tariffOf(m)).filter(Boolean).map(t => [t.id, t])).values()];
+    const drafts = (S.recoveries || []).filter(r => r.building === b.id && r.status === 'draft');
+    const card = t => {
+      const here = ms.filter(m => (tariffOf(m) || {}).id === t.id), others = tariffUsers(t.id).filter(x => x !== b.id);
+      return `<div class="card tf-lib" data-btariff="${t.id}"><header><div><h3>${esc(t.name)}</h3><small class="muted">${UT_LABEL[t.type]} · ${here.length} meter${here.length === 1 ? '' : 's'} here${t.building ? ' · <span class="pill info"><i></i>This building only</span>' : others.length ? ` · also used at ${others.map(x => esc(bld(x).name)).join(', ')}` : ' · not used at other buildings'}</small></div>
+        <span class="tf-acts">${t.building || !others.length ? `<a class="btn primary sm" href="#/recoveries/tariff/${t.id}/${b.id}">${ic('gear')}Edit</a>` : `<button class="btn primary sm" data-action="tfcustom" data-bid="${b.id}" data-id="${t.id}">${ic('gear')}Edit for this building only</button><a class="btn sm" href="#/recoveries/tariff/${t.id}/${b.id}">Edit for all ${others.length + 1} buildings</a>`}</span></header>
+        ${tariffSummary(t)}</div>`;
+    };
+    return head(`Tariffs · ${esc(b.name)}`, 'The tariffs this building is billed on. Amounts exclude VAT.', `${bizSelect(b.id, 'btsite')}<a class="btn sm" href="#/recoveries/tariffs">${ic('list')}All tariffs</a>`) +
+      (drafts.length ? `<div class="banner"><span class="grow">${drafts.length} draft billing run${drafts.length === 1 ? '' : 's'} (${drafts.map(r => esc(r.label)).join(', ')}) will be recalculated when you change a tariff here. Approved runs keep what was billed.</span></div>` : '') +
+      `<h2 class="tf-group">Tariffs in use</h2><div class="tf-list">${used.map(card).join('') || '<div class="card empty">No tariffs linked yet. Link them to the meters below.</div>'}</div>
+      <h2 class="tf-group">Tariff per meter</h2>
+      <form class="card form" data-form="btariffs" data-bid="${b.id}">
+        <div class="grid g2"><div class="field"><label>All electricity meters</label><select data-change="suall" data-type="electricity"><option value="-">— choose —</option>${tariffOptions({ type: 'electricity', building: b.id })}</select></div><div class="field"><label>All water meters</label><select data-change="suall" data-type="water"><option value="-">— choose —</option>${tariffOptions({ type: 'water', building: b.id })}</select></div></div>
+        ${ms.length ? `<div class="table-wrap"><table><thead><tr><th>Shop / area</th><th>Meter</th><th>Tariff</th></tr></thead><tbody>${ms.map(m => `<tr><td><strong>${esc(m.location || '—')}</strong><br><small>${esc((tenantById(m.tenantId) || {}).name || (m.role === 'council' ? 'Council supply' : m.role === 'check' ? 'Check meter' : 'Common area'))}${m.tenantId ? '' : ' · not billed to a tenant'}</small></td><td>${UT_LABEL[m.type]}<br><small class="mono">${esc(m.serial || m.id)}</small></td><td><select data-sutariff="${esc(m.id)}" data-type="${m.type}" class="hsel" style="width:100%">${tariffOptions(m)}</select></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No meters yet.</div>'}
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary">${ic('check')}Save meter tariffs</button><a class="btn sm" href="#/recoveries/tariffs" data-action="tftab" data-v="library">${ic('plus')}Add a tariff from the library</a></div></form>`;
+  }
+  function viewTariffEdit(id, bid) {
+    if (!isStaff()) return head('Tariff');
+    const t = (S.tariffs || []).find(x => x.id === id); if (!t) return head('Tariff not found') + `<div class="card empty"><a href="#/recoveries/tariffs">All tariffs</a></div>`;
+    const users = tariffUsers(id), back = bid && bld(bid).id ? `#/recoveries/btariffs/${bid}` : '#/recoveries/tariffs';
+    ui.tfOpen = id;
+    return head(`Edit tariff`, esc(t.name), `<a class="btn sm" href="${back}">${ic('back')}Back</a>`) +
+      `<div class="banner ${users.length > 1 ? 'bad' : ''}"><span class="grow">${t.building ? `This tariff is only for <strong>${esc(bld(t.building).name)}</strong>.` : users.length ? `Changes apply to <strong>${users.length} building${users.length === 1 ? '' : 's'}</strong>: ${users.map(x => esc(bld(x).name)).join(', ')}.${bid && users.length > 1 ? ` To change it for ${esc(bld(bid).name)} only, go back and choose <em>Edit for this building only</em>.` : ''}` : 'No meters use this tariff yet.'} Draft billing runs are recalculated when you save; approved runs keep what was billed.</span></div>
+      <form class="form" data-form="tariffone" data-id="${t.id}" data-back="${back}"><div class="tf-list">${tariffCard(t)}</div>
+        <div style="display:flex;gap:8px;margin-top:14px"><button class="btn primary">${ic('check')}Save tariff</button><a class="btn sm" href="${back}">Cancel</a></div></form>`;
   }
 
   /* ---------------- utility: guided building setup ---------------- */
@@ -2224,9 +2263,8 @@
           <div style="margin-top:12px"><a class="btn primary" href="#/meters/setup/${b.id}/5">Continue to tariffs ${ic('back').replace('<svg', '<svg style="transform:scaleX(-1)"')}</a></div>`}</div>`;
     } else if (step === 5) {
       const ms = (S.meters || []).filter(m => m.building === b.id && !m.removed && m.type !== 'solar').sort((x, y) => String(x.location).localeCompare(String(y.location), undefined, { numeric: true }) || x.type.localeCompare(y.type));
-      const tfs = type => (S.tariffs || []).filter(t => t.type === type);
-      const opts = (type, sel) => `<option value="">Default ${UT_LABEL[type].toLowerCase()} tariff${tfs(type)[0] ? ' (' + esc(tfs(type)[0].name) + ')' : ''}</option>${tfs(type).map(t => `<option value="${t.id}" ${sel === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}`;
-      body = `<form class="card form" data-form="sustep4" data-bid="${b.id}"><header><h2>Link tariffs</h2><span style="display:flex;gap:8px"><a class="btn sm" href="#/recoveries/tariffs">Edit tariff rates</a><a class="btn sm" href="#/meters/setup/${b.id}/6">Skip for now</a></span></header>
+      const opts = (type, sel) => tariffOptions({ type, building: b.id, tariffId: sel });
+      body = `<form class="card form" data-form="sustep4" data-bid="${b.id}"><header><h2>Link tariffs</h2><span style="display:flex;gap:8px"><a class="btn sm" href="#/recoveries/btariffs/${b.id}">Edit tariff rates</a><a class="btn sm" href="#/meters/setup/${b.id}/6">Skip for now</a></span></header>
         ${(S.tariffs || []).some(t => /sample/i.test(t.name)) ? '<div class="banner bad" style="margin:0"><span class="grow">Some tariffs still have <b>sample rates</b>. Set your real rates under “Edit tariff rates” before billing.</span></div>' : ''}
         <div class="grid g2"><div class="field"><label>Apply to all electricity meters</label><select data-change="suall" data-type="electricity"><option value="-">— choose —</option>${opts('electricity')}</select></div><div class="field"><label>Apply to all water meters</label><select data-change="suall" data-type="water"><option value="-">— choose —</option>${opts('water')}</select></div></div>
         ${ms.length ? `<div class="table-wrap"><table><thead><tr><th>Shop / area</th><th>Meter</th><th>Tariff</th></tr></thead><tbody>${ms.map(m => `<tr><td><strong>${esc(m.location || '—')}</strong><br><small>${esc((tenantById(m.tenantId) || {}).name || 'Common area')}</small></td><td>${UT_LABEL[m.type]}<br><small class="mono">${esc(m.serial || m.id)}</small></td><td><select data-sutariff="${esc(m.id)}" data-type="${m.type}" style="width:100%;padding:8px;background:var(--bg2);border:1px solid var(--line2);border-radius:8px">${opts(m.type, m.tariffId)}</select></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No meters yet.</div>'}
@@ -2237,7 +2275,7 @@
       body = `<div class="card" style="max-width:720px"><header><h2>${esc(b.name)} is set up</h2><span class="pill ok"><i></i>Ready</span></header>
         <dl class="kv"><dt>Shops (tenants)</dt><dd>${ts.length}</dd><dt>Common areas</dt><dd>${commons}</dd><dt>Council & check meters</dt><dd>${bulk}</dd><dt>Electricity meters</dt><dd>${ms.filter(m => m.type === 'electricity').length}</dd><dt>Water meters</dt><dd>${ms.filter(m => m.type === 'water').length}</dd><dt>Meters with a linked tariff</dt><dd>${ms.filter(m => m.tariffId).length} of ${ms.length} (others use the default)</dd></dl>
         <p style="margin:12px 0 0">Next: take readings at the start of each month, then create the billing run.</p>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><a class="btn primary" href="#/meters/capture/${b.id}">${ic('check')}Record readings</a><a class="btn" href="#/recoveries/runs">${ic('doc')}Billing runs</a><a class="btn" href="#/meters/balance/${b.id}">${ic('trend')}Building balance</a><a class="btn" href="#/meters/setup/${b.id}/2">Edit shops & meters</a></div></div>`;
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><a class="btn primary" href="#/meters/capture/${b.id}">${ic('check')}Record readings</a><a class="btn" href="#/recoveries/runs">${ic('doc')}Billing runs</a><a class="btn" href="#/meters/balance/${b.id}">${ic('trend')}Building balance</a><a class="btn" href="#/recoveries/btariffs/${b.id}">${ic('list')}Tariffs</a><a class="btn" href="#/meters/setup/${b.id}/2">Edit shops & meters</a></div></div>`;
     }
     return head(bid === 'new' ? 'Set up a building' : `Set up · ${esc(b.name)}`, 'Building → shops & meters → meter tree → bulk check → tariffs', bid !== 'new' ? `<a class="btn sm" href="#/meters/overview">${ic('back')}Sites</a>` : '') + setupStepper(bid, step) + body;
   }
@@ -2456,7 +2494,7 @@
     settings: viewSettings, 'settings/buildings': viewSettingsBuildings, 'settings/building': viewSettingsBuilding, 'settings/users': viewSettingsUsers, 'settings/user': viewSettingsUser, 'settings/outbox': viewOutbox, 'settings/billing': viewSettingsBilling, 'service/tracker': viewTracker, 'service/trackimport': viewTrackImport, 'service/trackrow': viewTrackRow, 'service/svbilling': viewServiceBilling,
     account: viewAccount,
     'meters/setup': viewSetup, 'meters/balance': viewBalance, 'meters/overview': viewMetersOverview, 'meters/register': viewMeterRegister, 'meters/meter': viewMeter, 'meters/edit': viewMeterEdit, 'meters/capture': viewReadingsCapture, 'meters/import': viewReadingsImport,
-    'recoveries/runs': viewRuns, 'recoveries/run': viewRun, 'recoveries/tenants': viewTenants, 'recoveries/tenant': viewTenantEdit, 'recoveries/tariffs': viewTariffs,
+    'recoveries/runs': viewRuns, 'recoveries/run': viewRun, 'recoveries/tenants': viewTenants, 'recoveries/tenant': viewTenantEdit, 'recoveries/tariffs': viewTariffs, 'recoveries/btariffs': viewBuildingTariffs, 'recoveries/tariff': viewTariffEdit,
     'service/equipment': viewEquipment, 'service/unit': viewUnit, 'service/unitedit': viewUnitEdit, 'service/tech': viewTechEdit, 'service/building': viewBuildingContacts,
   };
   const LIVE = new Set(['dashboard', 'service/live', 'bms/overview', 'bms/chillers', 'bms/ahus', 'bms/ahu', 'bms/fcus', 'bms/towers', 'bms/pumps', 'bms/fans', 'bms/zones', 'bms/alarms', 'bms/alarm', 'bms/trends']);
@@ -2571,7 +2609,8 @@
     addblock: el => { const into = el.dataset.into || 'blocks'; el.closest('[data-tariff]').querySelector(`[data-${into}]`).insertAdjacentHTML('beforeend', blockRow({ upTo: null, rate: '' }, into === 'sewer')); },
     addfixed: el => el.closest('[data-tariff]').querySelector(`[data-${el.dataset.into || 'fixedlist'}]`).insertAdjacentHTML('beforeend', fixedRow({})),
     rmfixed: el => el.closest('[data-fixed]').remove(),
-    tftab: el => { ui.tfTab = el.dataset.v; render(true); },
+    tftab: el => { ui.tfTab = el.dataset.v; if (current.key !== 'recoveries/tariffs') location.hash = '#/recoveries/tariffs'; else render(true); },
+    tfcustom: async el => { el.disabled = true; const r = await act('POST', `/api/utility/tariffs/${el.dataset.bid}/customise`, { tariffId: el.dataset.id }, ['Copied for this building', 'Its meters now use the copy. Other buildings are not affected.']); if (r && r.tariff) location.hash = `#/recoveries/tariff/${r.tariff.id}/${el.dataset.bid}`; else el.disabled = false; },
     tflibadd: async el => { el.disabled = true; const r = await act('POST', '/api/tariffs/library', { key: el.dataset.key }, ['Tariff added', 'Edit it under Your tariffs, then link it to meters.']); if (r && r.tariff) { ui.tfOpen = r.tariff.id; } render(true); },
     tfquote: async el => {
       const box = el.closest('[data-tftry]'), out = box.querySelector('.tf-out'), qty = box.querySelector('[name=tq]').value, month = box.querySelector('[name=tm]').value;
@@ -2655,6 +2694,7 @@
     if (el.id === 'bizSel') switchBiz(el.value);
     if (el.dataset.change === 'sukind') { const row = el.closest('[data-surow]'); row.classList.toggle('is-common', el.value !== 'shop'); const u = row.querySelector('[name=unit]'); if (!u.value) u.value = { common: 'Common area', council: 'Council supply' }[el.value] || ''; }
     if (el.dataset.change === 'treechg') { const row = el.closest('[data-tree]'); const roleSel = row.querySelector('[name=role]'); const par = row.querySelector('[name=parent]'); if (roleSel) { par.disabled = roleSel.value === 'council'; if (roleSel.value === 'council') par.value = ''; } ['electricity', 'water'].forEach(drawTreePreview); }
+    if (el.dataset.change === 'btsite') { location.hash = '#/recoveries/btariffs/' + el.value; }
     if (el.dataset.change === 'balsite') { location.hash = '#/meters/balance/' + el.value; }
     if (el.dataset.change === 'rpperiod') { ui.rp.period = el.value; if (el.value === 'custom') { const R0 = rpRange(); ui.rp.from = R0.a; ui.rp.to = R0.b; } render(true); }
     if (el.dataset.change === 'rpfrom' && el.value) { ui.rp.from = el.value; render(true); }
@@ -2818,6 +2858,17 @@
         case 'newrun': {
           const r = await act('POST', '/api/recoveries', { building: d.building, month: d.month }, ['Billing run calculated']);
           if (r && r.run) location.hash = '#/recoveries/run/' + r.run.id;
+          break;
+        }
+        case 'tariffone': {
+          const t = readTariffCard(f.querySelector('[data-tariff]'));
+          try { const r = await api('PUT', `/api/tariffs/${f.dataset.id}`, { tariff: t }); toast('Tariff saved', r.recalculated ? `${r.recalculated} draft billing run${r.recalculated === 1 ? '' : 's'} recalculated` : ''); await refresh(); location.hash = f.dataset.back; }
+          catch (err) { toast('Could not save the tariff', err.message, 'bad'); }
+          break;
+        }
+        case 'btariffs': {
+          const assign = [...f.querySelectorAll('[data-sutariff]')].map(x => ({ meterId: x.dataset.sutariff, tariffId: x.value }));
+          if (await act('POST', `/api/utility/tariffs/${f.dataset.bid}`, { assign }, ['Meter tariffs saved'])) render(true);
           break;
         }
         case 'tariffs': {

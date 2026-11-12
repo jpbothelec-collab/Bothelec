@@ -702,3 +702,5 @@ tr.muted td { opacity: .55; }
 .tf-q td { padding: 3px 4px; }
 .tf-q td.n { text-align: right; white-space: nowrap; }
 @media (max-width: 600px) { .tf-levy { grid-template-columns: 1fr 1fr; } .tf-levy input:first-child { grid-column: 1 / -1; } .tf-try input[name=tq] { flex: 1; width: auto; } }
+[data-form=tariffone] [data-action=rmtariff] { display: none; }
+.tf-acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }

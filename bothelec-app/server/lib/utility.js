@@ -41,7 +41,7 @@ function createUtility(ctx) {
     const mult = d.multiplier === '' || d.multiplier == null ? 1 : +d.multiplier;
     if (!(mult > 0 && mult <= 100000)) return { error: 'Multiplier (CT ratio) must be more than 0.' };
     const tenantId = d.tenantId && byId(S.tenants, d.tenantId) && byId(S.tenants, d.tenantId).building === b.id ? d.tenantId : null;
-    const tariffId = d.tariffId && S.settings.tariffs.find(t => t.id === d.tariffId && t.type === type) ? d.tariffId : null;
+    const tariffId = d.tariffId && S.settings.tariffs.find(t => t.id === d.tariffId && tariffFits(t, { type, building: b.id })) ? d.tariffId : null;
     if (!m) { m = { id, removed: false, createdAt: nowIso() }; S.meters.push(m); }
     else if (m.id !== id) { db.readings.rename(m.id, id); S.jobs.filter(j => j.meter === m.id).forEach(j => { j.meter = id; save('jobs', j); }); db.del('meters', m.id); }
     if (d.role !== undefined) m.role = ROLES.includes(d.role) ? d.role : 'sub';
@@ -176,6 +176,7 @@ function createUtility(ctx) {
     }
     const meta = {};
     for (const k of ['municipality', 'category', 'effective', 'until', 'libraryKey']) if (t[k]) meta[k] = str(t[k], 120);
+    if (t.building && byId(S.buildings, t.building)) meta.building = t.building;
     if (t.source && t.source.url) meta.source = { title: str(t.source.title, 200), url: str(t.source.url, 400) };
     if (Array.isArray(t.notes)) meta.notes = t.notes.map(n => str(n, 400)).filter(Boolean).slice(0, 8);
     return { id: str(t.id, 20) || 'TF' + rid(4), name, type: t.type, ...meta, blocks: b.blocks, winterBlocks, winterMonths, fixed: normFixed(t.fixed, typeof t.fixed === 'number' || typeof t.fixed === 'string' ? t.fixed : 0),
@@ -243,6 +244,43 @@ function createUtility(ctx) {
     const sub = r2(lines.reduce((a, x) => a + x.amount, 0)), vat = r2(sub * S.settings.billing.vatRate / 100);
     return { ok: true, lines, subtotal: sub, vat, total: r2(sub + vat), winter: isWinter(t, month || nowIso().slice(0, 7)) };
   }
+  /* A tariff fits a meter when the type matches and it is shared or belongs to the meter's building. */
+  const tariffFits = (t, m) => t.type === m.type && (!t.building || t.building === m.building);
+  const defaultTariff = m => S.settings.tariffs.find(t => t.type === m.type && t.building === m.building) || S.settings.tariffs.find(t => t.type === m.type && !t.building);
+  const tariffOf = m => S.settings.tariffs.find(t => t.id === m.tariffId && tariffFits(t, m)) || defaultTariff(m);
+  /* Which buildings' meters use a tariff (linked, or by default for their type). */
+  const tariffBuildings = id => [...new Set(S.meters.filter(m => !m.removed && (tariffOf(m) || {}).id === id).map(m => m.building))];
+  function recalcDrafts(bids) {
+    let n = 0;
+    S.recoveries.filter(r => r.status === 'draft' && bids.includes(r.building)).forEach(r => { calcRun(r); save('recoveries', r); changed(r.building); n++; });
+    return n;
+  }
+  /* Edit one tariff. Approved billing runs keep what they billed; draft runs that use it are recalculated. */
+  function updateTariff(id, data) {
+    const i = S.settings.tariffs.findIndex(t => t.id === id); if (i < 0) return { error: 'Tariff not found.' };
+    const cur = S.settings.tariffs[i];
+    const n = normTariff({ ...cur, ...data, id, building: cur.building, libraryKey: cur.libraryKey, source: data.source || cur.source, notes: data.notes || cur.notes });
+    if (!n) return { error: 'The tariff needs a name.' }; if (n.error) return n;
+    if (n.type !== cur.type && S.meters.some(m => m.tariffId === id)) return { error: 'Meters are linked to this tariff, so its type cannot change.' };
+    const before = tariffBuildings(id);
+    S.settings.tariffs[i] = n; db.setKv('settings', S.settings);
+    const recalculated = recalcDrafts([...new Set([...before, ...tariffBuildings(id)])]);
+    changed(null);
+    return { ok: true, tariff: n, recalculated };
+  }
+  /* "Edit for this building only": copy the tariff for the building and move the building's meters onto the copy. */
+  function customiseTariff(bid, tariffId) {
+    const b = byId(S.buildings, bid); if (!b) return { error: 'Building not found.' };
+    const t = S.settings.tariffs.find(x => x.id === tariffId); if (!t) return { error: 'Tariff not found.' };
+    if (t.building === bid) return { ok: true, tariff: t, moved: 0 };
+    const copy = normTariff({ ...t, id: 'TF' + rid(4), name: `${b.name} · ${t.name}`.slice(0, 120), building: bid, libraryKey: '' });
+    S.settings.tariffs.push(copy);
+    let moved = 0;
+    S.meters.filter(m => m.building === bid && !m.removed && m.type === t.type && (tariffOf(m) || {}).id === t.id).forEach(m => { m.tariffId = copy.id; save('meters', m); moved++; });
+    db.setKv('settings', S.settings);
+    recalcDrafts([bid]); changed(bid);
+    return { ok: true, tariff: copy, moved };
+  }
   const tariffLibrary = () => ({ library: LIBRARY.map(x => normTariff({ ...x, id: x.key, libraryKey: x.key })), pending: PENDING });
 
   /* ---------------- recovery (tenant billing) runs ---------------- */
@@ -268,7 +306,7 @@ function createUtility(ctx) {
         }
         const ok = open && close && open.ts !== close.ts && close.value >= open.value;
         const consumption = ok ? r3((close.value - open.value) * (m.multiplier || 1)) : 0;
-        const tariff = S.settings.tariffs.find(x => x.id === m.tariffId) || S.settings.tariffs.find(x => x.type === m.type);
+        const tariff = tariffOf(m);
         if (!tariff) warnings.push('No tariff for this meter type');
         const ch = ok && tariff ? charges(tariff, consumption, m.unit, run.month) : [];
         return { meterId: m.id, type: m.type, unit: m.unit, multiplier: m.multiplier || 1, open: open && { ts: open.ts, value: open.value }, close: close && { ts: close.ts, value: close.value }, consumption, tariff: tariff ? tariff.name : '', charges: ch, warnings };
@@ -415,7 +453,7 @@ function createUtility(ctx) {
       if (last3.length < 2) issues.push({ level: 'warn', text: 'Only one reading so far: billing needs a reading at the start and end of the month' });
     }
     if (m.tenantId && !byId(S.tenants, m.tenantId)) issues.push({ level: 'bad', text: 'Linked tenant no longer exists' });
-    if (!S.settings.tariffs.some(t => t.id === m.tariffId) && !S.settings.tariffs.some(t => t.type === m.type)) issues.push({ level: 'bad', text: `No ${m.type} tariff exists yet` });
+    if (!tariffOf(m)) issues.push({ level: 'bad', text: `No ${m.type} tariff exists yet` });
     else if (!m.tariffId) issues.push({ level: 'info', text: 'Uses the default tariff (link a tariff in step 4)' });
     const council = S.meters.find(x => x.building === m.building && x.type === (m.type === 'solar' ? 'electricity' : m.type) && x.role === 'council' && !x.removed);
     if (m.role !== 'council' && !m.parentId) issues.push(council ? { level: 'warn', text: m.type === 'solar' ? 'Not linked into the meter tree: choose the meter the solar feeds into' : 'Not in the meter tree: choose the meter it is fed from' } : { level: 'info', text: `No council ${m.type === 'solar' ? 'electricity' : m.type} meter yet: the building cannot be balanced` });
@@ -434,7 +472,7 @@ function createUtility(ctx) {
     let n = 0;
     for (const a of list || []) {
       const m = meter(a.meterId); if (!m || m.building !== bid) continue;
-      if (a.tariffId && !S.settings.tariffs.find(t => t.id === a.tariffId && t.type === m.type)) return { error: `That tariff does not fit ${m.type} meter ${m.serial || m.id}.` };
+      if (a.tariffId && !S.settings.tariffs.find(t => t.id === a.tariffId && tariffFits(t, m))) return { error: `That tariff does not fit ${m.type} meter ${m.serial || m.id}.` };
       m.tariffId = a.tariffId || null; save('meters', m); n++;
     }
     changed(bid);
@@ -607,7 +645,7 @@ function createUtility(ctx) {
   }
 
   if (S.settings.tariffs.some(t => !Array.isArray(t.fixed))) { S.settings.tariffs = S.settings.tariffs.map(normTariff).filter(t => t && !t.error); db.setKv('settings', S.settings); } // older tariff shape
-  return { addFromLibrary, quote, tariffLibrary, report, setTree, setTolerance, balance, periodUse, setupRows, checkMeter, checkBuilding, assignTariffs, TYPES, TYPE_LABEL, meter, upsertMeter, setMeterRemoved, addReading, connectorReading, importReadings, deleteReading, readingsFor, upsertTenant, deleteTenant, setTariffs, createRun, recalcRun, deleteRun, approveRun, recoveryLines, stateFor, syncMeterEquipment, meterLabel };
+  return { updateTariff, customiseTariff, tariffBuildings, addFromLibrary, quote, tariffLibrary, report, setTree, setTolerance, balance, periodUse, setupRows, checkMeter, checkBuilding, assignTariffs, TYPES, TYPE_LABEL, meter, upsertMeter, setMeterRemoved, addReading, connectorReading, importReadings, deleteReading, readingsFor, upsertTenant, deleteTenant, setTariffs, createRun, recalcRun, deleteRun, approveRun, recoveryLines, stateFor, syncMeterEquipment, meterLabel };
 }
 
 module.exports = { createUtility, DEFAULT_TARIFFS };

@@ -957,3 +957,41 @@ test('Gauteng tariff library: Joburg and Tshwane bills worked out by hand', asyn
   assert.deepEqual([t2.fixed.length, t2.winterBlocks.length, t2.surchargePct], [0, 5, 2], 'fixed charges removed, seasons and surcharge kept');
   assert.equal((await req('PUT', '/api/tariffs', { tariffs: [{ name: 'Bad', type: 'water', blocks: [{ upTo: 10, rate: 1 }, { upTo: 5, rate: 2 }, { upTo: null, rate: 3 }] }] })).status, 400, 'blocks must go up');
 });
+
+test('edit a tariff for one building or for all buildings', async () => {
+  let st = (await req('GET', '/api/state')).data;
+  // two buildings on the same shared electricity tariff
+  const shared = st.tariffs.find(t => t.id === 'TF-ELEC');
+  const eB4 = st.meters.find(m => m.building === 'B4' && m.type === 'electricity' && m.tenantId && !m.removed);
+  const eB2 = st.meters.find(m => m.building === 'B2' && m.type === 'electricity' && !m.removed);
+  await req('POST', '/api/utility/tariffs/B4', { assign: [{ meterId: eB4.id, tariffId: 'TF-ELEC' }] });
+  await req('POST', '/api/utility/tariffs/B2', { assign: [{ meterId: eB2.id, tariffId: 'TF-ELEC' }] });
+  let r = await req('POST', '/api/recoveries', { building: 'B4', month: '2023-02' });
+  const runId = r.data.run.id;
+  // for this building only: a copy, and only B4's meters move onto it
+  r = await req('POST', '/api/utility/tariffs/B4/customise', { tariffId: 'TF-ELEC' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const copy = r.data.tariff;
+  assert.equal(copy.building, 'B4'); assert.match(copy.name, /Sandton Retail Centre/); assert.ok(r.data.moved >= 1);
+  st = (await req('GET', '/api/state')).data;
+  assert.equal(st.meters.find(m => m.id === eB4.id).tariffId, copy.id);
+  assert.equal(st.meters.find(m => m.id === eB2.id).tariffId, 'TF-ELEC', 'the other building keeps the shared tariff');
+  // a building's own tariff cannot be linked to another building's meter
+  assert.equal((await req('POST', '/api/utility/tariffs/B2', { assign: [{ meterId: eB2.id, tariffId: copy.id }] })).status, 400);
+  // edit the copy: the shared tariff is unchanged, and B4's draft run is recalculated
+  r = await req('PUT', `/api/tariffs/${copy.id}`, { tariff: { ...copy, fixed: [{ desc: 'Admin fee', amount: 99 }] } });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.ok(r.data.recalculated >= 1, 'draft run recalculated');
+  st = (await req('GET', '/api/state')).data;
+  assert.deepEqual(st.tariffs.find(t => t.id === 'TF-ELEC').fixed, shared.fixed);
+  const run = st.recoveries.find(x => x.id === runId);
+  assert.ok(JSON.stringify(run.lines).includes('Admin fee') || run.lines.every(l => l.items.every(it => !it.charges.length)), 'run uses the edited building tariff');
+  // edit the shared tariff for everyone
+  r = await req('PUT', '/api/tariffs/TF-ELEC', { tariff: { ...shared, name: 'Electricity: commercial (shared)' } });
+  assert.equal(r.status, 200);
+  assert.equal((await req('PUT', '/api/tariffs/TF-ELEC', { tariff: { ...shared, type: 'water' } })).status, 400, 'type cannot change while meters use it');
+  assert.equal((await req('PUT', '/api/tariffs/nope', { tariff: shared })).status, 400);
+  const tc = await login('client2@bothelec.test', 'client-pass-1');
+  assert.equal((await req('PUT', `/api/tariffs/${copy.id}`, { tariff: copy }, { cookie: tc })).status, 403, 'clients cannot edit tariffs');
+  await req('DELETE', `/api/recoveries/${runId}`);
+});

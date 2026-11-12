@@ -256,6 +256,8 @@ function createServer(env = process.env, opts = {}) {
   R('POST', '/api/tenants', (req, res, { body }) => result(res, U().upsertTenant(body)), { roles: STAFF });
   R('DELETE', '/api/tenants/:id', (req, res, { p }) => result(res, U().deleteTenant(p.id)), { roles: STAFF });
   R('PUT', '/api/tariffs', (req, res, { body }) => result(res, U().setTariffs(body.tariffs)), { roles: STAFF });
+  R('PUT', '/api/tariffs/:id', (req, res, { p, body }) => result(res, U().updateTariff(p.id, body.tariff || {})), { roles: STAFF });
+  R('POST', '/api/utility/tariffs/:bid/customise', (req, res, { p, body }) => result(res, U().customiseTariff(p.bid, String(body.tariffId || ''))), { roles: STAFF });
   R('GET', '/api/tariffs/library', (req, res) => send(res, 200, U().tariffLibrary()), { roles: STAFF });
   R('POST', '/api/tariffs/library', (req, res, { body }) => result(res, U().addFromLibrary(String(body.key || ''))), { roles: STAFF });
   R('POST', '/api/tariffs/quote', (req, res, { body }) => result(res, U().quote(body.tariff || String(body.id || ''), body.consumption, /^\d{4}-\d{2}$/.test(body.month || '') ? body.month : '')), { roles: STAFF });
