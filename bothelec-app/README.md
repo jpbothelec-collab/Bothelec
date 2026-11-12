@@ -229,6 +229,10 @@ tracker, Zoho and settings are shared. Each building is set to one or both compa
   - City of Johannesburg, Johannesburg Water: commercial water (R73.72/kL to 200 kL, R77.77 above), sewer R58.66 per kL of
     water, demand management levy and 2% surcharge; domestic water and per-kL sewer.
   - City of Tshwane: residential electricity blocks, and water with sanitation on a falling share of the water used.
+  - Mpumalanga, Govan Mbeki Local Municipality (from the uploaded 2025/26 electricity tariff book): domestic blocks,
+    commercial single-phase and 2/3-phase, and institution tariffs (seasonal, with the fixed, retail and network charges).
+    These ended on 30 June 2026 and are kept for billing earlier months; upload the 2026/27 book to add the current ones.
+  - A billing run warns when a meter's tariff had ended (or not yet started) in the month being billed.
   - Not yet: Tshwane business, Ekurhuleni, and Joburg large power users (demand / time-of-use). Send the municipal
     schedules to add them.
 - A tariff can have inclining blocks, separate winter rates and months, several fixed charges per month, a levy per unit

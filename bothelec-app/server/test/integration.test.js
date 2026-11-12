@@ -995,3 +995,16 @@ test('edit a tariff for one building or for all buildings', async () => {
   assert.equal((await req('PUT', `/api/tariffs/${copy.id}`, { tariff: copy }, { cookie: tc })).status, 403, 'clients cannot edit tariffs');
   await req('DELETE', `/api/recoveries/${runId}`);
 });
+
+test('uploaded Govan Mbeki 2025/26 tariffs: seasons, fixed charges, ended warning', async () => {
+  const lib = (await req('GET', '/api/tariffs/library')).data.library;
+  const g = lib.filter(t => t.region === 'Mpumalanga');
+  assert.equal(g.length, 4); assert.ok(g.every(t => t.until === '2026-06-30' && t.source.title && !t.source.url));
+  const q = async (id, consumption, month) => (await req('POST', '/api/tariffs/quote', { id, consumption, month })).data;
+  // domestic 700 kWh: 50×1.928 + 300×2.4789 + 250×3.3631 + 100×4.0365 = 96.40 + 743.67 + 840.78 + 403.65; + 193.95 + 123.52
+  let r = await q('gmm-el-domestic-2526', 700, '2026-03');
+  assert.ok(Math.abs(r.subtotal - (96.40 + 743.67 + 840.78 + 403.65 + 193.95 + 123.52)) < 0.03, String(r.subtotal));
+  // commercial 3-phase 1 000 kWh in July (high season): 4 168.90 + 2 126.41 + 193.95 + 123.52
+  r = await q('gmm-el-commercial-3p-2526', 1000, '2025-07');
+  assert.ok(r.winter && Math.abs(r.subtotal - 6612.78) < 0.03, String(r.subtotal));
+});

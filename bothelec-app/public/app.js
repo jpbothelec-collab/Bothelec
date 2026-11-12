@@ -2091,10 +2091,10 @@
     if (!isStaff()) return head('Tariffs');
     if (!ui.tlib) { ui.tlib = { loading: true }; api('GET', '/api/tariffs/library').then(r => { ui.tlib = r; if (current.key === 'recoveries/tariffs') render(true); }).catch(e => { ui.tlib = { error: e.message }; }); }
     const tf = S.tariffs || [], tab = ui.tfTab || 'mine';
-    const tabs = `<div class="seg noprint" role="tablist">${[['mine', `Your tariffs (${tf.length})`], ['library', 'Gauteng tariff library']].map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-action="tftab" data-v="${k}">${l}</button>`).join('')}</div>`;
+    const tabs = `<div class="seg noprint" role="tablist">${[['mine', `Your tariffs (${tf.length})`], ['library', 'Tariff library']].map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-action="tftab" data-v="${k}">${l}</button>`).join('')}</div>`;
     return head('Tariffs', 'Rates used to bill tenants. All amounts exclude VAT; VAT is added on the statement.') + tabs +
       (tab === 'library' ? tariffLibraryView() :
-        `<form class="form" data-form="tariffs"><div id="tfrows" class="tf-list">${tf.map(tariffCard).join('') || '<div class="card empty">No tariffs yet. Add one from the Gauteng tariff library.</div>'}</div>
+        `<form class="form" data-form="tariffs"><div id="tfrows" class="tf-list">${tf.map(tariffCard).join('') || '<div class="card empty">No tariffs yet. Add one from the tariff library.</div>'}</div>
         <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button type="button" class="btn sm" data-action="tftab" data-v="library">${ic('list')}Add from the library</button><button type="button" class="btn sm" data-action="addtariff">${ic('plus')}Blank tariff</button><button class="btn primary">${ic('check')}Save tariffs</button></div></form>`);
   }
   const fmtR = v => fmtRate(v);
@@ -2113,17 +2113,19 @@
     if (!L || L.loading) return '<div class="card empty pulse">Loading the tariff library…</div>';
     if (L.error) return `<div class="card empty">${esc(L.error)}</div>`;
     const mine = new Set((S.tariffs || []).map(t => t.libraryKey).filter(Boolean));
-    const groups = [...new Set(L.library.map(t => t.municipality))];
-    return `<div class="banner" style="margin-bottom:14px"><span class="grow">Published 2026/27 tariffs (1 July 2026 – 30 June 2027), excluding VAT. <strong>Add</strong> copies a tariff into your tariffs, where you can change it. Check the figures against the municipality's tariff booklet before billing.</span></div>` +
-      groups.map(g => `<h2 class="tf-group">${esc(g)}</h2><div class="tf-list">${L.library.filter(t => t.municipality === g).map(t => `<div class="card tf-lib" data-libkey="${esc(t.libraryKey)}">
-        <header><div><h3>${esc(t.name)}</h3><small class="muted">${esc(t.category || '')} · ${UT_LABEL[t.type]} · from ${dmy(t.effective)}</small></div>
+    const groups = [...new Set(L.library.map(t => (t.region || 'Gauteng') + '|' + t.municipality))];
+    return `<div class="banner" style="margin-bottom:14px"><span class="grow">Published municipal tariffs, excluding VAT, grouped by province. <strong>Add</strong> copies a tariff into your tariffs, where you can change it. Check the figures against the municipality's tariff booklet before billing.</span></div>` +
+      groups.map(g => `<h2 class="tf-group">${esc(g.split('|')[0])} · ${esc(g.split('|')[1])}</h2><div class="tf-list">${L.library.filter(t => (t.region || 'Gauteng') + '|' + t.municipality === g).map(t => `<div class="card tf-lib" data-libkey="${esc(t.libraryKey)}">
+        <header><div><h3>${esc(t.name)}</h3><small class="muted">${esc(t.category || '')} · ${UT_LABEL[t.type]} · ${dmy(t.effective)} – ${t.until ? dmy(t.until) : 'open'}</small>${tfEnded(t) ? ' <span class="pill warn"><i></i>Ended: for older months only</span>' : ''}</div>
           ${mine.has(t.libraryKey) ? '<span class="pill ok"><i></i>In your tariffs</span>' : `<button class="btn primary sm" data-action="tflibadd" data-key="${esc(t.libraryKey)}">${ic('plus')}Add</button>`}</header>
         ${tariffSummary(t)}
         ${(t.notes || []).length ? `<ul class="tf-notes">${t.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
         ${tariffTry(t.libraryKey, t.type)}
-        ${t.source ? `<small class="muted">Source: <a href="${esc(t.source.url)}" target="_blank" rel="noopener">${esc(t.source.title)}</a></small>` : ''}</div>`).join('')}</div>`).join('') +
+        ${srcLink(t.source)}</div>`).join('')}</div>`).join('') +
       `<div class="card" style="margin-top:14px"><header><h2>Not in the library yet</h2></header><div class="rows">${L.pending.map(p => `<div class="row"><div class="grow"><strong>${esc(p.municipality)}</strong> · ${esc(p.what)}<br><small class="muted">${esc(p.why)}</small></div></div>`).join('')}</div></div>`;
   }
+  const srcLink = src => (src ? `<small class="muted">Source: ${src.url ? `<a href="${esc(src.url)}" target="_blank" rel="noopener">${esc(src.title)}</a>` : esc(src.title)}</small>` : '');
+  const tfEnded = t => !!(t.until && t.until < today());
   const tariffTry = (id, type) => `<div class="tf-try" data-tftry="${esc(id)}"><label>Try it</label><input type="number" min="0" step="any" name="tq" placeholder="${TU[type]} in a month" aria-label="Consumption in ${TU[type]}"><input type="month" name="tm" value="${today().slice(0, 7)}" aria-label="Month"><button type="button" class="btn sm" data-action="tfquote">Work out</button><div class="tf-out"></div></div>`;
   const blockRow = (b, pct) => `<div class="tf-block${pct ? ' pct' : ''}" data-block><input name="upTo" type="number" step="any" min="0" value="${b.upTo == null ? '' : b.upTo}" placeholder="and above" aria-label="Up to"><input name="rate" type="number" step="any" min="0" value="${b.rate ?? ''}" placeholder="R per unit" aria-label="Rate in rand per unit">${pct ? `<input name="pct" type="number" step="any" min="0" max="100" value="${b.pct ?? 100}" aria-label="Share of water counted as sewage (%)" title="% of the water counted">` : ''}<button type="button" class="btn sm" data-action="rmblock" aria-label="Remove block" title="Remove block">${ic('x')}</button></div>`;
   const fixedRow = x => `<div class="tf-fixed" data-fixed><input name="fdesc" value="${esc(x.desc || '')}" placeholder="Description" aria-label="Charge description"><input name="famount" type="number" step="0.01" min="0" value="${x.amount ?? ''}" placeholder="R per month" aria-label="Rand per month"><button type="button" class="btn sm" data-action="rmfixed" aria-label="Remove charge" title="Remove charge">${ic('x')}</button></div>`;
@@ -2132,8 +2134,8 @@
     t = t || { name: '', type: 'electricity', fixed: [], blocks: [{ upTo: null, rate: '' }], winterBlocks: null, winterMonths: [6, 7, 8], levy: null, surchargePct: 0, sewer: null, sewerPct: 0 };
     const u = TU[t.type] || 'unit', open = !t.id || ui.tfOpen === t.id;
     return `<details class="card form tf-card" data-tariff data-id="${esc(t.id || '')}" data-lib="${esc(t.libraryKey || '')}" ${open ? 'open' : ''}>
-      <summary><div class="tf-head"><div class="grow"><strong>${esc(t.name || 'New tariff')}</strong><br><small class="muted">${UT_LABEL[t.type] || ''}${t.building ? ` · <span class="pill info"><i></i>Only ${esc(bld(t.building).name)}</span>` : t.municipality ? ' · ' + esc(t.municipality) : ''}${t.effective ? ' · from ' + dmy(t.effective) : ''}${(S.meters || []).filter(m => m.tariffId === t.id && !m.removed).length ? ` · on ${(S.meters || []).filter(m => m.tariffId === t.id && !m.removed).length} meter(s)` : ''}</small></div><span class="btn sm">Edit</span></div>
-      ${t.id ? tariffSummary(t) : ''}${t.source ? `<small class="muted">Source: <a href="${esc(t.source.url)}" target="_blank" rel="noopener">${esc(t.source.title)}</a></small>` : ''}</summary>
+      <summary><div class="tf-head"><div class="grow"><strong>${esc(t.name || 'New tariff')}</strong><br><small class="muted">${UT_LABEL[t.type] || ''}${t.building ? ` · <span class="pill info"><i></i>Only ${esc(bld(t.building).name)}</span>` : t.municipality ? ' · ' + esc(t.municipality) : ''}${t.effective ? ' · from ' + dmy(t.effective) : ''}${tfEnded(t) ? ` · <span class="pill warn"><i></i>Ended ${dmy(t.until)}</span>` : ''}${(S.meters || []).filter(m => m.tariffId === t.id && !m.removed).length ? ` · on ${(S.meters || []).filter(m => m.tariffId === t.id && !m.removed).length} meter(s)` : ''}</small></div><span class="btn sm">Edit</span></div>
+      ${t.id ? tariffSummary(t) : ''}${srcLink(t.source)}</summary>
       <div class="grid g2">${field('Name', 't_name', t.name)}<div class="field"><label>Type</label><select name="t_type">${['electricity', 'water', 'solar'].map(x => `<option value="${x}" ${t.type === x ? 'selected' : ''}>${UT_LABEL[x]}</option>`).join('')}</select></div></div>
       <div class="field"><label>${t.winterBlocks ? 'Summer rates' : 'Rates'}: up to (${u} per month) and rand per ${u}. Leave the last "up to" empty.</label>${blockList('blocks', t.blocks)}</div>
       <label class="tf-check"><input type="checkbox" name="t_seasonal" data-change="tfseason" ${t.winterBlocks ? 'checked' : ''}> Different rates in winter</label>

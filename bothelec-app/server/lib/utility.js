@@ -175,9 +175,9 @@ function createUtility(ctx) {
       sewer = { blocks: sb.blocks, fixed: normFixed(t.sewer.fixed) };
     }
     const meta = {};
-    for (const k of ['municipality', 'category', 'effective', 'until', 'libraryKey']) if (t[k]) meta[k] = str(t[k], 120);
+    for (const k of ['region', 'municipality', 'category', 'effective', 'until', 'libraryKey']) if (t[k]) meta[k] = str(t[k], 120);
     if (t.building && byId(S.buildings, t.building)) meta.building = t.building;
-    if (t.source && t.source.url) meta.source = { title: str(t.source.title, 200), url: str(t.source.url, 400) };
+    if (t.source && (t.source.url || t.source.title)) meta.source = { title: str(t.source.title, 200), url: /^https:\/\//.test(t.source.url || '') ? str(t.source.url, 400) : '' };
     if (Array.isArray(t.notes)) meta.notes = t.notes.map(n => str(n, 400)).filter(Boolean).slice(0, 8);
     return { id: str(t.id, 20) || 'TF' + rid(4), name, type: t.type, ...meta, blocks: b.blocks, winterBlocks, winterMonths, fixed: normFixed(t.fixed, typeof t.fixed === 'number' || typeof t.fixed === 'string' ? t.fixed : 0),
       levy: levyRate ? { desc: str(t.levy.desc, 80) || 'Levy', rate: levyRate, freeUnits: num(t.levy.freeUnits, 0, 1e6) || 0 } : null, surchargePct,
@@ -308,6 +308,8 @@ function createUtility(ctx) {
         const consumption = ok ? r3((close.value - open.value) * (m.multiplier || 1)) : 0;
         const tariff = tariffOf(m);
         if (!tariff) warnings.push('No tariff for this meter type');
+        else if (tariff.until && run.from.slice(0, 10) > tariff.until) warnings.push(`Tariff "${tariff.name}" ended on ${tariff.until}: link this year's tariff`);
+        else if (tariff.effective && run.to.slice(0, 10) <= tariff.effective) warnings.push(`Tariff "${tariff.name}" only starts on ${tariff.effective}`);
         const ch = ok && tariff ? charges(tariff, consumption, m.unit, run.month) : [];
         return { meterId: m.id, type: m.type, unit: m.unit, multiplier: m.multiplier || 1, open: open && { ts: open.ts, value: open.value }, close: close && { ts: close.ts, value: close.value }, consumption, tariff: tariff ? tariff.name : '', charges: ch, warnings };
       });

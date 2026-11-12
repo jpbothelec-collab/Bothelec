@@ -21,6 +21,9 @@ const JHB_FINAL = { title: 'City of Johannesburg approved tariffs 2026/27 (final
 const JHB_WATER = { title: 'Johannesburg Water approved tariffs 2026/27', url: 'https://joburg.org.za/documents_/Documents/Approved-Tarrifs-for-2026-27/Water-Tariffs-2026-2027-final.pdf' };
 const JHB_SEWER = { title: 'Johannesburg Water tariffs 2026/27, Council item 77', url: 'https://propertywheel.co.za/wp-content/uploads/ITEM-77-.pdf' };
 const TSH = { title: 'City of Tshwane tariff increase 2026/27 (published by Martinique, sectional-title administrators)', url: 'https://martinique.co.za/wp-content/uploads/2026/07/260701-City-of-Tshwane-Tariffs.pdf' };
+const GMM = { title: 'Govan Mbeki Local Municipality approved electricity tariff book 2025/2026 (uploaded)', url: '' };
+const GMM_FIXED = (main, label = 'Fixed charge') => [...(main ? [{ desc: label, amount: main }] : []), { desc: 'Retail / customer-related (availability) charge', amount: 193.95 }, { desc: 'Distribution network capacity charge', amount: 123.52 }];
+const GMM_NOTES = ['2025/26 tariff (1 July 2025 – 30 June 2026): use for months up to June 2026, and add the 2026/27 tariff for later months.', 'Low-demand season September–May, high-demand season June–August.', 'The R/POD charges are taken as per month per point of delivery.'];
 const c = v => Math.round(v * 100) / 10000; // c/kWh → R/kWh, keeping 4 decimals
 const bl = (pairs, conv = x => x) => pairs.map(([upTo, rate]) => ({ upTo, rate: conv(rate) }));
 const JHB_RES_BLOCKS = s => bl([[500, s[0]], [1000, s[1]], [2000, s[2]], [3000, s[3]], [null, s[4]]], c);
@@ -109,10 +112,38 @@ const LIBRARY = [
   },
 ];
 
+LIBRARY.push(
+  /* ---------- Mpumalanga: Govan Mbeki Local Municipality (Secunda, eMbalenhle, Bethal) ---------- */
+  {
+    key: 'gmm-el-domestic-2526', region: 'Mpumalanga', municipality: 'Govan Mbeki Local Municipality', category: 'Residential', type: 'electricity',
+    name: 'Govan Mbeki · Domestic conventional & prepaid 2025/26', effective: '2025-07-01', until: '2026-06-30', source: GMM,
+    blocks: bl([[50, 192.80], [350, 247.89], [600, 336.31], [null, 403.65]], c), fixed: GMM_FIXED(0), surchargePct: 0,
+    notes: [GMM_NOTES[0], GMM_NOTES[2], 'Inclining blocks: 0–50, 51–350, 351–600, above 600 kWh.'],
+  },
+  {
+    key: 'gmm-el-commercial-1p-2526', region: 'Mpumalanga', municipality: 'Govan Mbeki Local Municipality', category: 'Business', type: 'electricity',
+    name: 'Govan Mbeki · Commercial single-phase (conventional & prepaid) 2025/26', effective: '2025-07-01', until: '2026-06-30', source: GMM,
+    blocks: bl([[null, 321.52]], c), winterBlocks: bl([[null, 416.89]], c), winterMonths: [6, 7, 8], fixed: GMM_FIXED(1375.45), surchargePct: 0, notes: GMM_NOTES,
+  },
+  {
+    key: 'gmm-el-commercial-3p-2526', region: 'Mpumalanga', municipality: 'Govan Mbeki Local Municipality', category: 'Business', type: 'electricity',
+    name: 'Govan Mbeki · Commercial 2- & 3-phase (conventional & prepaid) 2025/26', effective: '2025-07-01', until: '2026-06-30', source: GMM,
+    blocks: bl([[null, 315.50]], c), winterBlocks: bl([[null, 416.89]], c), winterMonths: [6, 7, 8], fixed: GMM_FIXED(2126.41), surchargePct: 0, notes: GMM_NOTES,
+  },
+  {
+    key: 'gmm-el-institution-2526', region: 'Mpumalanga', municipality: 'Govan Mbeki Local Municipality', category: 'Institution', type: 'electricity',
+    name: 'Govan Mbeki · Institution single-phase (worship, NGOs, welfare, sports clubs) 2025/26', effective: '2025-07-01', until: '2026-06-30', source: GMM,
+    blocks: bl([[null, 321.52]], c), winterBlocks: bl([[null, 416.89]], c), winterMonths: [6, 7, 8], fixed: GMM_FIXED(376.84), surchargePct: 0, notes: GMM_NOTES,
+  },
+);
+LIBRARY.forEach(t => { t.region = t.region || 'Gauteng'; });
+
 /* Not yet in the library, and why. Shown on the Tariffs page. */
 const PENDING = [
   { municipality: 'City of Tshwane', what: 'Business electricity, water and sanitation', why: 'The city has not published a consolidated 2026/27 business schedule we could verify. Upload the tariff schedule to add it.' },
   { municipality: 'City of Ekurhuleni', what: 'All tariffs (Schedules 2–4)', why: 'Published in Annexure F of the 2026/27 budget; the city website could not be read from here. Upload the schedule to add it.' },
+  { municipality: 'Govan Mbeki Local Municipality', what: '2026/27 tariffs; water and sanitation', why: 'Only the 2025/26 electricity book has been uploaded. Upload the 2026/27 tariff book (and the water / sanitation tariffs) to add them.' },
+  { municipality: 'Govan Mbeki Local Municipality', what: 'Industrial & commercial time-of-use (LV / HV), domestic bulk supply, SSEG', why: 'These need peak / standard / off-peak and kVA demand readings, which the meters do not record yet.' },
   { municipality: 'City of Johannesburg', what: 'Large power user (demand / time-of-use)', why: 'Needs kVA demand and time-of-use readings, which the meters do not record yet.' },
 ];
 
