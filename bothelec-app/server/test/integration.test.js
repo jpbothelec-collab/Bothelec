@@ -999,7 +999,7 @@ test('edit a tariff for one building or for all buildings', async () => {
 test('uploaded Govan Mbeki 2025/26 tariffs: seasons, fixed charges, ended warning', async () => {
   const lib = (await req('GET', '/api/tariffs/library')).data.library;
   const g = lib.filter(t => t.region === 'Mpumalanga');
-  assert.equal(g.length, 4); assert.ok(g.every(t => t.until === '2026-06-30' && t.source.title && !t.source.url));
+  assert.equal(g.length, 7); assert.ok(g.every(t => t.until === '2026-06-30' && t.source.title && !t.source.url));
   const q = async (id, consumption, month) => (await req('POST', '/api/tariffs/quote', { id, consumption, month })).data;
   // domestic 700 kWh: 50×1.928 + 300×2.4789 + 250×3.3631 + 100×4.0365 = 96.40 + 743.67 + 840.78 + 403.65; + 193.95 + 123.52
   let r = await q('gmm-el-domestic-2526', 700, '2026-03');
@@ -1044,4 +1044,52 @@ test('billing cycle per building: readings period, opening readings and billing 
   assert.equal(item.consumption, 400 * (m.multiplier || 1));
   await req('DELETE', `/api/recoveries/${r.data.run.id}`);
   await req('POST', '/api/utility/cycle/B4', { day: 1 });
+});
+
+test('time-of-use and demand billing with TOU meter registers', async () => {
+  const q = async (id, body) => { const r = await req('POST', '/api/tariffs/quote', { id, ...body }); assert.equal(r.status, 200, JSON.stringify(r.data)); return r.data; };
+  const near = (a, b, m) => assert.ok(Math.abs(a - b) < 0.03, `${m}: ${a} ≠ ${b}`);
+  // Joburg large customer TOU LV in July: 1 000 peak × 7.6624 + 3 000 std × 2.9256 + 2 000 off × 2.0044 = 20 448;
+  // 120 kVA × 461.28 = 55 353.60; fixed 4 629.64; 2% of 80 431.24 = 1 608.62; network surcharge 6 000 × 0.06 = 360
+  let r = await q('jhb-el-lpu-tou-lv', { regs: { peak: 1000, std: 3000, off: 2000 }, kva: 120, month: '2026-07' });
+  near(r.subtotal, 82399.86, 'Joburg LPU TOU winter');
+  assert.ok(r.lines.some(l => /Peak energy \(high season\)/.test(l.desc) && l.rate === 7.6624));
+  // without registers it bills at the standard rate and says so
+  r = await q('jhb-el-lpu-tou-lv', { consumption: 6000, month: '2026-10' });
+  assert.ok(r.notes.some(n => /standard rate/.test(n)) && r.notes.some(n => /demand/.test(n)));
+  // demand tariff: no kVA reading → the 70 kVA minimum
+  r = await q('jhb-el-lpu-demand-lv', { consumption: 1000, month: '2026-10' });
+  assert.ok(r.lines.some(l => /Demand charge/.test(l.desc) && l.qty === 70 && l.rate === 461.22));
+  r = await q('jhb-el-lpu-demand-lv', { consumption: 1000, kva: 95, month: '2026-10' });
+  assert.ok(r.lines.some(l => /Demand charge/.test(l.desc) && l.qty === 95));
+  // a TOU tenant meter, read with registers, billed in a run
+  let st = (await req('GET', '/api/state')).data;
+  const ten = st.tenants.find(t => t.building === 'B4' && t.active !== false);
+  r = await req('POST', '/api/meters', { meter: { id: 'E-TOU1', building: 'B4', type: 'electricity', serial: 'TOU-0001', tenantId: ten.id, tou: true, multiplier: 2, tariffId: 'lib:jhb-el-lpu-tou-lv' } });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.ok(r.data.meter.tou && r.data.meter.kva);
+  r = await req('POST', '/api/meters/E-TOU1/readings', { date: '2022-07-01', registers: { peak: 100, std: 200, off: 300 } });
+  assert.equal(r.status, 200, JSON.stringify(r.data)); assert.equal(r.data.reading.value, 600, 'total = sum of the registers');
+  await req('POST', '/api/meters/E-TOU1/readings', { date: '2022-08-01', registers: { peak: 150, std: 300, off: 450, kva: 40 } });
+  const at = await req('GET', '/api/utility/readings-at/B4?date=2022-07-01');
+  assert.deepEqual([at.data.readings['E-TOU1'].peak, at.data.readings['E-TOU1'].off], [100, 300]);
+  // a lower register is flagged
+  r = await req('POST', '/api/meters/E-TOU1/readings', { date: '2022-08-02', registers: { peak: 10, std: 300, off: 450 } });
+  assert.match(r.data.warning, /Peak register lower/);
+  await req('DELETE', `/api/meters/E-TOU1/readings/${encodeURIComponent('2022-08-02T12:00:00.000Z')}`);
+  r = await req('POST', '/api/recoveries', { building: 'B4', month: '2022-07' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const it = r.data.run.lines.flatMap(l => l.items).find(x => x.meterId === 'E-TOU1');
+  assert.deepEqual(it.regs, { peak: 100, std: 200, off: 300 }, 'register use × multiplier 2');
+  assert.equal(it.kva, 80);
+  assert.ok(it.charges.some(c => /Peak energy \(high season\)/.test(c.desc) && c.qty === 100));
+  assert.ok(it.charges.some(c => /Demand charge/.test(c.desc) && c.qty === 80));
+  await req('DELETE', `/api/recoveries/${r.data.run.id}`);
+  // CSV import with register columns
+  r = await req('POST', '/api/readings/import', { rows: [{ meter: 'TOU-0001', date: '2022-09-01', time: '08:00', value: '', registers: { peak: 200, std: 400, off: 600, kva: 35 } }] });
+  assert.equal(r.data.imported, 1, JSON.stringify(r.data));
+  // a TOU tariff saved from the editor
+  r = await req('PUT', '/api/tariffs', { tariffs: [...(await req('GET', '/api/state')).data.tariffs, { name: 'My TOU', type: 'electricity', tou: { low: { peak: 3, std: 2, off: 1 }, high: { peak: 6, std: 3, off: 1.5 } }, demand: { low: 300, high: 350 }, winterMonths: [6, 7, 8] }] });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal((await req('PUT', '/api/tariffs', { tariffs: [{ name: 'Bad TOU', type: 'electricity', tou: { low: { peak: 3, std: '', off: 1 }, high: {} } }] })).status, 400);
 });

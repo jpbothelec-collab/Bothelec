@@ -262,7 +262,7 @@ function createServer(env = process.env, opts = {}) {
   R('POST', '/api/utility/tariffs/:bid/customise', (req, res, { p, body }) => result(res, U().customiseTariff(p.bid, String(body.tariffId || ''))), { roles: STAFF });
   R('GET', '/api/tariffs/library', (req, res) => send(res, 200, U().tariffLibrary()), { roles: STAFF });
   R('POST', '/api/tariffs/library', (req, res, { body }) => result(res, U().addFromLibrary(String(body.key || ''))), { roles: STAFF });
-  R('POST', '/api/tariffs/quote', (req, res, { body }) => result(res, U().quote(body.tariff || String(body.id || ''), body.consumption, /^\d{4}-\d{2}$/.test(body.month || '') ? body.month : '')), { roles: STAFF });
+  R('POST', '/api/tariffs/quote', (req, res, { body }) => result(res, U().quote(body.tariff || String(body.id || ''), body.consumption, /^\d{4}-\d{2}$/.test(body.month || '') ? body.month : '', { regs: body.regs, kva: body.kva })), { roles: STAFF });
   R('POST', '/api/recoveries', (req, res, { u, body }) => result(res, U().createRun(body, u)), { roles: STAFF });
   R('POST', '/api/recoveries/:id/recalc', (req, res, { p }) => result(res, U().recalcRun(p.id)), { roles: STAFF });
   R('POST', '/api/recoveries/:id/approve', (req, res, { u, p }) => result(res, U().approveRun(p.id, u)), { roles: STAFF });

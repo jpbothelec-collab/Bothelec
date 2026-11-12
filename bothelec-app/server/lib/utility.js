@@ -11,6 +11,11 @@ const TYPE_LABEL = { electricity: 'Electricity', water: 'Water', solar: 'Solar' 
 const ROLES = ['council', 'check', 'sub'];
 const ROW_KINDS = ['shop', 'common', 'council', 'check'];
 const DAY = 864e5;
+/* Time-of-use registers. A TOU meter keeps separate cumulative kWh registers per period, and a maximum-demand register
+ * (kVA, the highest in the billing period). They are stored as extra reading channels: "<meterId>#peak" etc. */
+const REGS = ['peak', 'std', 'off'];
+const REG_LABEL = { peak: 'Peak', std: 'Standard', off: 'Off-peak', kva: 'Max demand' };
+const chan = (id, r) => `${id}#${r}`;
 const r2 = n => Math.round(n * 100) / 100;
 const r3 = n => Math.round(n * 1000) / 1000;
 const str = (v, n = 200) => String(v == null ? '' : v).trim().slice(0, n);
@@ -44,11 +49,12 @@ function createUtility(ctx) {
     if (/^lib:/.test(d.tariffId || '')) { const r = libTariffId(d.tariffId); if (r.error) return r; d.tariffId = r.id; }
     const tariffId = d.tariffId && S.settings.tariffs.find(t => t.id === d.tariffId && tariffFits(t, { type, building: b.id })) ? d.tariffId : null;
     if (!m) { m = { id, removed: false, createdAt: nowIso() }; S.meters.push(m); }
-    else if (m.id !== id) { db.readings.rename(m.id, id); S.jobs.filter(j => j.meter === m.id).forEach(j => { j.meter = id; save('jobs', j); }); db.del('meters', m.id); }
+    else if (m.id !== id) { db.readings.rename(m.id, id); [...REGS, 'kva'].forEach(r => db.readings.rename(chan(m.id, r), chan(id, r))); S.jobs.filter(j => j.meter === m.id).forEach(j => { j.meter = id; save('jobs', j); }); db.del('meters', m.id); }
     if (d.role !== undefined) m.role = ROLES.includes(d.role) ? d.role : 'sub';
     if (!m.role) m.role = 'sub';
     Object.assign(m, { id, building: b.id, type, unit: TYPES[type], serial: str(d.serial, 60), make: str(d.make, 60), model: str(d.model, 60), location: str(d.location, 80),
-      multiplier: mult, tenantId, tariffId, comm: d.comm === 'meterhead' ? 'm2m' : ['manual', 'connector', 'm2m'].includes(d.comm) ? d.comm : 'manual', installed: isoDate(d.installed), notes: str(d.notes, 1000) });
+      multiplier: mult, tenantId, tariffId, comm: d.comm === 'meterhead' ? 'm2m' : ['manual', 'connector', 'm2m'].includes(d.comm) ? d.comm : 'manual', installed: isoDate(d.installed), notes: str(d.notes, 1000),
+      tou: type === 'electricity' && !!d.tou, kva: type === 'electricity' && !!(d.kva || d.tou) });
     if (!(b.divisions || []).includes('utility')) { b.divisions = [...(b.divisions || []), 'utility']; save('buildings', b); }
     syncMeterEquipment(b);
     save('meters', m); changed(b.id);
@@ -70,17 +76,29 @@ function createUtility(ctx) {
   /* ---------------- readings ---------------- */
   function addReading(meterId, d, actor, source = 'manual') {
     const m = meter(meterId); if (!m) return { error: 'Meter not found.' };
+    const regs = {}, warnings = [];
+    if (m.tou || m.kva) for (const r of [...(m.tou ? REGS : []), 'kva']) {
+      const v = d.registers && d.registers[r]; if (v === '' || v == null) continue;
+      if (!(+v >= 0) || +v > 1e12) return { error: `Enter a number for the ${REG_LABEL[r].toLowerCase()} register.` };
+      regs[r] = +v;
+    }
+    if ((d.value === '' || d.value == null) && m.tou && REGS.every(r => regs[r] != null)) d = { ...d, value: REGS.reduce((a, r) => a + regs[r], 0) }; // total = sum of the TOU registers
+    if ((d.value === '' || d.value == null) && Object.keys(regs).length && !REGS.some(r => regs[r] != null)) d = { ...d, value: null, onlyRegs: true }; // max demand only
     const value = +d.value;
-    if (d.value === '' || d.value == null || !(value >= 0) || value > 1e12) return { error: 'Enter the meter reading (a number).' };
+    if (!d.onlyRegs && (d.value === '' || d.value == null || !(value >= 0) || value > 1e12)) return { error: 'Enter the meter reading (a number).' };
     let ts = d.ts;
     if (isoDate(d.date)) ts = `${d.date}T${/^\d{2}:\d{2}$/.test(d.time || '') ? d.time : '12:00'}:00.000Z`;
     if (!ts || isNaN(Date.parse(ts))) ts = nowIso();
     ts = new Date(ts).toISOString();
     if (ts > new Date(Date.now() + DAY).toISOString()) return { error: 'The reading date cannot be in the future.' };
-    const prev = db.readings.before(m.id, ts);
-    const warning = prev && value < prev.value ? `Lower than the previous reading (${prev.value} on ${prev.ts.slice(0, 10)}). Meter replaced or reading mistake?` : null;
+    const prev = d.onlyRegs ? null : db.readings.before(m.id, ts);
+    if (prev && value < prev.value) warnings.push(`Lower than the previous reading (${prev.value} on ${prev.ts.slice(0, 10)}). Meter replaced or reading mistake?`);
+    for (const r of REGS) if (regs[r] != null) { const p = db.readings.before(chan(m.id, r), ts); if (p && regs[r] < p.value) warnings.push(`${REG_LABEL[r]} register lower than before (${p.value}).`); }
+    const warning = warnings.join(' ') || null;
     const photo = d.photo ? saveDataUrl(d.photo, 'RD-' + m.id, 'jpg') : '';
-    db.readings.put(m.id, ts, value, source, actor ? actor.name : '', str(d.note || (d.jobId ? 'Job ' + d.jobId : ''), 200), photo || '');
+    const note = str(d.note || (d.jobId ? 'Job ' + d.jobId : ''), 200);
+    if (!d.onlyRegs) db.readings.put(m.id, ts, value, source, actor ? actor.name : '', note, photo || '');
+    for (const [r, v] of Object.entries(regs)) db.readings.put(chan(m.id, r), ts, v, source, actor ? actor.name : '', note, '');
     if (d.jobId) { const j = byId(S.jobs, d.jobId); if (j) { j.readings = j.readings || []; j.readings.push({ meter: m.id, ts, value, photo: photo || '', by: actor ? actor.name : '' }); save('jobs', j); } }
     changed(m.building);
     return { ok: true, reading: { meter: m.id, ts, value }, warning };
@@ -102,7 +120,7 @@ function createUtility(ctx) {
       const key = str(row.meter, 60);
       const m = meter(key) || S.meters.find(x => x.serial && x.serial === key);
       if (!m) { out.skipped.push({ line: row.line || i + 2, reason: `unknown meter "${key}"` }); continue; }
-      const r = addReading(m.id, { date: row.date, time: row.time, value: row.value, note: 'Imported' }, actor, 'import');
+      const r = addReading(m.id, { date: row.date, time: row.time, value: row.value, registers: row.registers, note: 'Imported' }, actor, 'import');
       if (r.error) out.skipped.push({ line: row.line || i + 2, reason: r.error }); else out.imported++;
     }
     changed(null);
@@ -163,11 +181,22 @@ function createUtility(ctx) {
   function normTariff(t) {
     const name = str(t.name, 120); if (!name) return null;
     if (!TYPES[t.type]) return { error: `Choose a type for "${name}".` };
-    const b = normBlocks(t.blocks, name, 'rates'); if (b.error) return b;
-    if (!b.blocks.length) return { error: `Add at least one rate for "${name}".` };
+    const touIn = t.type === 'electricity' && t.tou && (t.tou.low || t.tou.high) ? t.tou : null;
+    let tou = null;
+    if (touIn) {
+      tou = {};
+      for (const season of ['low', 'high']) { tou[season] = {}; for (const r of REGS) { const v = num((touIn[season] || {})[r], 0, 1000); if (v == null) return { error: `In "${name}", enter the ${season === 'high' ? 'high-season' : 'low-season'} ${REG_LABEL[r].toLowerCase()} rate (R/kWh).` }; tou[season][r] = v; } }
+    }
+    let demand = null;
+    if (t.type === 'electricity' && t.demand && (num(t.demand.low, 0, 1e5) || num(t.demand.high, 0, 1e5))) {
+      const low = num(t.demand.low, 0, 1e5) || 0, high = t.demand.high === '' || t.demand.high == null ? low : num(t.demand.high, 0, 1e5) || 0;
+      demand = { low, high, minKva: num(t.demand.minKva, 0, 1e6) || 0 };
+    }
+    const b = tou ? { blocks: [] } : normBlocks(t.blocks, name, 'rates'); if (b.error) return b;
+    if (!tou && !b.blocks.length) return { error: `Add at least one rate for "${name}".` };
     let winterBlocks = null;
-    if (t.winterBlocks && t.winterBlocks.length) { const w = normBlocks(t.winterBlocks, name, 'winter rates'); if (w.error) return w; winterBlocks = w.blocks.length ? w.blocks : null; }
-    const winterMonths = winterBlocks ? [...new Set((Array.isArray(t.winterMonths) && t.winterMonths.length ? t.winterMonths : [6, 7, 8]).map(Number).filter(m => m >= 1 && m <= 12))].sort((x, y) => x - y) : [];
+    if (!tou && t.winterBlocks && t.winterBlocks.length) { const w = normBlocks(t.winterBlocks, name, 'winter rates'); if (w.error) return w; winterBlocks = w.blocks.length ? w.blocks : null; }
+    const winterMonths = winterBlocks || tou || (demand && demand.high !== demand.low) ? [...new Set((Array.isArray(t.winterMonths) && t.winterMonths.length ? t.winterMonths : [6, 7, 8]).map(Number).filter(m => m >= 1 && m <= 12))].sort((x, y) => x - y) : [];
     const levyRate = t.levy ? num(t.levy.rate, 0, 1000) : null;
     const surchargePct = num(t.surchargePct, 0, 50) || 0;
     let sewer = null;
@@ -182,7 +211,7 @@ function createUtility(ctx) {
     if (Array.isArray(t.notes)) meta.notes = t.notes.map(n => str(n, 400)).filter(Boolean).slice(0, 8);
     return { id: str(t.id, 20) || 'TF' + rid(4), name, type: t.type, ...meta, blocks: b.blocks, winterBlocks, winterMonths, fixed: normFixed(t.fixed, typeof t.fixed === 'number' || typeof t.fixed === 'string' ? t.fixed : 0),
       levy: levyRate ? { desc: str(t.levy.desc, 80) || 'Levy', rate: levyRate, freeUnits: num(t.levy.freeUnits, 0, 1e6) || 0 } : null, surchargePct,
-      sewer, sewerPct: t.type === 'water' && !sewer ? Math.max(0, Math.min(200, +t.sewerPct || 0)) : 0 };
+      sewer, sewerPct: t.type === 'water' && !sewer ? Math.max(0, Math.min(200, +t.sewerPct || 0)) : 0, tou, demand };
   }
   function setTariffs(list) {
     if (!Array.isArray(list)) return { error: 'Tariffs must be a list.' };
@@ -217,13 +246,30 @@ function createUtility(ctx) {
     return out;
   }
   const fmt = n => String(Math.round(n * 1000) / 1000);
-  const isWinter = (tariff, month) => !!(tariff.winterBlocks && month && tariff.winterMonths.includes(+String(month).slice(5, 7)));
-  /* All charges for one meter for one month (month = 'YYYY-MM', for the season). Excludes VAT. */
-  function charges(tariff, consumption, unit, month) {
-    const winter = isWinter(tariff, month);
-    const blocks = winter ? tariff.winterBlocks : tariff.blocks;
-    const out = blockCharges(blocks, consumption, unit, tariff.type === 'water' ? 'Water' : tariff.winterBlocks ? (winter ? 'Energy (winter)' : 'Energy (summer)') : tariff.type === 'solar' ? 'Solar energy' : 'Energy');
-    const energy = out.reduce((a, x) => a + x.amount, 0);
+  const isWinter = (tariff, month) => !!((tariff.winterBlocks || tariff.tou || tariff.demand) && month && (tariff.winterMonths || []).includes(+String(month).slice(5, 7)));
+  /* All charges for one meter for one month (month = 'YYYY-MM', for the season). Excludes VAT.
+   * x = { regs: { peak, std, off } kWh used per TOU period, kva: maximum demand } for TOU / demand tariffs. */
+  function charges(tariff, consumption, unit, month, x = {}) {
+    const winter = isWinter(tariff, month), out = [], notes = [];
+    if (tariff.tou) {
+      const rates = tariff.tou[winter ? 'high' : 'low'], season = winter ? 'high season' : 'low season';
+      if (x.regs && REGS.every(r => x.regs[r] != null)) REGS.forEach(r => { const q = r3(x.regs[r]); out.push({ desc: `${REG_LABEL[r]} energy (${season})`, qty: q, rate: rates[r], amount: r2(q * rates[r]) }); });
+      else { out.push({ desc: `Energy at the standard rate (${season}): no peak / off-peak readings`, qty: r3(consumption), rate: rates.std, amount: r2(consumption * rates.std) }); notes.push('No time-of-use register readings: billed at the standard rate.'); }
+    } else {
+      const blocks = winter && tariff.winterBlocks ? tariff.winterBlocks : tariff.blocks;
+      out.push(...blockCharges(blocks, consumption, unit, tariff.type === 'water' ? 'Water' : tariff.winterBlocks ? (winter ? 'Energy (winter)' : 'Energy (summer)') : tariff.type === 'solar' ? 'Solar energy' : 'Energy'));
+    }
+    if (tariff.demand) {
+      const rate = winter ? tariff.demand.high : tariff.demand.low;
+      if (x.kva == null && !tariff.demand.minKva) notes.push('No maximum demand (kVA) reading: demand charge not billed.');
+      else {
+        const kva = Math.max(x.kva || 0, tariff.demand.minKva || 0);
+        out.push({ desc: `Demand charge${(tariff.winterMonths || []).length && tariff.demand.high !== tariff.demand.low ? ` (${winter ? 'high' : 'low'} season)` : ''}${x.kva != null && kva > x.kva ? ` (minimum ${tariff.demand.minKva} kVA)` : ''}`, qty: r3(kva), rate, amount: r2(kva * rate) });
+        if (x.kva == null) notes.push(`No maximum demand reading: billed on the ${tariff.demand.minKva} kVA minimum.`);
+      }
+    }
+    out.notes = notes;
+    const energy = out.reduce((a, y) => a + y.amount, 0);
     let sewerTotal = 0;
     if (tariff.sewer) {
       const sw = blockCharges(tariff.sewer.blocks, consumption, unit, 'Sewer', b => b.rate, (b, size) => size * (b.pct ?? 100) / 100).filter(x => x.amount > 0 || x.rate > 0);
@@ -240,16 +286,19 @@ function createUtility(ctx) {
       const q = r3(consumption - (tariff.levy.freeUnits || 0));
       out.push({ desc: tariff.levy.desc, qty: q, rate: tariff.levy.rate, amount: r2(q * tariff.levy.rate) });
     }
+    out.notes = notes;
     return out;
   }
   /* Try a tariff on an amount (Tariffs page calculator). */
-  function quote(tariffOrId, consumption, month) {
+  function quote(tariffOrId, consumption, month, x = {}) {
     const t = typeof tariffOrId === 'string' ? (S.settings.tariffs.find(x => x.id === tariffOrId) || (LIBRARY.find(x => x.key === tariffOrId) && normTariff({ ...LIBRARY.find(x => x.key === tariffOrId), id: 'tmp' }))) : normTariff(tariffOrId || {});
     if (!t || t.error) return { error: (t && t.error) || 'Tariff not found.' };
-    const q = num(consumption, 0, 1e9); if (q == null) return { error: 'Enter the consumption.' };
-    const lines = charges(t, q, TYPES[t.type] || '', month || nowIso().slice(0, 7));
+    const regs = x.regs && REGS.every(r => num(x.regs[r], 0, 1e9) != null) ? Object.fromEntries(REGS.map(r => [r, +x.regs[r]])) : null;
+    const q = regs ? REGS.reduce((a, r) => a + regs[r], 0) : num(consumption, 0, 1e9); if (q == null) return { error: 'Enter the consumption.' };
+    const kva = num(x.kva, 0, 1e7);
+    const lines = charges(t, q, TYPES[t.type] || '', month || nowIso().slice(0, 7), { regs, kva });
     const sub = r2(lines.reduce((a, x) => a + x.amount, 0)), vat = r2(sub * S.settings.billing.vatRate / 100);
-    return { ok: true, lines, subtotal: sub, vat, total: r2(sub + vat), winter: isWinter(t, month || nowIso().slice(0, 7)) };
+    return { ok: true, lines, notes: lines.notes || [], subtotal: sub, vat, total: r2(sub + vat), winter: isWinter(t, month || nowIso().slice(0, 7)) };
   }
   /* A tariff fits a meter when the type matches and it is shared or belongs to the meter's building. */
   const tariffFits = (t, m) => t.type === m.type && (!t.building || t.building === m.building);
@@ -297,6 +346,20 @@ function createUtility(ctx) {
     const from = new Date(Date.UTC(y, m - 1, 1)), to = new Date(Date.UTC(y, m, 1));
     return { from: from.toISOString(), to: to.toISOString(), label: from.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }) };
   }
+  /* kWh per TOU period and the maximum demand (kVA) in a billing period, × the meter multiplier. */
+  function touUse(m, from, to) {
+    const x = {}, mult = m.multiplier || 1;
+    if (m.tou) {
+      const regs = {};
+      for (const g of REGS) { const o = nearest(chan(m.id, g), from), c = nearest(chan(m.id, g), to); if (o && c && o.ts !== c.ts && c.value >= o.value) regs[g] = r3((c.value - o.value) * mult); }
+      if (REGS.every(g => regs[g] != null)) x.regs = regs;
+    }
+    if (m.kva) {
+      const list = db.readings.range(chan(m.id, 'kva'), new Date(Date.parse(from) + DAY).toISOString(), new Date(Date.parse(to) + 3 * DAY).toISOString(), 500);
+      if (list.length) x.kva = r3(Math.max(...list.map(r => r.value)) * mult);
+    }
+    return x;
+  }
   /* A building's billing period for a month. With a cycle day of 1 it is the calendar month; with, say, 25 the
    * "October" period runs from 25 September to 25 October (readings taken on the 25th). */
   const cycleDay = b => Math.min(28, Math.max(1, Math.round(+((b || {}).billingCycleDay) || 1)));
@@ -321,6 +384,7 @@ function createUtility(ctx) {
     for (const m of S.meters.filter(x => x.building === bid && !x.removed)) {
       const r = nearest(m.id, at, 3);
       out[m.id] = r ? { ts: r.ts, value: r.value, offDays: r.offDays, estimated: r.estimated } : null;
+      if (m.tou) for (const g of REGS) { const x = nearest(chan(m.id, g), at, 3); if (x) (out[m.id] = out[m.id] || {})[g] = x.value; }
     }
     return { ok: true, date, readings: out };
   }
@@ -338,14 +402,17 @@ function createUtility(ctx) {
           if (close.estimated) warnings.push(`Closing reading is ${close.offDays} days from the period end`);
           if (close.value < open.value) warnings.push('Closing reading is lower than the opening reading');
         }
-        const ok = open && close && open.ts !== close.ts && close.value >= open.value;
-        const consumption = ok ? r3((close.value - open.value) * (m.multiplier || 1)) : 0;
+        const x = touUse(m, run.from, run.to);
+        let ok = open && close && open.ts !== close.ts && close.value >= open.value;
+        let consumption = ok ? r3((close.value - open.value) * (m.multiplier || 1)) : 0;
+        if (!ok && x.regs) { ok = true; consumption = r3(REGS.reduce((a, g) => a + x.regs[g], 0)); warnings.length = 0; }
         const tariff = tariffOf(m);
         if (!tariff) warnings.push('No tariff for this meter type');
         else if (tariff.until && run.from.slice(0, 10) > tariff.until) warnings.push(`Tariff "${tariff.name}" ended on ${tariff.until}: link this year's tariff`);
         else if (tariff.effective && run.to.slice(0, 10) <= tariff.effective) warnings.push(`Tariff "${tariff.name}" only starts on ${tariff.effective}`);
-        const ch = ok && tariff ? charges(tariff, consumption, m.unit, run.month) : [];
-        return { meterId: m.id, type: m.type, unit: m.unit, multiplier: m.multiplier || 1, open: open && { ts: open.ts, value: open.value }, close: close && { ts: close.ts, value: close.value }, consumption, tariff: tariff ? tariff.name : '', charges: ch, warnings };
+        const ch = ok && tariff ? charges(tariff, consumption, m.unit, run.month, x) : [];
+        (ch.notes || []).forEach(n => warnings.push(n));
+        return { regs: x.regs || null, kva: x.kva ?? null, meterId: m.id, type: m.type, unit: m.unit, multiplier: m.multiplier || 1, open: open && { ts: open.ts, value: open.value }, close: close && { ts: close.ts, value: close.value }, consumption, tariff: tariff ? tariff.name : '', charges: ch, warnings };
       });
       const sub = r2(items.reduce((a, it) => a + it.charges.reduce((x, c) => x + c.amount, 0), 0));
       return { tenantId: t.id, tenant: t.name, unit: t.unit, items, subtotal: sub, vat: r2(sub * vat), total: r2(sub * (1 + vat)), invoice: old && old.invoice, emailed: old && old.emailed };

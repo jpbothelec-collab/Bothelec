@@ -1983,7 +1983,9 @@
             <dt>Role</dt><dd>${m.type === 'solar' ? 'Solar (supply)' : ROLE_LABEL[m.role || 'sub']}</dd><dt>${m.type === 'solar' ? 'Feeds into' : 'Fed from'}</dt><dd>${m.parentId && meterById(m.parentId) ? `<a href="#/meters/meter/${encodeURIComponent(m.parentId)}">${esc(mLabel(meterById(m.parentId)))}</a>` : '—'}</dd><dt>Multiplier (CT ratio)</dt><dd>${m.multiplier}</dd><dt>Tariff</dt><dd>${esc(((S.tariffs || []).find(x => x.id === m.tariffId) || {}).name || 'Default for ' + UT_LABEL[m.type].toLowerCase())}</dd><dt>Readings by</dt><dd>${{ manual: 'Manual / CSV', connector: 'Building link', m2m: 'M2M Solutions', meterhead: 'M2M Solutions' }[m.comm] || 'Manual'}</dd><dt>Installed</dt><dd>${m.installed ? dmy(m.installed) : '—'}</dd>${m.live ? `<dt>Live value</dt><dd>${fmtN(m.live.value)} · ${hhmm(m.live.at)}</dd>` : ''}</dl></div>
           ${isField() && !m.removed ? `<form class="card form" data-form="reading" data-meter="${esc(m.id)}"><header><h3>Record a reading</h3></header>
             <div class="grid g2"><div class="field"><label>Date</label><input type="date" name="date" value="${today()}" max="${today()}" required></div><div class="field"><label>Time</label><input type="time" name="time" value="${new Date().toTimeString().slice(0, 5)}"></div></div>
-            <div class="field"><label>Reading (${esc(m.unit)} register)</label><input name="value" type="number" step="any" min="0" inputmode="decimal" required placeholder="${m.last ? 'last: ' + m.last.value : ''}"></div>
+            ${m.tou ? `<div class="grid g3">${[['peak', 'Peak'], ['std', 'Standard'], ['off', 'Off-peak']].map(([r, l]) => `<div class="field"><label>${l} kWh register</label><input name="r_${r}" type="number" step="any" min="0" inputmode="decimal" required></div>`).join('')}</div><div class="field"><label>Total kWh register (optional: the sum of the three is used)</label><input name="value" type="number" step="any" min="0" inputmode="decimal" placeholder="${m.last ? 'last: ' + m.last.value : ''}"></div>`
+              : `<div class="field"><label>Reading (${esc(m.unit)} register)</label><input name="value" type="number" step="any" min="0" inputmode="decimal" ${m.kva ? '' : 'required'} placeholder="${m.last ? 'last: ' + m.last.value : ''}"></div>`}
+            ${m.kva || m.tou ? '<div class="field"><label>Maximum demand this period (kVA, optional)</label><input name="r_kva" type="number" step="any" min="0" inputmode="decimal"></div>' : ''}
             <div class="field"><label>Photo of the meter (optional)</label><input type="file" accept="image/*" capture="environment" data-mphoto></div>
             <div class="field"><label>Note (optional)</label><input name="note"></div>
             <button class="btn primary">${ic('check')}Save reading</button></form>` : ''}
@@ -2002,6 +2004,7 @@
         <div class="grid g2"><div class="field"><label>Tenant billed for this meter</label><select name="tenantId"><option value="">Common area / landlord (not billed to a tenant)</option>${tenants.map(t => `<option value="${t.id}" ${m.tenantId === t.id ? 'selected' : ''}>${esc(t.name)}${t.unit ? ' · ' + esc(t.unit) : ''}</option>`).join('')}</select></div>
           <div class="field"><label>Tariff</label><select name="tariffId">${m.type ? tariffOptions(m) : `<option value="">Default for the meter type</option>${(S.tariffs || []).filter(t => !t.building || t.building === m.building).map(t => `<option value="${t.id}" ${m.tariffId === t.id ? 'selected' : ''}>${esc(t.name)} (${UT_LABEL[t.type]})</option>`).join('')}`}</select></div></div>
         <div class="grid g2"><div class="field"><label>How readings arrive</label><select name="comm"><option value="manual" ${m.comm === 'manual' ? 'selected' : ''}>Manual reading / CSV import</option><option value="connector" ${m.comm === 'connector' ? 'selected' : ''}>Building link (Modbus / MQTT / HTTP)</option><option value="m2m" ${m.comm === 'm2m' || m.comm === 'meterhead' ? 'selected' : ''}>M2M Solutions (API)</option></select></div>${field('Installed', 'installed', m.installed, 'date')}</div>
+        <div class="field"><label>Electricity registers (for time-of-use and demand tariffs)</label><label class="tf-check"><input type="checkbox" name="tou" ${m.tou ? 'checked' : ''}> Time-of-use meter: peak, standard and off-peak kWh registers</label><label class="tf-check"><input type="checkbox" name="kva" ${m.kva || m.tou ? 'checked' : ''}> Maximum demand (kVA) register</label></div>
         <p class="muted" style="margin:0;font-size:12px">Building link: map the meter's register to the path <code>meters.${esc(m.id || 'METER-ID')}.reading</code> in the building's connection settings.</p>
         <div class="field"><label>Notes</label><textarea name="notes">${esc(m.notes || '')}</textarea></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary">${ic('check')}Save meter</button>${isNew ? '' : `<button type="button" class="btn ${m.removed ? '' : 'danger'}" data-action="meterremoved" data-id="${esc(m.id)}" data-v="${m.removed ? '' : '1'}">${m.removed ? 'Restore meter' : 'Remove meter'}</button>`}</div></form>`;
@@ -2039,13 +2042,18 @@
         ${ms.map(m => { const o = open(m.id); return `<div class="cap-row cap-period-row" data-cap="${esc(m.id)}" data-open="${o ? o.value : ''}" data-mult="${m.multiplier || 1}" data-unit="${esc(m.unit)}">
           <div><strong>${esc(m.serial || m.id)}</strong> <small class="muted">${UT_LABEL[m.type]} · ${esc(m.location || '')}${m.tenantId ? ' · ' + esc((tenantById(m.tenantId) || {}).name || '') : ''}${(m.multiplier || 1) !== 1 ? ' · ×' + m.multiplier : ''}</small></div>
           <div class="cap-block" title="Opening reading (read-only)" aria-label="Opening reading">${ui.capOpen.loading ? '…' : o ? `<strong>${fmtN(o.value, 3)}</strong><small>${dmy(o.ts)}${o.offDays > 3 ? ' · ' + o.offDays + ' days off' : ''}</small>` : '<small class="muted">No reading</small>'}</div>
-          <input name="v_${esc(m.id)}" type="number" step="any" min="0" inputmode="decimal" placeholder="${esc(m.unit)}" aria-label="Closing reading for ${esc(m.serial || m.id)}" data-capinput>
+          <input name="v_${esc(m.id)}" type="number" step="any" min="0" inputmode="decimal" placeholder="${m.tou ? 'total (optional)' : esc(m.unit)}" aria-label="Closing reading for ${esc(m.serial || m.id)}" data-capinput>
           <div class="cap-block cap-use" aria-live="polite">—</div>
-          <label class="btn sm cap-photo" title="Photo of the meter">${ic('camera')}<input type="file" accept="image/*" capture="environment" hidden data-capphoto="${esc(m.id)}"></label></div>`; }).join('') || '<div class="empty">No meters in this building.</div>'}
+          <label class="btn sm cap-photo" title="Photo of the meter">${ic('camera')}<input type="file" accept="image/*" capture="environment" hidden data-capphoto="${esc(m.id)}"></label></div>
+          ${m.tou ? [['peak', 'Peak'], ['std', 'Standard'], ['off', 'Off-peak']].map(([r, l]) => `<div class="cap-period-row cap-reg" data-capreg="${esc(m.id)}" data-open="${o && o[r] != null ? o[r] : ''}" data-mult="${m.multiplier || 1}" data-unit="kWh"><div class="cap-reg-l">${l} register</div>
+            <div class="cap-block">${ui.capOpen.loading ? '…' : o && o[r] != null ? `<strong>${fmtN(o[r], 3)}</strong>` : '<small class="muted">No reading</small>'}</div>
+            <input name="r_${esc(m.id)}_${r}" type="number" step="any" min="0" inputmode="decimal" placeholder="kWh" aria-label="${l} register for ${esc(m.serial || m.id)}" data-capinput data-reg>
+            <div class="cap-block cap-use">—</div><span></span></div>`).join('') : ''}
+          ${m.kva || m.tou ? `<div class="cap-period-row cap-reg"><div class="cap-reg-l">Max demand this period</div><span></span><input name="k_${esc(m.id)}" type="number" step="any" min="0" inputmode="decimal" placeholder="kVA" aria-label="Maximum demand kVA for ${esc(m.serial || m.id)}"><span></span><span></span></div>` : ''}`; }).join('') || '<div class="empty">No meters in this building.</div>'}
         <button class="btn primary" ${okRange ? '' : 'disabled'}>${ic('check')}Save closing readings at ${dmy(P.to)}</button></form>`;
   }
-  const capValues = () => Object.fromEntries([...document.querySelectorAll('[data-cap]')].map(r => [r.dataset.cap, r.querySelector('[data-capinput]').value]));
-  function capRestore(vals) { document.querySelectorAll('[data-cap]').forEach(r => { const v = (vals || {})[r.dataset.cap]; if (v) { r.querySelector('[data-capinput]').value = v; capUse(r); } }); }
+  const capValues = () => Object.fromEntries([...document.querySelectorAll('form[data-form=capture] input[type=number]')].filter(x => x.value !== '').map(x => [x.name, x.value]));
+  function capRestore(vals) { document.querySelectorAll('form[data-form=capture] input[type=number]').forEach(x => { const v = (vals || {})[x.name]; if (v) { x.value = v; if (x.matches('[data-capinput]')) capUse(x.closest('.cap-period-row')); } }); }
   function capUse(row) {
     const v = row.querySelector('[data-capinput]').value, o = row.dataset.open, out = row.querySelector('.cap-use');
     if (v === '' || o === '') { out.textContent = '—'; out.classList.remove('bad'); return; }
@@ -2057,11 +2065,11 @@
   function viewReadingsImport() {
     const I = ui.rimp;
     let body = `<div class="card form" style="max-width:720px"><header><h2>Import meter readings</h2></header>
-      <p style="margin:0">A CSV with columns for the <b>meter</b> (ID or serial number), the <b>date</b>, optionally the <b>time</b>, and the <b>reading</b>. Excel: Save As → CSV.</p>
+      <p style="margin:0">A CSV with columns for the <b>meter</b> (ID or serial number), the <b>date</b>, optionally the <b>time</b>, and the <b>reading</b>. Time-of-use meters can add <b>peak</b>, <b>standard</b> and <b>off-peak</b> register columns and a <b>kVA</b> (maximum demand) column. Excel: Save As → CSV.</p>
       <div class="field"><label>CSV file</label><input type="file" accept=".csv,text/csv" data-rimpfile></div></div>`;
     if (I) {
       const rows = rimpRows(), good = rows.filter(r => r.ok);
-      body += `<div class="card" style="margin-top:14px"><header><h2>Columns</h2><small>${esc(I.name)} · ${I.body.length} rows</small></header><div class="grid g4">${[['meter', 'Meter ID / serial'], ['date', 'Date'], ['time', 'Time'], ['value', 'Reading']].map(([k, l]) => `<div class="field"><label>${l}</label><select data-rimpmap="${k}"><option value="">—</option>${I.headers.map((h, i) => `<option value="${i}" ${String(I.map[k]) === String(i) ? 'selected' : ''}>${esc(h || 'Column ' + (i + 1))}</option>`).join('')}</select></div>`).join('')}</div></div>
+      body += `<div class="card" style="margin-top:14px"><header><h2>Columns</h2><small>${esc(I.name)} · ${I.body.length} rows</small></header><div class="grid g4">${[['meter', 'Meter ID / serial'], ['date', 'Date'], ['time', 'Time'], ['value', 'Reading'], ['peak', 'Peak kWh (TOU)'], ['std', 'Standard kWh (TOU)'], ['off', 'Off-peak kWh (TOU)'], ['kva', 'Max demand kVA']].map(([k, l]) => `<div class="field"><label>${l}</label><select data-rimpmap="${k}"><option value="">—</option>${I.headers.map((h, i) => `<option value="${i}" ${String(I.map[k]) === String(i) ? 'selected' : ''}>${esc(h || 'Column ' + (i + 1))}</option>`).join('')}</select></div>`).join('')}</div></div>
         <div class="card" style="margin-top:14px"><header><h2>Preview</h2><small>${good.length} ready · ${rows.length - good.length} with problems</small></header><div class="table-wrap"><table><thead><tr><th>Line</th><th>Meter</th><th>Date</th><th style="text-align:right">Reading</th><th></th></tr></thead><tbody>
         ${rows.slice(0, 30).map(r => `<tr class="${r.ok ? '' : 'muted'}"><td class="mono">${r.line}</td><td>${esc(r.meter)}</td><td class="mono">${r.date ? dmy(r.date) : '—'} ${esc(r.time || '')}</td><td class="mono" style="text-align:right">${r.value != null ? fmtN(r.value) : '—'}</td><td><small>${r.ok ? '<span class="pill ok">ok</span>' : esc(r.why)}</small></td></tr>`).join('')}</tbody></table></div>
         <div style="display:flex;gap:8px;margin-top:12px"><button class="btn primary" data-action="rimpgo" ${good.length ? '' : 'disabled'}>${ic('check')}Import ${good.length} readings</button><button class="btn" data-action="rimpclear">Start again</button></div></div>`;
@@ -2074,8 +2082,10 @@
     return I.body.map((c, i) => {
       const meter = g(c, 'meter').trim(), date = impDate(g(c, 'date')), time = (/^(\d{1,2}):(\d{2})/.exec(g(c, 'time') || g(c, 'date').split(/[ T]/)[1] || '') || []).slice(1, 3).map(x => x.padStart(2, '0')).join(':'), value = impMoney(g(c, 'value'));
       const m = (S.meters || []).find(x => x.id === meter || (x.serial && x.serial === meter));
-      const why = !m ? 'unknown meter' : !date ? 'no date' : value == null ? 'no reading' : '';
-      return { line: I.headerRow + i + 2, meter, date, time, value, ok: !why, why, meterId: m && m.id };
+      const registers = Object.fromEntries(['peak', 'std', 'off', 'kva'].map(k => [k, impMoney(g(c, k))]).filter(([, x]) => x != null));
+      const regsOk = ['peak', 'std', 'off'].every(k => registers[k] != null);
+      const why = !m ? 'unknown meter' : !date ? 'no date' : value == null && !regsOk && registers.kva == null ? 'no reading' : '';
+      return { line: I.headerRow + i + 2, meter, date, time, value, registers, ok: !why, why, meterId: m && m.id };
     });
   }
 
@@ -2113,7 +2123,7 @@
       (draft ? '<div class="banner ok"><span class="grow">Draft: add or correct readings, then <b>Recalculate</b>. <b>Approve</b> emails each tenant their statement and adds them to the billing tracker for invoicing.</span></div>' : '') +
       `<div class="grid g2">${r.lines.map(l => `<div class="card"><header><h2>${esc(l.tenant)}</h2><small>${esc(l.unit || '')}</small></header>
         ${l.items.length ? l.items.map(it => `<div class="ru-item"><div class="ru-head"><a href="#/meters/meter/${encodeURIComponent(it.meterId)}"><strong>${esc(it.meterId)}</strong></a> <small class="muted">${UT_LABEL[it.type]} · ${esc(it.tariff)}</small></div>
-          <small class="mono">${it.open ? fmtN(it.open.value) + ' (' + dmy(it.open.ts) + ')' : '—'} → ${it.close ? fmtN(it.close.value) + ' (' + dmy(it.close.ts) + ')' : '—'}${it.multiplier !== 1 ? ' × ' + it.multiplier : ''} = <b>${fmtN(it.consumption, 2)} ${esc(it.unit)}</b></small>
+          <small class="mono">${it.open ? fmtN(it.open.value) + ' (' + dmy(it.open.ts) + ')' : '—'} → ${it.close ? fmtN(it.close.value) + ' (' + dmy(it.close.ts) + ')' : '—'}${it.multiplier !== 1 ? ' × ' + it.multiplier : ''} = <b>${fmtN(it.consumption, 2)} ${esc(it.unit)}</b>${it.regs ? ` · peak ${fmtN(it.regs.peak, 2)} · standard ${fmtN(it.regs.std, 2)} · off-peak ${fmtN(it.regs.off, 2)} kWh` : ''}${it.kva != null ? ` · max demand ${fmtN(it.kva, 2)} kVA` : ''}</small>
           ${it.warnings.map(w => `<div class="ru-warn">${ic('alert')}${esc(w)}</div>`).join('')}
           ${it.charges.length ? `<table class="ru-ch">${it.charges.map(c => `<tr><td>${esc(c.desc)}</td><td class="mono">${fmtN(c.qty, 3)} × ${fmtRate(c.rate)}</td><td class="mono" style="text-align:right">${fmtMoney(c.amount)}</td></tr>`).join('')}</table>` : ''}</div>`).join('') : '<p class="muted">No meters assigned to this tenant.</p>'}
         <dl class="kv ltotals"><dt>Subtotal</dt><dd>${fmtMoney(l.subtotal)}</dd><dt>VAT</dt><dd>${fmtMoney(l.vat)}</dd><dt><strong>Total</strong></dt><dd><strong>${fmtMoney(l.total)}</strong></dd></dl>
@@ -2135,7 +2145,15 @@
   const fmtR = v => fmtRate(v);
   function tariffSummary(t) {
     const u = TU[t.type], bl = list => list.map((b, k) => { const from = k ? list[k - 1].upTo : 0; return `${list.length === 1 ? 'all' : b.upTo == null ? `above ${fmtN(from, 0)}` : `${fmtN(from, 0)}–${fmtN(b.upTo, 0)}`}: <strong>${fmtR(b.rate)}</strong>`; }).join(' · ');
+    const seasonM = `${(t.winterMonths || []).map(m => MONTHS3[m - 1]).join(', ')}`;
+    if (t.tou) return `<div class="tf-sum">
+      <div class="tf-sum-tou"><small>Time of use per kWh</small><table class="tf-q"><thead><tr><th></th><th>Peak</th><th>Standard</th><th>Off-peak</th></tr></thead><tbody>${[['low', 'Low season'], ['high', `High (${seasonM})`]].map(([k, l]) => `<tr><td>${l}</td>${['peak', 'std', 'off'].map(r => `<td class="mono"><strong>${fmtR(t.tou[k][r])}</strong></td>`).join('')}</tr>`).join('')}</tbody></table></div>
+      ${t.demand ? `<div><small>Demand per kVA</small><div><strong>${fmtR(t.demand.low)}</strong>${t.demand.high !== t.demand.low ? ` low · <strong>${fmtR(t.demand.high)}</strong> high` : ''}${t.demand.minKva ? ` · minimum ${t.demand.minKva} kVA` : ''}</div></div>` : ''}
+      ${t.fixed.length ? `<div><small>Fixed per month</small><div>${t.fixed.map(x => `${esc(x.desc)} <strong>${fmtMoney(x.amount)}</strong>`).join(' · ')}</div></div>` : ''}
+      ${t.levy ? `<div><small>Levy</small><div>${esc(t.levy.desc)} <strong>${fmtR(t.levy.rate)}</strong>/${u}${t.levy.freeUnits ? ` above ${t.levy.freeUnits} ${u}` : ''}</div></div>` : ''}
+      ${t.surchargePct ? `<div><small>Surcharge</small><div><strong>${t.surchargePct}%</strong> on the charges</div></div>` : ''}</div>`;
     return `<div class="tf-sum">
+      ${t.demand ? `<div><small>Demand per kVA</small><div><strong>${fmtR(t.demand.low)}</strong>${t.demand.high !== t.demand.low ? ` low · <strong>${fmtR(t.demand.high)}</strong> high` : ''}${t.demand.minKva ? ` · minimum ${t.demand.minKva} kVA` : ''}</div></div>` : ''}
       <div><small>${t.winterBlocks ? `Summer (${MONTHS3.filter((m, k) => !t.winterMonths.includes(k + 1)).length} months)` : 'Rates'} per ${u}</small><div>${bl(t.blocks)}</div></div>
       ${t.winterBlocks ? `<div><small>Winter (${t.winterMonths.map(m => MONTHS3[m - 1]).join(', ')}) per ${u}</small><div>${bl(t.winterBlocks)}</div></div>` : ''}
       ${t.fixed.length ? `<div><small>Fixed per month</small><div>${t.fixed.map(x => `${esc(x.desc)} <strong>${fmtMoney(x.amount)}</strong>`).join(' · ')}</div></div>` : ''}
@@ -2155,27 +2173,40 @@
           ${mine.has(t.libraryKey) ? '<span class="pill ok"><i></i>In your tariffs</span>' : `<button class="btn primary sm" data-action="tflibadd" data-key="${esc(t.libraryKey)}">${ic('plus')}Add</button>`}</header>
         ${tariffSummary(t)}
         ${(t.notes || []).length ? `<ul class="tf-notes">${t.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
-        ${tariffTry(t.libraryKey, t.type)}
+        ${tariffTry(t.libraryKey, t.type, t)}
         ${srcLink(t.source)}</div>`).join('')}</div>`).join('') +
       `<div class="card" style="margin-top:14px"><header><h2>Not in the library yet</h2></header><div class="rows">${L.pending.map(p => `<div class="row"><div class="grow"><strong>${esc(p.municipality)}</strong> · ${esc(p.what)}<br><small class="muted">${esc(p.why)}</small></div></div>`).join('')}</div></div>`;
   }
   const srcLink = src => (src ? `<small class="muted">Source: ${src.url ? `<a href="${esc(src.url)}" target="_blank" rel="noopener">${esc(src.title)}</a>` : esc(src.title)}</small>` : '');
   const tfEnded = t => !!(t.until && t.until < today());
-  const tariffTry = (id, type) => `<div class="tf-try" data-tftry="${esc(id)}"><label>Try it</label><input type="number" min="0" step="any" name="tq" placeholder="${TU[type]} in a month" aria-label="Consumption in ${TU[type]}"><input type="month" name="tm" value="${today().slice(0, 7)}" aria-label="Month"><button type="button" class="btn sm" data-action="tfquote">Work out</button><div class="tf-out"></div></div>`;
+  const tariffTry = (id, type, t = {}) => `<div class="tf-try" data-tftry="${esc(id)}"><label>Try it</label>${t.tou ? ['peak', 'std', 'off'].map(r => `<input type="number" min="0" step="any" name="tq_${r}" placeholder="${{ peak: 'Peak', std: 'Standard', off: 'Off-peak' }[r]} kWh" aria-label="${r} kWh">`).join('') : `<input type="number" min="0" step="any" name="tq" placeholder="${TU[type]} in a month" aria-label="Consumption in ${TU[type]}">`}${t.demand ? '<input type="number" min="0" step="any" name="tq_kva" placeholder="Max demand kVA" aria-label="Maximum demand kVA">' : ''}<input type="month" name="tm" value="${today().slice(0, 7)}" aria-label="Month"><button type="button" class="btn sm" data-action="tfquote">Work out</button><div class="tf-out"></div></div>`;
   const blockRow = (b, pct) => `<div class="tf-block${pct ? ' pct' : ''}" data-block><input name="upTo" type="number" step="any" min="0" value="${b.upTo == null ? '' : b.upTo}" placeholder="and above" aria-label="Up to"><input name="rate" type="number" step="any" min="0" value="${b.rate ?? ''}" placeholder="R per unit" aria-label="Rate in rand per unit">${pct ? `<input name="pct" type="number" step="any" min="0" max="100" value="${b.pct ?? 100}" aria-label="Share of water counted as sewage (%)" title="% of the water counted">` : ''}<button type="button" class="btn sm" data-action="rmblock" aria-label="Remove block" title="Remove block">${ic('x')}</button></div>`;
   const fixedRow = x => `<div class="tf-fixed" data-fixed><input name="fdesc" value="${esc(x.desc || '')}" placeholder="Description" aria-label="Charge description"><input name="famount" type="number" step="0.01" min="0" value="${x.amount ?? ''}" placeholder="R per month" aria-label="Rand per month"><button type="button" class="btn sm" data-action="rmfixed" aria-label="Remove charge" title="Remove charge">${ic('x')}</button></div>`;
   const blockList = (attr, list, pct) => `<div data-${attr}>${(list && list.length ? list : [{ upTo: null, rate: '' }]).map(b => blockRow(b, pct)).join('')}</div><button type="button" class="btn sm" data-action="addblock" data-into="${attr}" style="width:max-content">${ic('plus')}Add block</button>`;
+  const REGS3 = [['peak', 'Peak'], ['std', 'Standard'], ['off', 'Off-peak']];
+  const monthsBox = t => `<div class="field tf-months-sec" ${t.winterBlocks || t.tou || (t.demand && t.demand.high !== t.demand.low) ? '' : 'hidden'}><label>Winter / high-demand season months</label><div class="tf-months">${MONTHS3.map((m, k) => `<label><input type="checkbox" name="t_wm" value="${k + 1}" ${(t.winterMonths && t.winterMonths.length ? t.winterMonths : [6, 7, 8]).includes(k + 1) ? 'checked' : ''}>${m}</label>`).join('')}</div></div>`;
   function tariffCard(t) {
-    t = t || { name: '', type: 'electricity', fixed: [], blocks: [{ upTo: null, rate: '' }], winterBlocks: null, winterMonths: [6, 7, 8], levy: null, surchargePct: 0, sewer: null, sewerPct: 0 };
-    const u = TU[t.type] || 'unit', open = !t.id || ui.tfOpen === t.id;
+    t = t || { name: '', type: 'electricity', fixed: [], blocks: [{ upTo: null, rate: '' }], winterBlocks: null, winterMonths: [6, 7, 8], levy: null, surchargePct: 0, sewer: null, sewerPct: 0, tou: null, demand: null };
+    const u = TU[t.type] || 'unit', open = !t.id || ui.tfOpen === t.id, isTou = !!t.tou, el = t.type === 'electricity';
+    const touIn = (season, r) => `<input name="tou_${season}_${r}" type="number" step="any" min="0" value="${t.tou ? t.tou[season][r] : ''}" placeholder="R/kWh" aria-label="${season === 'high' ? 'High' : 'Low'} season ${r} rate">`;
     return `<details class="card form tf-card" data-tariff data-id="${esc(t.id || '')}" data-lib="${esc(t.libraryKey || '')}" ${open ? 'open' : ''}>
-      <summary><div class="tf-head"><div class="grow"><strong>${esc(t.name || 'New tariff')}</strong><br><small class="muted">${UT_LABEL[t.type] || ''}${t.building ? ` · <span class="pill info"><i></i>Only ${esc(bld(t.building).name)}</span>` : t.municipality ? ' · ' + esc(t.municipality) : ''}${t.effective ? ' · from ' + dmy(t.effective) : ''}${tfEnded(t) ? ` · <span class="pill warn"><i></i>Ended ${dmy(t.until)}</span>` : ''}${(S.meters || []).filter(m => m.tariffId === t.id && !m.removed).length ? ` · on ${(S.meters || []).filter(m => m.tariffId === t.id && !m.removed).length} meter(s)` : ''}</small></div><span class="btn sm">Edit</span></div>
+      <summary><div class="tf-head"><div class="grow"><strong>${esc(t.name || 'New tariff')}</strong><br><small class="muted">${UT_LABEL[t.type] || ''}${t.tou ? ' · time of use' : ''}${t.demand ? ' · demand (kVA)' : ''}${t.building ? ` · <span class="pill info"><i></i>Only ${esc(bld(t.building).name)}</span>` : t.municipality ? ' · ' + esc(t.municipality) : ''}${t.effective ? ' · from ' + dmy(t.effective) : ''}${tfEnded(t) ? ` · <span class="pill warn"><i></i>Ended ${dmy(t.until)}</span>` : ''}${(S.meters || []).filter(m => m.tariffId === t.id && !m.removed).length ? ` · on ${(S.meters || []).filter(m => m.tariffId === t.id && !m.removed).length} meter(s)` : ''}</small></div><span class="btn sm">Edit</span></div>
       ${t.id ? tariffSummary(t) : ''}${srcLink(t.source)}</summary>
-      <div class="grid g2">${field('Name', 't_name', t.name)}<div class="field"><label>Type</label><select name="t_type">${['electricity', 'water', 'solar'].map(x => `<option value="${x}" ${t.type === x ? 'selected' : ''}>${UT_LABEL[x]}</option>`).join('')}</select></div></div>
-      <div class="field"><label>${t.winterBlocks ? 'Summer rates' : 'Rates'}: up to (${u} per month) and rand per ${u}. Leave the last "up to" empty.</label>${blockList('blocks', t.blocks)}</div>
-      <label class="tf-check"><input type="checkbox" name="t_seasonal" data-change="tfseason" ${t.winterBlocks ? 'checked' : ''}> Different rates in winter</label>
-      <div class="tf-winter" ${t.winterBlocks ? '' : 'hidden'}><div class="field"><label>Winter months</label><div class="tf-months">${MONTHS3.map((m, k) => `<label><input type="checkbox" name="t_wm" value="${k + 1}" ${(t.winterMonths && t.winterMonths.length ? t.winterMonths : [6, 7, 8]).includes(k + 1) ? 'checked' : ''}>${m}</label>`).join('')}</div></div>
-        <div class="field"><label>Winter rates per ${u}</label>${blockList('winter', t.winterBlocks || t.blocks)}</div></div>
+      <div class="grid g3">${field('Name', 't_name', t.name)}<div class="field"><label>Type</label><select name="t_type">${['electricity', 'water', 'solar'].map(x => `<option value="${x}" ${t.type === x ? 'selected' : ''}>${UT_LABEL[x]}</option>`).join('')}</select></div>
+        <div class="field tf-el" ${el ? '' : 'hidden'}><label>Energy pricing</label><select name="t_kind" data-change="tfkind"><option value="blocks" ${isTou ? '' : 'selected'}>Inclining blocks / flat rate</option><option value="tou" ${isTou ? 'selected' : ''}>Time of use (peak / standard / off-peak)</option></select></div></div>
+      <div class="tf-blocks-sec" ${isTou ? 'hidden' : ''}>
+        <div class="field"><label>${t.winterBlocks ? 'Summer rates' : 'Rates'}: up to (${u} per month) and rand per ${u}. Leave the last "up to" empty.</label>${blockList('blocks', t.blocks)}</div>
+        <details class="tf-paste"><summary>Paste blocks from a tariff book or spreadsheet</summary>
+          <textarea name="pastebox" rows="5" placeholder="One block per line, e.g.&#10;0 - 500    380,52&#10;501 - 1000    417,67&#10;> 3000    468,69"></textarea>
+          <div class="tf-paste-row"><select name="pasteunit" aria-label="Rates are in"><option value="c">Rates in cents (c/kWh)</option><option value="r">Rates in rand (R per unit)</option></select><select name="pasteinto" aria-label="Load into"><option value="blocks">into ${t.winterBlocks ? 'summer' : 'the'} rates</option><option value="winter">into winter rates</option></select><button type="button" class="btn sm" data-action="tfpaste">Load blocks</button></div>
+          <small class="muted tf-paste-msg"></small></details>
+        <label class="tf-check"><input type="checkbox" name="t_seasonal" data-change="tfseason" ${t.winterBlocks ? 'checked' : ''}> Different rates in winter</label>
+        <div class="tf-winter" ${t.winterBlocks ? '' : 'hidden'}><div class="field"><label>Winter rates per ${u}</label>${blockList('winter', t.winterBlocks || t.blocks)}</div></div></div>
+      <div class="tf-tou-sec" ${isTou ? '' : 'hidden'}><div class="field"><label>Energy rates per kWh (rand)</label>
+        <div class="tf-tou"><span></span>${REGS3.map(([, l]) => `<span>${l}</span>`).join('')}<span>Low season</span>${REGS3.map(([r]) => touIn('low', r)).join('')}<span>High season</span>${REGS3.map(([r]) => touIn('high', r)).join('')}</div>
+        <small class="muted">The meter's peak, standard and off-peak registers give the kWh in each period.</small></div></div>
+      ${monthsBox(t)}
+      <div class="field tf-el" ${el ? '' : 'hidden'}><label>Demand charge per kVA of maximum demand (leave blank if none)</label><div class="tf-levy"><input name="d_low" type="number" step="any" min="0" value="${t.demand ? t.demand.low : ''}" placeholder="R/kVA low season" aria-label="Demand charge low season"><input name="d_high" type="number" step="any" min="0" value="${t.demand ? t.demand.high : ''}" placeholder="R/kVA high season" aria-label="Demand charge high season"><input name="d_min" type="number" step="any" min="0" value="${t.demand && t.demand.minKva ? t.demand.minKva : ''}" placeholder="minimum kVA" aria-label="Minimum kVA billed"></div></div>
       <div class="field"><label>Fixed charges per month (rand, per meter)</label><div data-fixedlist>${(t.fixed || []).map(fixedRow).join('')}</div><button type="button" class="btn sm" data-action="addfixed" style="width:max-content">${ic('plus')}Add fixed charge</button></div>
       <div class="grid g2">
         <div class="field"><label>Levy per ${u} (e.g. network surcharge)</label><div class="tf-levy"><input name="l_desc" value="${esc(t.levy ? t.levy.desc : '')}" placeholder="Description" aria-label="Levy description"><input name="l_rate" type="number" step="any" min="0" value="${t.levy ? t.levy.rate : ''}" placeholder="R per ${u}" aria-label="Levy rand per unit"><input name="l_free" type="number" step="any" min="0" value="${t.levy && t.levy.freeUnits ? t.levy.freeUnits : ''}" placeholder="free ${u}" aria-label="Units free of the levy"></div></div>
@@ -2184,19 +2215,45 @@
         <div class="field"><label>Sewer per kL of water: up to (kL), rand per kL, and % of the water counted as sewage</label>${blockList('sewer', t.sewer ? t.sewer.blocks : [], true)}</div>
         <div class="field"><label>Sewer fixed charges per month</label><div data-sfixedlist>${(t.sewer ? t.sewer.fixed : []).map(fixedRow).join('')}</div><button type="button" class="btn sm" data-action="addfixed" data-into="sfixedlist" style="width:max-content">${ic('plus')}Add sewer charge</button></div>
         ${!t.sewer && t.sewerPct ? field('Or: sewer as % of the water charge', 't_sewer', t.sewerPct, 'number', 'step="1" min="0" max="200"') : '<input type="hidden" name="t_sewer" value="0">'}</div>
-      ${t.id ? tariffTry(t.id, t.type) : ''}
+      ${t.id ? tariffTry(t.id, t.type, t) : ''}
       <button type="button" class="btn sm danger" data-action="rmtariff" style="width:max-content">Remove tariff</button></details>`;
+  }
+  function tfToggle(c) {
+    const g = n => c.querySelector(`[name=${n}]`), el = g('t_type').value === 'electricity', tou = el && g('t_kind').value === 'tou';
+    c.querySelectorAll('.tf-el').forEach(x => { x.hidden = !el; });
+    c.querySelector('.tf-sewer').hidden = g('t_type').value !== 'water';
+    c.querySelector('.tf-blocks-sec').hidden = tou; c.querySelector('.tf-tou-sec').hidden = !tou;
+    c.querySelector('.tf-winter').hidden = !g('t_seasonal').checked;
+    c.querySelector('.tf-months-sec').hidden = !(tou || (!tou && g('t_seasonal').checked) || (el && g('d_high').value !== '' && g('d_high').value !== g('d_low').value));
   }
   function readTariffCard(c) {
     const v = n => (c.querySelector(`[name=${n}]`) || {}).value;
     const blocks = attr => [...c.querySelectorAll(`[data-${attr}] [data-block]`)].map(b => ({ upTo: b.querySelector('[name=upTo]').value, rate: b.querySelector('[name=rate]').value, pct: (b.querySelector('[name=pct]') || {}).value })).filter(b => b.rate !== '');
     const fixed = sel => [...c.querySelectorAll(`[data-${sel}] [data-fixed]`)].map(x => ({ desc: x.querySelector('[name=fdesc]').value, amount: x.querySelector('[name=famount]').value }));
-    const seasonal = c.querySelector('[name=t_seasonal]').checked, type = v('t_type');
+    const type = v('t_type'), isTou = type === 'electricity' && v('t_kind') === 'tou', seasonal = !isTou && c.querySelector('[name=t_seasonal]').checked;
     const keep = (S.tariffs || []).find(t => t.id === c.dataset.id) || {};
-    return { id: c.dataset.id, name: v('t_name'), type, blocks: blocks('blocks'), winterBlocks: seasonal ? blocks('winter') : null, winterMonths: [...c.querySelectorAll('[name=t_wm]:checked')].map(x => +x.value),
+    const tou = isTou ? Object.fromEntries(['low', 'high'].map(se => [se, Object.fromEntries(REGS3.map(([r]) => [r, v(`tou_${se}_${r}`)]))])) : null;
+    return { id: c.dataset.id, name: v('t_name'), type, blocks: isTou ? [] : blocks('blocks'), winterBlocks: seasonal ? blocks('winter') : null, winterMonths: [...c.querySelectorAll('[name=t_wm]:checked')].map(x => +x.value),
+      tou, demand: type === 'electricity' && (v('d_low') || v('d_high')) ? { low: v('d_low'), high: v('d_high'), minKva: v('d_min') } : null,
       fixed: fixed('fixedlist'), levy: v('l_rate') ? { desc: v('l_desc'), rate: v('l_rate'), freeUnits: v('l_free') } : null, surchargePct: v('t_surcharge'),
       sewer: type === 'water' && blocks('sewer').length ? { blocks: blocks('sewer'), fixed: fixed('sfixedlist') } : type === 'water' && fixed('sfixedlist').length ? { blocks: [], fixed: fixed('sfixedlist') } : null, sewerPct: v('t_sewer'),
       building: keep.building, libraryKey: keep.libraryKey, municipality: keep.municipality, category: keep.category, effective: keep.effective, until: keep.until, source: keep.source, notes: keep.notes };
+  }
+  /* Paste a block table from a tariff book / spreadsheet: one block per line, the last number is the rate.
+   * "0 - 500 380,52", "Block 2 >51 to <= 350 kwh 247.89", "> 3000 468.69", "500<TAB>3.8052". */
+  function parseBlocks(text, cents) {
+    const out = [], bad = [];
+    text.split(/\r?\n/).forEach((raw, i) => {
+      let line = raw.trim(); if (!line) return;
+      line = line.replace(/^\s*block\s*\d+\s*/i, '').replace(/(\d) (?=\d{3}\b)/g, '$1').replace(/(\d),(\d+)(?!\d)/g, '$1.$2');
+      const nums = (line.match(/\d+(?:\.\d+)?/g) || []).map(Number);
+      if (!nums.length) { bad.push(i + 1); return; }
+      const rate = nums.pop(), open = /(^|\s)(>|above|over|more than|exceed|and above|\+)/i.test(line) || /\+\s*$/.test(line.replace(/[\d.\s]+$/, ''));
+      const upTo = open || !nums.length ? null : Math.max(...nums);
+      out.push({ upTo, rate: cents ? Math.round(rate * 100) / 10000 : rate });
+    });
+    if (out.length) out[out.length - 1].upTo = null;
+    return { blocks: out, bad };
   }
 
   /* ---------------- tariffs per building ---------------- */
@@ -2658,6 +2715,15 @@
     addblock: el => { const into = el.dataset.into || 'blocks'; el.closest('[data-tariff]').querySelector(`[data-${into}]`).insertAdjacentHTML('beforeend', blockRow({ upTo: null, rate: '' }, into === 'sewer')); },
     addfixed: el => el.closest('[data-tariff]').querySelector(`[data-${el.dataset.into || 'fixedlist'}]`).insertAdjacentHTML('beforeend', fixedRow({})),
     rmfixed: el => el.closest('[data-fixed]').remove(),
+    tfpaste: el => {
+      const c = el.closest('[data-tariff]'), p = el.closest('.tf-paste'), msg = p.querySelector('.tf-paste-msg');
+      const r = parseBlocks(p.querySelector('[name=pastebox]').value, p.querySelector('[name=pasteunit]').value === 'c');
+      if (!r.blocks.length) { msg.textContent = 'No blocks found: put one block per line with the rate as the last number.'; return; }
+      const into = p.querySelector('[name=pasteinto]').value;
+      if (into === 'winter') { c.querySelector('[name=t_seasonal]').checked = true; tfToggle(c); }
+      c.querySelector(`[data-${into}]`).innerHTML = r.blocks.map(b => blockRow(b)).join('');
+      msg.textContent = `${r.blocks.length} block${r.blocks.length === 1 ? '' : 's'} loaded${r.bad.length ? ` · line ${r.bad.join(', ')} skipped` : ''}. Check them, then save.`;
+    },
     tftab: el => { ui.tfTab = el.dataset.v; if (current.key !== 'recoveries/tariffs') location.hash = '#/recoveries/tariffs'; else render(true); },
     capcycle: async el => {
       const day = el.closest('form').querySelector('[name=cycle]').value;
@@ -2666,18 +2732,20 @@
     tfcustom: async el => { el.disabled = true; const r = await act('POST', `/api/utility/tariffs/${el.dataset.bid}/customise`, { tariffId: el.dataset.id }, ['Copied for this building', 'Its meters now use the copy. Other buildings are not affected.']); if (r && r.tariff) location.hash = `#/recoveries/tariff/${r.tariff.id}/${el.dataset.bid}`; else el.disabled = false; },
     tflibadd: async el => { el.disabled = true; const r = await act('POST', '/api/tariffs/library', { key: el.dataset.key }, ['Tariff added', 'Edit it under Your tariffs, then link it to meters.']); if (r && r.tariff) { ui.tfOpen = r.tariff.id; } render(true); },
     tfquote: async el => {
-      const box = el.closest('[data-tftry]'), out = box.querySelector('.tf-out'), qty = box.querySelector('[name=tq]').value, month = box.querySelector('[name=tm]').value;
-      if (qty === '') { out.innerHTML = '<small class="muted">Enter the consumption first.</small>'; return; }
-      const card = el.closest('[data-tariff]');
+      const box = el.closest('[data-tftry]'), out = box.querySelector('.tf-out'), q = n => (box.querySelector(`[name=${n}]`) || {}).value, month = q('tm');
+      const regs = box.querySelector('[name=tq_peak]') ? { peak: q('tq_peak'), std: q('tq_std'), off: q('tq_off') } : null, qty = q('tq'), kva = q('tq_kva');
+      if (regs ? Object.values(regs).some(x => x === '') : qty === '') { out.innerHTML = `<small class="muted">Enter the ${regs ? 'peak, standard and off-peak kWh' : 'consumption'} first.</small>`; return; }
+      const card = el.closest('[data-tariff]'), extra = { regs, kva: kva === '' ? undefined : kva, consumption: qty, month };
       try {
-        const r = await api('POST', '/api/tariffs/quote', card ? { tariff: readTariffCard(card), consumption: qty, month } : { id: box.dataset.tftry, consumption: qty, month });
+        const r = await api('POST', '/api/tariffs/quote', card ? { tariff: readTariffCard(card), ...extra } : { id: box.dataset.tftry, ...extra });
         out.innerHTML = `<table class="tf-q"><tbody>${r.lines.map(l => `<tr><td>${esc(l.desc)}</td><td class="mono n">${l.qty !== 1 ? fmtN(l.qty, 3) + ' × ' + fmtN(l.rate, 4) : ''}</td><td class="mono n">${fmtMoney(l.amount)}</td></tr>`).join('')}
-          <tr class="rp-foot"><td>Excl. VAT${r.winter ? ' · winter rates' : ''}</td><td></td><td class="mono n">${fmtMoney(r.subtotal)}</td></tr><tr><td>VAT</td><td></td><td class="mono n">${fmtMoney(r.vat)}</td></tr><tr class="rp-foot"><td>Total</td><td></td><td class="mono n"><strong>${fmtMoney(r.total)}</strong></td></tr></tbody></table>`;
+          ${(r.notes || []).map(n => `<tr><td colspan="3"><small style="color:var(--amber)">${esc(n)}</small></td></tr>`).join('')}
+          <tr class="rp-foot"><td>Excl. VAT${r.winter ? ' · winter / high-season rates' : ''}</td><td></td><td class="mono n">${fmtMoney(r.subtotal)}</td></tr><tr><td>VAT</td><td></td><td class="mono n">${fmtMoney(r.vat)}</td></tr><tr class="rp-foot"><td>Total</td><td></td><td class="mono n"><strong>${fmtMoney(r.total)}</strong></td></tr></tbody></table>`;
       } catch (e) { out.innerHTML = `<small style="color:var(--red)">${esc(e.message)}</small>`; }
     },
     rmblock: el => el.closest('[data-block]').remove(),
     rimpclear: () => { ui.rimp = null; render(true); },
-    rimpgo: async el => { const rows = rimpRows().filter(r => r.ok).map(r => ({ line: r.line, meter: r.meterId, date: r.date, time: r.time, value: r.value })); el.disabled = true; const x = await act('POST', '/api/readings/import', { rows }); if (x) { toast(`${x.imported} readings imported`, x.skipped.length ? x.skipped.length + ' skipped' : ''); ui.rimp = null; location.hash = '#/meters/register'; } else el.disabled = false; },
+    rimpgo: async el => { const rows = rimpRows().filter(r => r.ok).map(r => ({ line: r.line, meter: r.meterId, date: r.date, time: r.time, value: r.value ?? '', registers: r.registers })); el.disabled = true; const x = await act('POST', '/api/readings/import', { rows }); if (x) { toast(`${x.imported} readings imported`, x.skipped.length ? x.skipped.length + ' skipped' : ''); ui.rimp = null; location.hash = '#/meters/register'; } else el.disabled = false; },
     zohodisconnect: async () => { if (confirm('Disconnect Zoho Books? Invoices already in Zoho stay there.') && await act('POST', '/api/admin/zoho/disconnect', {}, ['Zoho Books disconnected'])) location.hash = '#/settings/billing'; },
     impclear: () => { ui.imp = null; render(true); },
     impgo: async el => {
@@ -2727,7 +2795,7 @@
   });
   const bindTimers = {};
   document.addEventListener('input', e => {
-    if (e.target.matches && e.target.matches('[data-capinput]')) capUse(e.target.closest('[data-cap]'));
+    if (e.target.matches && e.target.matches('[data-capinput]')) capUse(e.target.closest('.cap-period-row'));
     const el = e.target;
     if (el.dataset.bind) {
       const j = byId(S.jobs, el.dataset.id); if (j) j[el.dataset.bind] = el.value;
@@ -2755,8 +2823,7 @@
     if (el.dataset.change === 'rpfrom' && el.value) { ui.rp.from = el.value; render(true); }
     if (el.dataset.change === 'rpto' && el.value) { ui.rp.to = el.value; render(true); }
     if (el.dataset.change === 'rpbld') { ui.rp.building = el.value; render(true); }
-    if (el.dataset.change === 'tfseason') el.closest('[data-tariff]').querySelector('.tf-winter').hidden = !el.checked;
-    if (el.name === 't_type' && el.closest('[data-tariff]')) el.closest('[data-tariff]').querySelector('.tf-sewer').hidden = el.value !== 'water';
+    if (['tfseason', 'tfkind'].includes(el.dataset.change) || el.name === 't_type' || el.name === 'd_low' || el.name === 'd_high') { const c = el.closest('[data-tariff]'); if (c) tfToggle(c); }
     if (el.dataset.change === 'balmonth' && el.value) { ui.balMonth = el.value; render(true); }
     if (el.dataset.change === 'suall' && el.value !== '-') { document.querySelectorAll(`[data-sutariff][data-type="${el.dataset.type}"]`).forEach(x => { x.value = el.value; }); }
     if (el.dataset.change === 'msite') location.hash = '#/meters/register/' + el.value;
@@ -2764,7 +2831,7 @@
     if (el.dataset.change === 'tsite') location.hash = '#/recoveries/tenants/' + el.value;
     if (el.dataset.mphoto && el.files[0]) readPhotos(el.files).then(l => { ui.mphoto = l[0]; toast('Photo attached'); });
     if (el.dataset.capphoto && el.files[0]) readPhotos(el.files).then(l => { ui.capPhotos = ui.capPhotos || {}; ui.capPhotos[el.dataset.capphoto] = l[0]; el.closest('label').classList.add('primary'); });
-    if (el.matches && el.matches('[data-rimpfile]') && el.files[0]) { const fr = new FileReader(); fr.onload = () => { const all = parseCsv(String(fr.result)).filter(r => r.some(c => c)); const hi = Math.max(0, all.findIndex(r => r.some(c => /meter|serial/i.test(c)))); const h = all[hi] || []; const find = re => { const i = h.findIndex(x => re.test(x)); return i < 0 ? '' : i; }; ui.rimp = { name: el.files[0].name, headers: h, headerRow: hi, body: all.slice(hi + 1), map: { meter: find(/meter|serial/i), date: find(/date|day/i), time: find(/time/i), value: find(/read|value|kwh|kl|register/i) } }; render(true); }; fr.readAsText(el.files[0]); }
+    if (el.matches && el.matches('[data-rimpfile]') && el.files[0]) { const fr = new FileReader(); fr.onload = () => { const all = parseCsv(String(fr.result)).filter(r => r.some(c => c)); const hi = Math.max(0, all.findIndex(r => r.some(c => /meter|serial/i.test(c)))); const h = all[hi] || []; const find = re => { const i = h.findIndex(x => re.test(x)); return i < 0 ? '' : i; }; ui.rimp = { name: el.files[0].name, headers: h, headerRow: hi, body: all.slice(hi + 1), map: { meter: find(/meter|serial/i), date: find(/date|day/i), time: find(/time/i), value: find(/^(?!.*(peak|standard|std|off|kva)).*(read|value|kwh|kl|register|total)/i), peak: find(/^(?!.*off).*peak/i), std: find(/standard|\bstd\b/i), off: find(/off.?peak/i), kva: find(/kva|demand/i) } }; render(true); }; fr.readAsText(el.files[0]); }
     if (el.dataset.rimpmap && ui.rimp) { ui.rimp.map[el.dataset.rimpmap] = el.value; render(true); }
     if (el.dataset.change === 'addcat' && el.value) {
       const c = B().catalogue.find(x => x.code === el.value), root = el.closest('[data-lines]');
@@ -2885,15 +2952,19 @@
           break;
         }
         case 'reading': {
-          const x = await act('POST', `/api/meters/${encodeURIComponent(f.dataset.meter)}/readings`, { date: d.date, time: d.time, value: d.value, note: d.note, photo: ui.mphoto, jobId: f.dataset.job || undefined });
+          const registers = Object.fromEntries(['peak', 'std', 'off', 'kva'].filter(r => d['r_' + r] !== undefined && d['r_' + r] !== '').map(r => [r, d['r_' + r]]));
+          const x = await act('POST', `/api/meters/${encodeURIComponent(f.dataset.meter)}/readings`, { date: d.date, time: d.time, value: d.value, registers, note: d.note, photo: ui.mphoto, jobId: f.dataset.job || undefined });
           if (x) { toast('Reading saved', x.warning || ''); if (x.warning) toast('Check this reading', x.warning, 'bad'); ui.mphoto = null; render(true); }
           break;
         }
         case 'capture': {
           let n = 0, warn = [];
           for (const row of f.querySelectorAll('[data-cap]')) {
-            const id = row.dataset.cap, v = row.querySelector('input[type=number]').value; if (v === '') continue;
-            try { const x = await api('POST', `/api/meters/${encodeURIComponent(id)}/readings`, { date: d.date, time: d.time, value: v, photo: (ui.capPhotos || {})[id], jobId: f.dataset.job || undefined }); n++; if (x.warning) warn.push(id + ': ' + x.warning); } catch (err) { warn.push(id + ': ' + err.message); }
+            const id = row.dataset.cap, v = row.querySelector('input[type=number]').value, val = n2 => (f.querySelector(`[name="${n2}"]`) || {}).value || '';
+            const registers = Object.fromEntries([...['peak', 'std', 'off'].map(r => [r, val(`r_${id}_${r}`)]), ['kva', val(`k_${id}`)]].filter(([, x]) => x !== ''));
+            if (v === '' && !Object.keys(registers).length) continue;
+            if (Object.keys(registers).some(r => r !== 'kva') && !['peak', 'std', 'off'].every(r => registers[r] != null)) { warn.push(id + ': enter all three registers (peak, standard and off-peak)'); continue; }
+            try { const x = await api('POST', `/api/meters/${encodeURIComponent(id)}/readings`, { date: d.date, time: d.time, value: v, registers, photo: (ui.capPhotos || {})[id], jobId: f.dataset.job || undefined }); n++; if (x.warning) warn.push(id + ': ' + x.warning); } catch (err) { warn.push(id + ': ' + err.message); }
           }
           ui.capPhotos = {}; await refresh();
           toast(`${n} reading${n === 1 ? '' : 's'} saved`, warn.join(' · '), warn.length ? 'bad' : '');
@@ -2901,7 +2972,7 @@
           break;
         }
         case 'meter': {
-          const r = await act('POST', '/api/meters', { originalId: f.dataset.orig || undefined, meter: { id: d.id, building: d.building, type: d.type, multiplier: d.multiplier, serial: d.serial, make: d.make, model: d.model, location: d.location, tenantId: d.tenantId, tariffId: d.tariffId, comm: d.comm, installed: d.installed, notes: d.notes } }, ['Meter saved']);
+          const r = await act('POST', '/api/meters', { originalId: f.dataset.orig || undefined, meter: { id: d.id, building: d.building, type: d.type, multiplier: d.multiplier, serial: d.serial, make: d.make, model: d.model, location: d.location, tenantId: d.tenantId, tariffId: d.tariffId, comm: d.comm, installed: d.installed, notes: d.notes, tou: d.tou === 'on', kva: d.kva === 'on' } }, ['Meter saved']);
           if (r && r.meter) location.hash = '#/meters/meter/' + encodeURIComponent(r.meter.id);
           break;
         }

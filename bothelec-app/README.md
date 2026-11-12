@@ -241,6 +241,19 @@ tracker, Zoho and settings are shared. Each building is set to one or both compa
   the tenant tariff so the account's fixed charges are not billed to every tenant.
 - Every tariff dropdown (building tariffs, building setup, meter page) also lists the library, grouped by municipality:
   picking a library tariff adds it to your tariffs when you save. Ended tariffs are marked.
+- **Loading block tariffs**: in a tariff, *Paste blocks from a tariff book or spreadsheet* takes one block per line
+  (e.g. `0 - 500   380,52`, `Block 2 >51 to <= 350 kwh 247.89`, `> 3000 468.69`, or two spreadsheet columns), in c/kWh
+  or rand, into the summer or winter rates.
+- **Time-of-use billing**: set a tariff's *Energy pricing* to *Time of use* and enter peak, standard and off-peak
+  rates for the low and high seasons (high-season months selectable), plus an optional **demand charge** per kVA
+  (low / high season, with a minimum kVA). Library: Joburg large customer TOU and demand (LV), Joburg domestic TOU,
+  Govan Mbeki LV / HV / domestic bulk TOU (2025/26).
+  - Tick *Time-of-use meter* (and *Maximum demand register*) on the meter. Record readings then asks for the peak,
+    standard and off-peak kWh registers (opening shown, closing typed, use per period worked out) and the period's
+    maximum demand in kVA; CSV import takes Peak / Standard / Off-peak / kVA columns.
+  - The meter's registers give the time split, so no TOU hours are needed. A billing run charges each period at its
+    season rate and the demand charge on the highest kVA in the period (× multiplier). Without register readings it
+    bills at the standard rate and warns. Reactive energy (kVArh) is not billed.
 - **Building tariffs** (Tenant billing → Building tariffs, or *Tariffs* on a site): the tariffs a building is billed on
   and the tariff per meter. *Edit for this building only* copies a shared tariff for that building and moves its meters
   onto the copy, so other buildings are not affected; *Edit for all buildings* changes the shared tariff. Saving a tariff

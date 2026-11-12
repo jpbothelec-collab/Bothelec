@@ -136,6 +136,53 @@ LIBRARY.push(
     blocks: bl([[null, 321.52]], c), winterBlocks: bl([[null, 416.89]], c), winterMonths: [6, 7, 8], fixed: GMM_FIXED(376.84), surchargePct: 0, notes: GMM_NOTES,
   },
 );
+/* ---------- Time-of-use and demand tariffs (need TOU registers and / or a maximum-demand register on the meter) ---------- */
+const R = v => Math.round(v * 100) / 10000; // c/kWh → R/kWh
+const tou = (lo, hi) => ({ low: { peak: R(lo[0]), std: R(lo[1]), off: R(lo[2]) }, high: { peak: R(hi[0]), std: R(hi[1]), off: R(hi[2]) } });
+const TOU_NOTES = ['Low-demand season September–May, high-demand season June–August.', 'Needs a time-of-use meter: peak, standard and off-peak kWh registers, and a maximum-demand (kVA) register. The meter does the time split.', 'Reactive energy (kVArh) charges are not billed by the app.'];
+LIBRARY.push(
+  {
+    key: 'jhb-el-lpu-tou-lv', region: 'Gauteng', municipality: 'City of Johannesburg (City Power)', category: 'Large power user', type: 'electricity',
+    name: 'Joburg City Power · Large customer time-of-use, low voltage 2026/27', effective: '2026-07-01', until: '2027-06-30', source: JHB_EL,
+    blocks: [], tou: tou([322.00, 242.42, 186.35], [766.24, 292.56, 200.44]), winterMonths: [6, 7, 8],
+    demand: { low: 461.28, high: 461.28, minKva: 0 },
+    fixed: [{ desc: 'Service charge', amount: 2444.32 }, { desc: 'Capacity charge', amount: 2185.32 }], levy: JHB_NETWORK, surchargePct: 2,
+    notes: ['Summer September–May, winter June–August.', TOU_NOTES[1], TOU_NOTES[2]],
+  },
+  {
+    key: 'jhb-el-lpu-demand-lv', region: 'Gauteng', municipality: 'City of Johannesburg (City Power)', category: 'Large power user', type: 'electricity',
+    name: 'Joburg City Power · Large customer demand, low voltage 2026/27', effective: '2026-07-01', until: '2027-06-30', source: JHB_EL,
+    blocks: bl([[null, 284.96]], c), winterBlocks: bl([[null, 333.79]], c), winterMonths: [6, 7, 8],
+    demand: { low: 461.22, high: 461.22, minKva: 70 },
+    fixed: [{ desc: 'Service charge', amount: 1527.71 }, { desc: 'Capacity charge', amount: 2332.96 }], levy: JHB_NETWORK, surchargePct: 2,
+    notes: ['Needs a maximum-demand (kVA) register.', 'Minimum demand 70 kVA (City Power 4.3.1); the "80% of the three highest demands in 12 months" minimum is not applied automatically.', TOU_NOTES[2]],
+  },
+  {
+    key: 'jhb-el-dom-tou', region: 'Gauteng', municipality: 'City of Johannesburg (City Power)', category: 'Residential', type: 'electricity',
+    name: 'Joburg City Power · Domestic time-of-use three-phase 80 A 2026/27', effective: '2026-07-01', until: '2027-06-30', source: JHB_EL,
+    blocks: [], tou: tou([340.42, 269.30, 211.86], [783.20, 320.83, 226.39]), winterMonths: [6, 7, 8],
+    fixed: [{ desc: 'Service charge', amount: 304.12 }, { desc: 'Capacity charge (80 A)', amount: 1227.18 }], levy: JHB_NETWORK_RES, surchargePct: 0,
+    notes: ['Needs peak, standard and off-peak kWh registers.', 'The network surcharge applies only above 500 kWh a month for households.'],
+  },
+  {
+    key: 'gmm-el-lv-tou-2526', region: 'Mpumalanga', municipality: 'Govan Mbeki Local Municipality', category: 'Industrial & commercial', type: 'electricity',
+    name: 'Govan Mbeki · Industrial & commercial time-of-use, low voltage 2025/26', effective: '2025-07-01', until: '2026-06-30', source: GMM,
+    blocks: [], tou: tou([199.30, 194.68, 184.01], [287.21, 263.27, 177.01]), winterMonths: [6, 7, 8],
+    demand: { low: 378.90, high: 404.15, minKva: 0 }, fixed: GMM_FIXED(3358.06), surchargePct: 0, notes: [GMM_NOTES[0], ...TOU_NOTES],
+  },
+  {
+    key: 'gmm-el-hv-tou-2526', region: 'Mpumalanga', municipality: 'Govan Mbeki Local Municipality', category: 'Industrial & commercial', type: 'electricity',
+    name: 'Govan Mbeki · Industrial & commercial time-of-use, high voltage 2025/26', effective: '2025-07-01', until: '2026-06-30', source: GMM,
+    blocks: [], tou: tou([183.60, 178.59, 137.70], [248.58, 242.03, 156.07]), winterMonths: [6, 7, 8],
+    demand: { low: 341.42, high: 364.21, minKva: 0 }, fixed: GMM_FIXED(3357.15), surchargePct: 0, notes: [GMM_NOTES[0], ...TOU_NOTES],
+  },
+  {
+    key: 'gmm-el-bulk-tou-2526', region: 'Mpumalanga', municipality: 'Govan Mbeki Local Municipality', category: 'Domestic bulk (flats, body corporates)', type: 'electricity',
+    name: 'Govan Mbeki · Domestic bulk supply time-of-use 2025/26', effective: '2025-07-01', until: '2026-06-30', source: GMM,
+    blocks: [], tou: tou([126.50, 122.82, 122.19], [173.53, 166.71, 154.51]), winterMonths: [6, 7, 8],
+    demand: { low: 103.69, high: 103.69, minKva: 0 }, fixed: GMM_FIXED(872.13), surchargePct: 0, notes: [GMM_NOTES[0], ...TOU_NOTES],
+  },
+);
 LIBRARY.forEach(t => { t.region = t.region || 'Gauteng'; });
 
 /* Not yet in the library, and why. Shown on the Tariffs page. */
@@ -143,8 +190,8 @@ const PENDING = [
   { municipality: 'City of Tshwane', what: 'Business electricity, water and sanitation', why: 'The city has not published a consolidated 2026/27 business schedule we could verify. Upload the tariff schedule to add it.' },
   { municipality: 'City of Ekurhuleni', what: 'All tariffs (Schedules 2–4)', why: 'Published in Annexure F of the 2026/27 budget; the city website could not be read from here. Upload the schedule to add it.' },
   { municipality: 'Govan Mbeki Local Municipality', what: '2026/27 tariffs; water and sanitation', why: 'Only the 2025/26 electricity book has been uploaded. Upload the 2026/27 tariff book (and the water / sanitation tariffs) to add them.' },
-  { municipality: 'Govan Mbeki Local Municipality', what: 'Industrial & commercial time-of-use (LV / HV), domestic bulk supply, SSEG', why: 'These need peak / standard / off-peak and kVA demand readings, which the meters do not record yet.' },
-  { municipality: 'City of Johannesburg', what: 'Large power user (demand / time-of-use)', why: 'Needs kVA demand and time-of-use readings, which the meters do not record yet.' },
+  { municipality: 'Govan Mbeki Local Municipality', what: 'Embedded generation (SSEG) import / export', why: 'Export (feed-in) credits are not billed by the app yet.' },
+  { municipality: 'City of Johannesburg', what: 'Large customer medium / high voltage', why: 'Add on request: the low-voltage large customer tariffs are in the library.' },
 ];
 
 module.exports = { LIBRARY, PENDING };

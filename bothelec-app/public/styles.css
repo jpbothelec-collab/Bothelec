@@ -727,3 +727,21 @@ tr.muted td { opacity: .55; }
   .cap-period-row .cap-block:not(.cap-use)::before { content: 'Opening'; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
   .cap-period-row .cap-use::before { content: 'Consumption'; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
 }
+
+/* time of use */
+.tf-tou { display: grid; grid-template-columns: 110px repeat(3, minmax(0, 1fr)); gap: 6px; align-items: center; }
+.tf-tou > span { font-size: 11px; color: var(--muted); letter-spacing: .05em; }
+.tf-tou input, .tf-paste textarea, .tf-paste select { padding: 8px; background: var(--bg2); border: 1px solid var(--line2); border-radius: 8px; font-size: 15px; min-width: 0; width: 100%; color: inherit; }
+.tf-paste { margin: 4px 0 8px; }
+.tf-paste summary { cursor: pointer; font-size: 13px; color: var(--cyan); }
+.tf-paste textarea { margin-top: 8px; font-family: ui-monospace, monospace; font-size: 13px; }
+.tf-paste-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+.tf-paste-row select { width: auto; }
+.tf-sum-tou { grid-column: 1 / -1; }
+.tf-sum-tou .tf-q th { font-size: 10.5px; color: var(--muted); text-align: left; font-weight: 500; }
+.cap-reg { padding: 4px 0 4px 18px; border-bottom: 0; }
+.cap-reg-l { font-size: 12.5px; color: var(--muted); }
+.cap-reg + .cap-period-row:not(.cap-reg) { border-top: 1px solid var(--line); }
+@media (max-width: 760px) { .cap-reg { padding-left: 0; } .cap-reg .cap-reg-l { grid-column: 1 / -1; } .tf-tou { grid-template-columns: 80px repeat(3, minmax(0, 1fr)); } }
+.tf-card [hidden], .cap-period [hidden] { display: none !important; }
+.cap-reg input[type=number] { width: 100%; min-height: 42px; padding: 8px 10px; background: var(--bg2); border: 1px solid var(--line2); border-radius: 8px; font-size: 15px; color: inherit; min-width: 0; }
