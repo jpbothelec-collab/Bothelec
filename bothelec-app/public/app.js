@@ -2008,15 +2008,50 @@
   }
 
   /* Reading round: every meter in a building on one screen (for technicians on site). */
+  /* Record readings for a billing period: the opening reading (at "From", read-only) and the closing reading
+   * (saved at "To"), with the consumption worked out as you type. The period follows the building's billing cycle. */
+  const addDays = (d, n) => new Date(Date.parse(d + 'T12:00:00Z') + n * 864e5).toISOString().slice(0, 10);
+  const addMonthsD = (d, n) => { const [y, m, dd] = d.split('-').map(Number); return new Date(Date.UTC(y, m - 1 + n, dd, 12)).toISOString().slice(0, 10); };
+  function cyclePeriod(b) {
+    const D = Math.min(28, Math.max(1, +b.billingCycleDay || 1)), t = today();
+    let to = t.slice(0, 8) + String(D).padStart(2, '0'); if (to > t) to = addMonthsD(to, -1);
+    return { from: addMonthsD(to, -1), to, D };
+  }
   function viewReadingsCapture(bid) {
     const b = utilBld(bid); if (!b.id) return head('Record readings') + '<div class="card empty">No utility buildings yet.</div>';
     const ms = (S.meters || []).filter(m => m.building === b.id && !m.removed);
-    return head(`Record readings · ${esc(b.name)}`, 'Enter the register reading for each meter; leave blank to skip', bizSelect(b.id, 'capsite')) +
+    if (!ui.cap || ui.cap.bid !== b.id) ui.cap = { bid: b.id, ...cyclePeriod(b) };
+    const P = ui.cap, okRange = P.from < P.to;
+    const key = b.id + '|' + P.from;
+    if (!ui.capOpen || ui.capOpen.key !== key) { ui.capOpen = { key, loading: true }; api('GET', `/api/utility/readings-at/${b.id}?date=${P.from}`).then(r => { ui.capOpen = { key, r: r.readings }; if (current.key === 'meters/capture') { const keep = capValues(); render(true); capRestore(keep); } }).catch(e => { ui.capOpen = { key, error: e.message }; }); }
+    const open = id => (ui.capOpen.r || {})[id];
+    const D = +b.billingCycleDay || 1, days = Math.round((Date.parse(P.to) - Date.parse(P.from)) / 864e5);
+    return head(`Record readings · ${esc(b.name)}`, 'Enter the closing reading for each meter; leave blank to skip', bizSelect(b.id, 'capsite')) +
       `<form class="card form" data-form="capture" data-bid="${b.id}">
-        <div class="grid g2"><div class="field"><label>Date</label><input type="date" name="date" value="${today()}" max="${today()}"></div><div class="field"><label>Time</label><input type="time" name="time" value="${new Date().toTimeString().slice(0, 5)}"></div></div>
-        ${ms.map(m => `<div class="cap-row" data-cap="${esc(m.id)}"><div><strong>${esc(m.id)}</strong> <small class="muted">${UT_LABEL[m.type]} · ${esc(m.location || '')}${m.tenantId ? ' · ' + esc((tenantById(m.tenantId) || {}).name || '') : ''}</small><br><small class="muted">Last: ${m.last ? fmtN(m.last.value) + ' ' + esc(m.unit) + ' on ' + dmy(m.last.ts) : 'none'}</small></div>
-          <input name="v_${esc(m.id)}" type="number" step="any" min="0" inputmode="decimal" placeholder="${esc(m.unit)}" aria-label="Reading for ${esc(m.id)}"><label class="btn sm cap-photo">${ic('camera')}<input type="file" accept="image/*" capture="environment" hidden data-capphoto="${esc(m.id)}"></label></div>`).join('') || '<div class="empty">No meters in this building.</div>'}
-        <button class="btn primary">${ic('check')}Save readings</button></form>`;
+        <div class="cap-period">
+          <div class="field"><label>Billing period from</label><input type="date" name="from" data-change="capfrom" value="${P.from}" max="${today()}"></div>
+          <div class="field"><label>To (reading date)</label><input type="date" name="date" data-change="capto" value="${P.to}" max="${today()}"></div>
+          <div class="field"><label>Time</label><input type="time" name="time" value="${ui.capTime || new Date().toTimeString().slice(0, 5)}"></div>
+          <div class="cap-cycle"><small class="muted">${okRange ? `${days} days` : '<span style="color:var(--red)">“To” must be after “From”</span>'} · billing cycle: ${D === 1 ? 'calendar month' : `readings on the ${D}${['th', 'st', 'nd', 'rd'][(D % 10 < 4 && Math.floor(D / 10) !== 1) ? D % 10 : 0]}`}</small>
+            ${isStaff() ? `<span class="cap-cyc"><select name="cycle" aria-label="Billing cycle day">${Array.from({ length: 28 }, (x, k) => k + 1).map(k => `<option value="${k}" ${k === D ? 'selected' : ''}>${k === 1 ? 'Calendar month (1st)' : 'Day ' + k}</option>`).join('')}</select><button type="button" class="btn sm" data-action="capcycle" data-bid="${b.id}">Set cycle</button></span>` : ''}</div>
+        </div>
+        <div class="cap-head"><span>Meter</span><span>Opening ${dmy(P.from)}</span><span>Closing ${dmy(P.to)}</span><span>Consumption</span><span></span></div>
+        ${ms.map(m => { const o = open(m.id); return `<div class="cap-row cap-period-row" data-cap="${esc(m.id)}" data-open="${o ? o.value : ''}" data-mult="${m.multiplier || 1}" data-unit="${esc(m.unit)}">
+          <div><strong>${esc(m.serial || m.id)}</strong> <small class="muted">${UT_LABEL[m.type]} · ${esc(m.location || '')}${m.tenantId ? ' · ' + esc((tenantById(m.tenantId) || {}).name || '') : ''}${(m.multiplier || 1) !== 1 ? ' · ×' + m.multiplier : ''}</small></div>
+          <div class="cap-block" title="Opening reading (read-only)" aria-label="Opening reading">${ui.capOpen.loading ? '…' : o ? `<strong>${fmtN(o.value, 3)}</strong><small>${dmy(o.ts)}${o.offDays > 3 ? ' · ' + o.offDays + ' days off' : ''}</small>` : '<small class="muted">No reading</small>'}</div>
+          <input name="v_${esc(m.id)}" type="number" step="any" min="0" inputmode="decimal" placeholder="${esc(m.unit)}" aria-label="Closing reading for ${esc(m.serial || m.id)}" data-capinput>
+          <div class="cap-block cap-use" aria-live="polite">—</div>
+          <label class="btn sm cap-photo" title="Photo of the meter">${ic('camera')}<input type="file" accept="image/*" capture="environment" hidden data-capphoto="${esc(m.id)}"></label></div>`; }).join('') || '<div class="empty">No meters in this building.</div>'}
+        <button class="btn primary" ${okRange ? '' : 'disabled'}>${ic('check')}Save closing readings at ${dmy(P.to)}</button></form>`;
+  }
+  const capValues = () => Object.fromEntries([...document.querySelectorAll('[data-cap]')].map(r => [r.dataset.cap, r.querySelector('[data-capinput]').value]));
+  function capRestore(vals) { document.querySelectorAll('[data-cap]').forEach(r => { const v = (vals || {})[r.dataset.cap]; if (v) { r.querySelector('[data-capinput]').value = v; capUse(r); } }); }
+  function capUse(row) {
+    const v = row.querySelector('[data-capinput]').value, o = row.dataset.open, out = row.querySelector('.cap-use');
+    if (v === '' || o === '') { out.textContent = '—'; out.classList.remove('bad'); return; }
+    const use = (+v - +o) * (+row.dataset.mult || 1);
+    out.innerHTML = `<strong>${fmtN(use, 3)}</strong><small>${esc(row.dataset.unit)}</small>`;
+    out.classList.toggle('bad', use < 0);
   }
 
   function viewReadingsImport() {
@@ -2066,7 +2101,7 @@
   function viewRuns() {
     const runs = S.recoveries || [];
     return head('Billing runs', 'Monthly tenant recoveries from meter readings') +
-      (isStaff() ? `<form class="card form" data-form="newrun" style="margin-bottom:14px"><header><h2>New billing run</h2></header><div class="grid g3"><div class="field"><label>Building</label><select name="building">${bizBuildings().map(b => `<option value="${b.id}" ${b.id === ui.site ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select></div><div class="field"><label>Month</label><input type="month" name="month" value="${lastMonth()}" required></div><div class="field"><label>&nbsp;</label><button class="btn primary">${ic('check')}Calculate</button></div></div></form>` : '') +
+      (isStaff() ? `<form class="card form" data-form="newrun" style="margin-bottom:14px"><header><h2>New billing run</h2></header><div class="grid g3"><div class="field"><label>Building</label><select name="building">${bizBuildings().map(b => `<option value="${b.id}" ${b.id === ui.site ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select></div><div class="field"><label>Month</label><input type="month" name="month" value="${lastMonth()}" required><small class="muted">The period follows the building's billing cycle (set on Record readings).</small></div><div class="field"><label>&nbsp;</label><button class="btn primary">${ic('check')}Calculate</button></div></div></form>` : '') +
       `<div class="card">${runs.length ? `<div class="table-wrap"><table><thead><tr><th>Month</th><th>Building</th><th>Tenants</th><th style="text-align:right">Total incl. VAT</th><th>Status</th></tr></thead><tbody>${runs.map(r => `<tr class="click" data-href="#/recoveries/run/${r.id}"><td><strong>${esc(r.label)}</strong></td><td>${esc(bld(r.building).name)}</td><td>${r.lines.length}${r.warnings ? ` <span class="pill warn">${r.warnings} warning${r.warnings > 1 ? 's' : ''}</span>` : ''}</td><td class="mono" style="text-align:right">${fmtMoney(r.total)}</td><td><span class="pill ${r.status === 'approved' ? 'ok' : 'warn'}">${r.status === 'approved' ? 'Approved' : 'Draft'}</span></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No billing runs yet.</div>'}</div>`;
   }
   function viewRun(id) {
@@ -2624,6 +2659,10 @@
     addfixed: el => el.closest('[data-tariff]').querySelector(`[data-${el.dataset.into || 'fixedlist'}]`).insertAdjacentHTML('beforeend', fixedRow({})),
     rmfixed: el => el.closest('[data-fixed]').remove(),
     tftab: el => { ui.tfTab = el.dataset.v; if (current.key !== 'recoveries/tariffs') location.hash = '#/recoveries/tariffs'; else render(true); },
+    capcycle: async el => {
+      const day = el.closest('form').querySelector('[name=cycle]').value;
+      if (await act('POST', `/api/utility/cycle/${el.dataset.bid}`, { day }, ['Billing cycle saved', +day === 1 ? 'Calendar months' : `Readings and billing runs on the ${day}th`])) { ui.cap = null; render(true); }
+    },
     tfcustom: async el => { el.disabled = true; const r = await act('POST', `/api/utility/tariffs/${el.dataset.bid}/customise`, { tariffId: el.dataset.id }, ['Copied for this building', 'Its meters now use the copy. Other buildings are not affected.']); if (r && r.tariff) location.hash = `#/recoveries/tariff/${r.tariff.id}/${el.dataset.bid}`; else el.disabled = false; },
     tflibadd: async el => { el.disabled = true; const r = await act('POST', '/api/tariffs/library', { key: el.dataset.key }, ['Tariff added', 'Edit it under Your tariffs, then link it to meters.']); if (r && r.tariff) { ui.tfOpen = r.tariff.id; } render(true); },
     tfquote: async el => {
@@ -2688,6 +2727,7 @@
   });
   const bindTimers = {};
   document.addEventListener('input', e => {
+    if (e.target.matches && e.target.matches('[data-capinput]')) capUse(e.target.closest('[data-cap]'));
     const el = e.target;
     if (el.dataset.bind) {
       const j = byId(S.jobs, el.dataset.id); if (j) j[el.dataset.bind] = el.value;
@@ -2708,6 +2748,7 @@
     if (el.id === 'bizSel') switchBiz(el.value);
     if (el.dataset.change === 'sukind') { const row = el.closest('[data-surow]'); row.classList.toggle('is-common', el.value !== 'shop'); const u = row.querySelector('[name=unit]'); if (!u.value) u.value = { common: 'Common area', council: 'Council supply' }[el.value] || ''; }
     if (el.dataset.change === 'treechg') { const row = el.closest('[data-tree]'); const roleSel = row.querySelector('[name=role]'); const par = row.querySelector('[name=parent]'); if (roleSel) { par.disabled = roleSel.value === 'council'; if (roleSel.value === 'council') par.value = ''; } ['electricity', 'water'].forEach(drawTreePreview); }
+    if (el.dataset.change === 'capfrom' || el.dataset.change === 'capto') { const keep = capValues(); ui.capTime = (document.querySelector('[data-form=capture] [name=time]') || {}).value; ui.cap[el.dataset.change === 'capfrom' ? 'from' : 'to'] = el.value; render(true); capRestore(keep); }
     if (el.dataset.change === 'btsite') { location.hash = '#/recoveries/btariffs/' + el.value; }
     if (el.dataset.change === 'balsite') { location.hash = '#/meters/balance/' + el.value; }
     if (el.dataset.change === 'rpperiod') { ui.rp.period = el.value; if (el.value === 'custom') { const R0 = rpRange(); ui.rp.from = R0.a; ui.rp.to = R0.b; } render(true); }
@@ -2856,7 +2897,7 @@
           }
           ui.capPhotos = {}; await refresh();
           toast(`${n} reading${n === 1 ? '' : 's'} saved`, warn.join(' · '), warn.length ? 'bad' : '');
-          if (!f.dataset.job) location.hash = '#/meters/register/' + f.dataset.bid; else render(true);
+          if (!f.dataset.job) { ui.capOpen = null; render(true); } else render(true);
           break;
         }
         case 'meter': {

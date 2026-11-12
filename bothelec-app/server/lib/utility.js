@@ -297,6 +297,33 @@ function createUtility(ctx) {
     const from = new Date(Date.UTC(y, m - 1, 1)), to = new Date(Date.UTC(y, m, 1));
     return { from: from.toISOString(), to: to.toISOString(), label: from.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }) };
   }
+  /* A building's billing period for a month. With a cycle day of 1 it is the calendar month; with, say, 25 the
+   * "October" period runs from 25 September to 25 October (readings taken on the 25th). */
+  const cycleDay = b => Math.min(28, Math.max(1, Math.round(+((b || {}).billingCycleDay) || 1)));
+  function cycleBounds(b, month) {
+    const mb = monthBounds(month); if (!mb) return null;
+    const D = cycleDay(b); if (D === 1) return { ...mb, cycleDay: 1 };
+    const [y, m] = month.split('-').map(Number);
+    const from = new Date(Date.UTC(y, m - 2, D)), to = new Date(Date.UTC(y, m - 1, D)), last = new Date(to - DAY);
+    const f = d => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+    return { from: from.toISOString(), to: to.toISOString(), label: `${mb.label} (${f(from)} – ${f(last)})`, cycleDay: D };
+  }
+  function setCycle(bid, day) {
+    const b = byId(S.buildings, bid); if (!b) return { error: 'Building not found.' };
+    const D = Math.round(+day); if (!(D >= 1 && D <= 28)) return { error: 'Choose a day from 1 to 28.' };
+    b.billingCycleDay = D; save('buildings', b); changed(bid);
+    return { ok: true, billingCycleDay: D };
+  }
+  /* Each meter's reading at a date (the opening reading for a billing period). */
+  function readingsAt(bid, date) {
+    if (!isoDate(date)) return { error: 'Choose a date.' };
+    const at = date + 'T12:00:00.000Z', out = {};
+    for (const m of S.meters.filter(x => x.building === bid && !x.removed)) {
+      const r = nearest(m.id, at, 3);
+      out[m.id] = r ? { ts: r.ts, value: r.value, offDays: r.offDays, estimated: r.estimated } : null;
+    }
+    return { ok: true, date, readings: out };
+  }
   function calcRun(run) {
     const B = S.settings.billing, vat = B.vatRate / 100;
     const tenants = S.tenants.filter(t => t.building === run.building && t.active !== false);
@@ -329,7 +356,7 @@ function createUtility(ctx) {
   }
   function createRun(d, actor) {
     const b = byId(S.buildings, d.building); if (!b) return { error: 'Choose a building.' };
-    const mb = monthBounds(d.month); if (!mb) return { error: 'Choose the month to bill.' };
+    const mb = cycleBounds(b, d.month); if (!mb) return { error: 'Choose the month to bill.' };
     if (S.recoveries.find(r => r.building === b.id && r.month === d.month)) return { error: `${b.name} already has a billing run for ${mb.label}.` };
     if (!S.tenants.some(t => t.building === b.id)) return { error: 'Add tenants and assign meters to them first.' };
     const run = { id: 'RR' + Date.now().toString(36) + rid(2), building: b.id, month: d.month, label: mb.label, from: mb.from, to: mb.to, status: 'draft', createdAt: nowIso(), createdBy: actor.name, lines: [] };
@@ -655,7 +682,7 @@ function createUtility(ctx) {
   }
 
   if (S.settings.tariffs.some(t => !Array.isArray(t.fixed))) { S.settings.tariffs = S.settings.tariffs.map(normTariff).filter(t => t && !t.error); db.setKv('settings', S.settings); } // older tariff shape
-  return { updateTariff, customiseTariff, tariffBuildings, addFromLibrary, quote, tariffLibrary, report, setTree, setTolerance, balance, periodUse, setupRows, checkMeter, checkBuilding, assignTariffs, TYPES, TYPE_LABEL, meter, upsertMeter, setMeterRemoved, addReading, connectorReading, importReadings, deleteReading, readingsFor, upsertTenant, deleteTenant, setTariffs, createRun, recalcRun, deleteRun, approveRun, recoveryLines, stateFor, syncMeterEquipment, meterLabel };
+  return { setCycle, readingsAt, cycleBounds, updateTariff, customiseTariff, tariffBuildings, addFromLibrary, quote, tariffLibrary, report, setTree, setTolerance, balance, periodUse, setupRows, checkMeter, checkBuilding, assignTariffs, TYPES, TYPE_LABEL, meter, upsertMeter, setMeterRemoved, addReading, connectorReading, importReadings, deleteReading, readingsFor, upsertTenant, deleteTenant, setTariffs, createRun, recalcRun, deleteRun, approveRun, recoveryLines, stateFor, syncMeterEquipment, meterLabel };
 }
 
 module.exports = { createUtility, DEFAULT_TARIFFS };

@@ -257,6 +257,8 @@ function createServer(env = process.env, opts = {}) {
   R('DELETE', '/api/tenants/:id', (req, res, { p }) => result(res, U().deleteTenant(p.id)), { roles: STAFF });
   R('PUT', '/api/tariffs', (req, res, { body }) => result(res, U().setTariffs(body.tariffs)), { roles: STAFF });
   R('PUT', '/api/tariffs/:id', (req, res, { p, body }) => result(res, U().updateTariff(p.id, body.tariff || {})), { roles: STAFF });
+  R('POST', '/api/utility/cycle/:bid', (req, res, { p, body }) => result(res, U().setCycle(p.bid, body.day)), { roles: STAFF });
+  R('GET', '/api/utility/readings-at/:bid', (req, res, { u, p, url }) => { if (!canBuilding(u, p.bid)) return fail(res, 404, 'Not found'); result(res, U().readingsAt(p.bid, url.searchParams.get('date'))); }, { roles: FIELD });
   R('POST', '/api/utility/tariffs/:bid/customise', (req, res, { p, body }) => result(res, U().customiseTariff(p.bid, String(body.tariffId || ''))), { roles: STAFF });
   R('GET', '/api/tariffs/library', (req, res) => send(res, 200, U().tariffLibrary()), { roles: STAFF });
   R('POST', '/api/tariffs/library', (req, res, { body }) => result(res, U().addFromLibrary(String(body.key || ''))), { roles: STAFF });

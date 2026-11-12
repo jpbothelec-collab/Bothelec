@@ -704,3 +704,26 @@ tr.muted td { opacity: .55; }
 @media (max-width: 600px) { .tf-levy { grid-template-columns: 1fr 1fr; } .tf-levy input:first-child { grid-column: 1 / -1; } .tf-try input[name=tq] { flex: 1; width: auto; } }
 [data-form=tariffone] [data-action=rmtariff] { display: none; }
 .tf-acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* record readings: billing period */
+.cap-period { display: grid; grid-template-columns: 1fr 1fr 140px; gap: 10px 14px; align-items: end; }
+.cap-cycle { grid-column: 1 / -1; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+.cap-cyc { display: flex; gap: 6px; align-items: center; }
+.cap-cyc select { padding: 6px 8px; background: var(--bg2); border: 1px solid var(--line2); border-radius: 8px; }
+.cap-head, .cap-period-row { display: grid; grid-template-columns: minmax(0, 1.6fr) 150px 150px 130px 44px; gap: 10px; align-items: center; }
+.cap-head { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 10px 0 4px; border-bottom: 1px solid var(--line); }
+.cap-block { min-height: 42px; padding: 5px 10px; border-radius: 8px; background: rgba(255, 255, 255, .03); border: 1px dashed var(--line2); display: flex; flex-direction: column; justify-content: center; font-variant-numeric: tabular-nums; color: var(--text); cursor: default; user-select: text; }
+.cap-block small { color: var(--muted); font-size: 11px; }
+.cap-use { border-style: solid; border-color: var(--line); }
+.cap-use.bad strong { color: var(--red); }
+.cap-period-row input[data-capinput] { min-height: 42px; }
+@media (max-width: 760px) {
+  .cap-period { grid-template-columns: 1fr 1fr; }
+  .cap-period .field:nth-child(3) { grid-column: 1 / -1; }
+  .cap-head { display: none; }
+  .cap-period-row { grid-template-columns: 1fr 1fr 44px; }
+  .cap-period-row > div:first-child { grid-column: 1 / -1; }
+  .cap-period-row .cap-use { grid-column: 1 / 3; }
+  .cap-period-row .cap-block:not(.cap-use)::before { content: 'Opening'; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .cap-period-row .cap-use::before { content: 'Consumption'; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+}

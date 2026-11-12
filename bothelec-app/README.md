@@ -257,6 +257,11 @@ when readings are missing for the period (those meters are listed).
 **Utility Management**
 - **Meters** (electricity, water, solar): a register per building with serial, make, location, multiplier / CT ratio,
   the tenant it is billed to and the tariff. Each meter shows its readings history, a chart and use since the previous reading.
+- **Record readings** works per billing period: *From* and *To* dates (the closing reading is saved at *To*). Each meter
+  shows its opening reading at *From* in a read-only box, the closing reading you type, and the consumption
+  (× multiplier) worked out as you type; a lower closing reading shows red. **Billing cycle**: set per building
+  (calendar month, or readings on day 2–28); it presets the period, and billing runs follow it, e.g. with the 25th the
+  October run covers 25 September to 24 October.
 - **Readings** arrive by: the office on the meter page or a **reading round** (every meter in a building on one screen,
   with photos); **CSV import** (meter ID or serial, date, time, reading); or a **building link**
   (Modbus / MQTT / HTTP / edge agent) mapped to the path `meters.<meterId>.reading` (stored at most every 15 minutes).

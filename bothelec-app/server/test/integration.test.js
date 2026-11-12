@@ -1021,3 +1021,27 @@ test('a library tariff picked straight from a building dropdown is added once an
   assert.ok(ms.every(m => st.meters.find(x => x.id === m.id).tariffId === added[0].id));
   assert.equal((await req('POST', '/api/utility/tariffs/B4', { assign: [{ meterId: ms[0].id, tariffId: 'lib:nope' }] })).status, 400);
 });
+
+test('billing cycle per building: readings period, opening readings and billing runs', async () => {
+  assert.equal((await req('POST', '/api/utility/cycle/B4', { day: 31 })).status, 400);
+  let r = await req('POST', '/api/utility/cycle/B4', { day: 25 });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const st = (await req('GET', '/api/state')).data;
+  assert.equal(st.buildings.find(b => b.id === 'B4').billingCycleDay, 25);
+  // opening readings at a date
+  const m = st.meters.find(x => x.building === 'B4' && x.tenantId && x.type === 'electricity' && !x.removed);
+  await req('POST', `/api/meters/${encodeURIComponent(m.id)}/readings`, { date: '2023-09-25', value: 1000 });
+  await req('POST', `/api/meters/${encodeURIComponent(m.id)}/readings`, { date: '2023-10-25', value: 1400 });
+  r = await req('GET', '/api/utility/readings-at/B4?date=2023-09-25');
+  assert.equal(r.data.readings[m.id].value, 1000);
+  assert.equal((await req('GET', '/api/utility/readings-at/B4?date=bad')).status, 400);
+  // the October run runs 25 Sep → 25 Oct and bills 400 units on that meter
+  r = await req('POST', '/api/recoveries', { building: 'B4', month: '2023-10' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.run.from.slice(0, 10), '2023-09-25'); assert.equal(r.data.run.to.slice(0, 10), '2023-10-25');
+  assert.match(r.data.run.label, /October 2023 \(25 Sept? – 24 Oct\)/);
+  const item = r.data.run.lines.flatMap(l => l.items).find(it => it.meterId === m.id);
+  assert.equal(item.consumption, 400 * (m.multiplier || 1));
+  await req('DELETE', `/api/recoveries/${r.data.run.id}`);
+  await req('POST', '/api/utility/cycle/B4', { day: 1 });
+});
