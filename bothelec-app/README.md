@@ -229,8 +229,8 @@ when readings are missing for the period (those meters are listed).
 **Utility Management**
 - **Meters** (electricity, water, solar): a register per building with serial, make, location, multiplier / CT ratio,
   the tenant it is billed to and the tariff. Each meter shows its readings history, a chart and use since the previous reading.
-- **Readings** arrive by: a technician on the meter page or a **reading round** (every meter in a building on one screen,
-  with photos); a meter job's job card; **CSV import** (meter ID or serial, date, time, reading); or a **building link**
+- **Readings** arrive by: the office on the meter page or a **reading round** (every meter in a building on one screen,
+  with photos); **CSV import** (meter ID or serial, date, time, reading); or a **building link**
   (Modbus / MQTT / HTTP / edge agent) mapped to the path `meters.<meterId>.reading` (stored at most every 15 minutes).
   Readings lower than the previous one are flagged.
 - **Tenant billing (recoveries)**: tenants per building; **tariffs** with a fixed charge and rate blocks (water can add sewer
@@ -239,8 +239,9 @@ when readings are missing for the period (those meters are listed).
   consumption × multiplier and the charges, with warnings for missing or suspicious readings. Recalculate after fixing
   readings; **Approve** emails each tenant a statement and adds a row per tenant to the billing tracker, from where it is
   invoiced in Zoho Books (the tenant becomes a Zoho customer).
-- **Meter service jobs**: installs, faults and reading jobs use the same call-out, technician and job-card workflow. On a
-  meter job the technician records readings (with photos) on the job card.
+- **Billing only**: Utility Management has no technicians, vehicles, dispatch or service jobs. Readings come in by
+  office capture, CSV import or a building link. Service work at a building is logged under Aircon Solutions (the
+  building needs Aircon Solutions ticked); technicians sign in to the Aircon side only.
 
 **M2M Solutions**: the meter option "M2M Solutions (API)" is reserved for the link to the M2M Solutions API, which will be
 added once their API documentation is available. Until then, these meters can be read manually, by CSV, or through a building link.
@@ -280,7 +281,6 @@ The structure has three levels:
   open the full meter-tree balance.
 - **Tenant recoveries**: billing runs and months not billed yet.
 - **Meter data quality**: meters with no readings, stale readings, readings going backwards, no serial, or not in the tree.
-- **Meter jobs** and **Technicians**: the same service-level reports for meter work.
 
 Clients see the reports for their own buildings only (not billing or technicians). Technicians do not see reports.
 Signed service reports for each job remain under Service → *Signed job reports*.

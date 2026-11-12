@@ -778,10 +778,11 @@ test('utility management: building link readings, permissions, company per build
   assert.equal(r.status, 400);
   r = await req('POST', '/api/admin/buildings', { id: 'B3', name: 'Centurion Medical Suites', divisions: ['aircon', 'utility'] });
   assert.deepEqual(r.data.building.divisions, ['aircon', 'utility']);
-  // meter jobs are tagged with the company and linked to the meter
+  // Utility Management is billing only: no service jobs on that side, nor at utility-only buildings
   r = await req('POST', '/api/jobs', { building: 'B4', division: 'utility', equipment: 'E-S2 · Electricity meter (Shop 2 DB)', fault: 'No display' });
-  const j = (await req('GET', '/api/state')).data.jobs.find(x => x.id === r.data.id);
-  assert.equal(j.division, 'utility'); assert.equal(j.meter, 'E-S2');
+  assert.equal(r.status, 400); assert.match(r.data.error, /billing platform/);
+  r = await req('POST', '/api/jobs', { building: 'B4', equipment: 'Other / not sure', fault: 'No display' });
+  assert.equal(r.status, 400); assert.match(r.data.error, /Utility Management only/);
 });
 
 test('utility building setup: building → shops & serials → bulk check → tariffs', async () => {

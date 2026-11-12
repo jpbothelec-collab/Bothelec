@@ -132,11 +132,13 @@ function createServer(env = process.env, opts = {}) {
   R('POST', '/api/jobs', (req, res, { u, body }) => {
     if (!canBuilding(u, body.building) || !byId(S.buildings, body.building)) return fail(res, 400, 'Choose a building.');
     if (!String(body.fault || '').trim()) return fail(res, 400, 'Describe the fault.');
+    if (body.division === 'utility') return fail(res, 400, 'Utility Management is a billing platform: service call-outs are logged under Bothelec Aircon Solutions.');
+    if (!(byId(S.buildings, body.building).divisions || ['aircon']).includes('aircon')) return fail(res, 400, 'This building is on Utility Management only (billing). Add Aircon Solutions to the building to log service calls.');
     const j = model.newJob({
       building: body.building, equipment: String(body.equipment || 'Other / not sure').slice(0, 120), location: String(body.location || '').slice(0, 120),
       fault: String(body.fault).trim().slice(0, 1000), urgency: ['Low', 'Medium', 'High', 'Critical'].includes(body.urgency) ? body.urgency : 'Medium',
       contact: String(body.contact || u.name).slice(0, 80), contactPhone: body.contactPhone || u.phone || '', contactEmail: body.contactEmail || u.email || '',
-      source: u.role === 'client' ? 'Client app' : 'Service desk', division: body.division === 'utility' ? 'utility' : 'aircon',
+      source: u.role === 'client' ? 'Client app' : 'Service desk', division: 'aircon',
     }, u);
     if (Array.isArray(body.photos) && body.photos.length) model.addPhotos(j, body.photos);
     send(res, 200, { ok: true, id: j.id });

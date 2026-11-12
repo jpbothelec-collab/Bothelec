@@ -105,9 +105,9 @@
     { id: 'meters', label: 'Meters', icon: 'bolt', home: 'meters/overview', side: METER_SIDE, sub: 'Utility Management', biz: 'utility' },
     { id: 'recoveries', label: 'Tenant billing', short: 'Billing', icon: 'doc', home: 'recoveries/runs', side: REC_SIDE, sub: 'Utility Management', biz: 'utility', roles: ['admin', 'desk', 'client'] },
     { id: 'bms', biz: 'aircon', label: 'Info Hub', icon: 'info', home: 'bms/overview', side: BMS_SIDE, sub: 'Building Monitoring Centre', roles: ['admin', 'desk', 'client'] },
-    { id: 'service', label: 'Service & Maintenance', short: 'Service', techLabel: 'Jobs', icon: 'wrench', home: 'service/live', side: SERVICE_SIDE, sub: 'Operations & Service' },
-    { id: 'vehicles', label: 'Vehicles', icon: 'truck', home: 'vehicles', side: [['vehicles', 'Fleet', 'truck']], sub: 'Fleet', roles: ['admin', 'desk'] },
-    { id: 'dispatch', label: 'Driver Dispatch', short: 'Dispatch', techLabel: 'Trips', icon: 'pin', home: 'dispatch', side: [['dispatch', 'Trips & deliveries', 'route'], ['dispatch/new', 'New trip', 'plus']], sub: 'Logistics', roles: ['admin', 'desk', 'tech'] },
+    { id: 'service', biz: 'aircon', label: 'Service & Maintenance', short: 'Service', techLabel: 'Jobs', icon: 'wrench', home: 'service/live', side: SERVICE_SIDE, sub: 'Operations & Service' },
+    { id: 'vehicles', biz: 'aircon', label: 'Vehicles', icon: 'truck', home: 'vehicles', side: [['vehicles', 'Fleet', 'truck']], sub: 'Fleet', roles: ['admin', 'desk'] },
+    { id: 'dispatch', biz: 'aircon', label: 'Driver Dispatch', short: 'Dispatch', techLabel: 'Trips', icon: 'pin', home: 'dispatch', side: [['dispatch', 'Trips & deliveries', 'route'], ['dispatch/new', 'New trip', 'plus']], sub: 'Logistics', roles: ['admin', 'desk', 'tech'] },
     { id: 'assessments', biz: 'aircon', label: 'Assessments', short: 'Assess', icon: 'clipboard', home: 'assessments', side: [['assessments', 'All assessments', 'clipboard'], ['assessments/new', 'New assessment', 'plus']], sub: 'Site assessments', roles: ['admin', 'desk', 'tech'] },
     { id: 'reports', label: 'Reports', icon: 'chart', home: 'reports/overview', side: [], sub: 'Reports & performance', roles: ['admin', 'desk', 'client'] },
     { id: 'settings', label: 'Settings', icon: 'gear', home: 'settings', side: SETTINGS_SIDE, sub: 'Administration', roles: ['admin'] },
@@ -120,13 +120,16 @@
   /* In utility mode the shared Service menu points at meters instead of aircon equipment. */
   function sideFor(mod) {
     if (mod.id === 'reports') return isUtil() ? REPORT_UTILITY : REPORT_AIRCON;
+    if (isUtil() && mod.id === 'dashboard') return UTIL_HOME_SIDE;
     if (!isUtil() || !(mod.id === 'dashboard' || mod.id === 'service')) return mod.side;
     return mod.side.filter(x => x[0] !== 'assessments' && x[0] !== 'service/tracker').map(x => (x[0] === 'service/equipment' ? ['meters/register', 'Meters', 'bolt'] : x));
   }
+  /* Utility Management is a billing platform: no technicians, vehicles, dispatch or service jobs. */
+  const UTIL_HOME_SIDE = [['dashboard', 'Dashboard', 'grid'], ['meters/overview', 'Sites overview', 'building'], ['meters/capture', 'Record readings', 'check', 'staff'], ['recoveries/runs', 'Billing runs', 'doc'], ['recoveries/tenants', 'Tenants', 'users'], ['reports/overview', 'Reports', 'chart']];
   const BIZ = { aircon: 'Aircon Solutions', utility: 'Utility Management' };
   function renderBiz() {
     const divs = [...new Set(S.buildings.flatMap(b => b.divisions || ['aircon']))];
-    const choices = role() === 'client' ? divs : ['aircon', 'utility'];
+    const choices = role() === 'client' ? divs : isTech() ? ['aircon'] : ['aircon', 'utility'];
     $('#brandSub').innerHTML = choices.length > 1 ? `<select id="bizSel" aria-label="Company">${choices.map(d => `<option value="${d}" ${d === ui.biz ? 'selected' : ''}>${BIZ[d]}</option>`).join('')}</select>` : esc(BIZ[ui.biz]);
     document.title = `Bothelec ${BIZ[ui.biz]}`;
     document.body.dataset.biz = ui.biz;
@@ -216,7 +219,7 @@
     const keepBms = S && S.bms;
     S = st;
     S.bms = keepBms || normalizeBms(null);
-    const divs = [...new Set(S.buildings.flatMap(b => b.divisions || ['aircon']))];
+    const divs = S.me && S.me.role === 'tech' ? ['aircon'] : [...new Set(S.buildings.flatMap(b => b.divisions || ['aircon']))];
     if (divs.length && !divs.includes(ui.biz)) ui.biz = divs[0];
     const bb = S.buildings.filter(b => (b.divisions || ['aircon']).includes(ui.biz));
     if (!bb.find(b => b.id === ui.site)) ui.site = (bb.find(b => b.connector && b.connector.type !== 'none') || bb[0] || S.buildings[0] || {}).id || null;
@@ -648,7 +651,7 @@
    *   3. Detail tables under each report, with CSV export and print / PDF.
    * Every report uses the same period and building filters. */
   const REPORT_AIRCON = [['reports/overview', 'Scorecard', 'grid'], ['reports/service', 'Service levels', 'clock'], ['reports/techs', 'Technicians', 'users', 'staff'], ['reports/buildings', 'Clients & buildings', 'building'], ['reports/equipment', 'Equipment & maintenance', 'fcu'], ['reports/finance', 'Billing & revenue', 'doc', 'staff'], ['service/reports', 'Signed job reports', 'card']];
-  const REPORT_UTILITY = [['reports/overview', 'Scorecard', 'grid'], ['reports/consumption', 'Consumption', 'bolt'], ['reports/losses', 'Losses & balance', 'trend'], ['reports/recoveries', 'Tenant recoveries', 'doc'], ['reports/quality', 'Meter data quality', 'alert'], ['reports/service', 'Meter jobs', 'clock'], ['reports/techs', 'Technicians', 'users', 'staff']];
+  const REPORT_UTILITY = [['reports/overview', 'Scorecard', 'grid'], ['reports/consumption', 'Consumption', 'bolt'], ['reports/losses', 'Losses & balance', 'trend'], ['reports/recoveries', 'Tenant recoveries', 'doc'], ['reports/quality', 'Meter data quality', 'alert']];
   const RP_PERIODS = [['month', 'This month'], ['last', 'Last month'], ['3m', 'Last 3 months'], ['6m', 'Last 6 months'], ['ytd', 'Year to date'], ['12m', 'Last 12 months'], ['custom', 'Choose months']];
   const addM = (m, k) => { const [y, mo] = m.split('-').map(Number); return new Date(Date.UTC(y, mo - 1 + k, 1)).toISOString().slice(0, 7); };
   const monthsBetween = (a, b) => { const out = []; for (let m = a; m <= b && out.length < 36; m = addM(m, 1)) out.push(m); return out; };
@@ -951,7 +954,6 @@
         ${rpAttn('trend', `${lossMonths.length} month${lossMonths.length === 1 ? '' : 's'} outside the loss tolerance`, lossMonths.slice(0, 3).map(x => `${esc(x.b.name)} ${UT_LABEL[x.t].toLowerCase()} ${mShort(x.m.month)}`).join(' · ') || 'all buildings balance', '#/reports/losses', lossMonths.length ? 'bad' : 'ok')}
         ${rpAttn('alert', `${r.quality.length} meter${r.quality.length === 1 ? '' : 's'} with data issues`, `${bad} serious (no readings, readings going backwards, no serial)`, '#/reports/quality', bad ? 'bad' : r.quality.length ? 'warn' : 'ok')}
         ${rpAttn('doc', `${missingRuns.length} month${missingRuns.length === 1 ? '' : 's'} not billed yet`, missingRuns.slice(0, 3).map(x => `${esc(x.b.name)} ${mShort(x.m)}`).join(' · ') || 'every completed month has a billing run', '#/reports/recoveries', missingRuns.length ? 'warn' : 'ok')}
-        ${rpAttn('clock', `${openNow(rpJobs()).length} open meter job${openNow(rpJobs()).length === 1 ? '' : 's'}`, 'installs, faults and reading jobs', '#/reports/service', openNow(rpJobs()).length ? 'warn' : 'ok')}
       </div></div>
       <p class="muted rp-note">Supply is the council meter plus solar. Losses are supply less the meters under it (see Losses & balance). Recovery is the share of supply billed to tenants; the rest is common areas and losses. Changes compare with ${esc(R.prev.label)}.</p>`;
   }
@@ -1926,12 +1928,11 @@
     const due = ms.filter(m => readingAge(m) == null || readingAge(m) > 35);
     const runs = (S.recoveries || []).slice(0, 6);
     return head('Dashboard', `${esc(S.me.name)} · Bothelec Utility Management`, `${isStaff() ? `<a class="btn primary sm" href="#/meters/setup/new">${ic('plus')}Set up a building</a>` : ''}<a class="btn sm" href="#/meters/capture">${ic('check')}Record readings</a>${isStaff() ? `<a class="btn sm" href="#/recoveries/runs">${ic('doc')}Billing runs</a>` : ''}`) +
-      `<div class="grid g4" style="margin-bottom:14px">${kpi('building', 'Sites', bizBuildings().length)}${kpi('bolt', 'Meters', ms.length)}${kpi('clock', 'Readings due', due.length)}${kpi('wrench', 'Open meter jobs', openJobs().length)}</div>
+      `<div class="grid g4" style="margin-bottom:14px">${kpi('building', 'Sites', bizBuildings().length)}${kpi('bolt', 'Meters', ms.length)}${kpi('clock', 'Readings due', due.length)}${kpi('users', 'Tenants', (S.tenants || []).filter(t => t.active !== false && bizBuildings().some(b => b.id === t.building)).length)}</div>
       <div class="grid g2">
         <div class="card"><header><h2>Readings due</h2><small>no reading in 35 days</small></header>${due.length ? `<div class="rows">${due.slice(0, 8).map(m => `<a class="row" href="#/meters/meter/${encodeURIComponent(m.id)}" style="color:inherit">${icS(UT_ICON[m.type])}<div class="grow"><strong>${esc(m.id)}</strong><small>${esc(bld(m.building).name)} · ${esc(m.location || '')}</small></div><small>${m.last ? readingAge(m) + ' days' : 'never'}</small></a>`).join('')}</div>` : '<p class="muted" style="margin:0">All meters have a recent reading.</p>'}</div>
         <div class="card"><header><h2>Tenant billing</h2><a href="#/recoveries/runs" class="muted">All runs</a></header>${runs.length ? `<div class="rows">${runs.map(r => `<a class="row" href="#/recoveries/run/${r.id}" style="color:inherit"><div class="grow"><strong>${esc(r.label)} · ${esc(bld(r.building).name)}</strong><small>${r.lines.length} tenants${r.warnings ? ' · ' + r.warnings + ' warnings' : ''}</small></div><span class="pill ${r.status === 'approved' ? 'ok' : 'warn'}">${r.status === 'approved' ? 'Approved' : 'Draft'}</span><small class="mono">${fmtMoney(r.total)}</small></a>`).join('')}</div>` : '<p class="muted" style="margin:0">No billing runs yet.</p>'}</div>
-      </div>
-      <div class="card" style="margin-top:14px"><header><h2>Meter jobs</h2><a href="#/service/live" class="muted">View all</a></header>${jobsTable(openJobs().slice(0, 6), true)}</div>`;
+      </div>`;
   }
 
   function viewMetersOverview() {
@@ -1973,7 +1974,7 @@
       } catch (e) { el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     }, 0);
     return head(`${esc(m.id)} <small class="muted" style="font-weight:400">${UT_LABEL[m.type]} meter</small>${m.removed ? ' <span class="pill off">Removed</span>' : ''}`, `${esc(b.name)}${m.location ? ' · ' + esc(m.location) : ''}`,
-      `<a class="btn sm" href="#/meters/register/${b.id}">${ic('back')}Meters</a>${isStaff() ? `<a class="btn sm" href="#/meters/edit/${encodeURIComponent(m.id)}">Edit</a>` : ''}${!m.removed ? `<button class="btn sm primary" data-action="meterjob" data-meter="${esc(m.id)}">${ic('phone')}Log a meter job</button>` : ''}`) +
+      `<a class="btn sm" href="#/meters/register/${b.id}">${ic('back')}Meters</a>${isStaff() ? `<a class="btn sm" href="#/meters/edit/${encodeURIComponent(m.id)}">Edit</a>` : ''}`) +
       `<div class="grid split"><div class="card"><header><h2>Readings</h2><small>${esc(m.unit)}</small></header><div id="mreads"><div class="empty">Loading…</div></div></div>
         <div class="grid" style="align-content:start">
           <div class="card"><header><h3>Meter details</h3></header><dl class="kv"><dt>Tenant</dt><dd>${t ? esc(t.name) + (t.unit ? ' · ' + esc(t.unit) : '') : 'Common area / landlord'}</dd><dt>Serial no.</dt><dd>${esc(m.serial || '—')}</dd><dt>Make / model</dt><dd>${esc([m.make, m.model].filter(Boolean).join(' ') || '—')}</dd>
@@ -2412,9 +2413,11 @@
     let mod = MODULES.find(m => m.id === current.mod) || MODULES[0];
     const TECH_BLOCKED = ['service/tracker', 'service/trackrow', 'service/trackimport', 'service/reports', 'service/documents', 'service/clients', 'service/building', 'service/techs', 'service/tech', 'service/unitedit'];
     if (/^(meters|recoveries)\//.test(current.key) && current.arg && S.buildings.some(b => b.id === current.arg)) ui.site = current.arg; // sidebar follows the building on screen
+    if (isUtil() && /^service\/track/.test(current.key) && role() !== 'tech') mod = MODULES.find(m => m.id === 'recoveries'); // the billing tracker is shared by both companies
     if (mod.biz && mod.biz !== ui.biz) { const want = mod.biz; ui.biz = want; try { localStorage.setItem('bothelec.biz', want); } catch (e) { /* storage blocked */ } }
     if ((mod.roles && !mod.roles.includes(role())) || (isTech() && TECH_BLOCKED.includes(current.key))) { mod = MODULES[0]; current = { key: 'dashboard', mod: 'dashboard' }; }
     if (!isStaff() && ['reports/finance', 'reports/techs'].includes(current.key)) current = { key: 'reports/overview', mod: 'reports' };
+    if (isUtil() && ['reports/service', 'reports/techs', 'reports/buildings', 'reports/equipment', 'reports/finance'].includes(current.key)) current = { key: 'reports/overview', mod: 'reports' };
     renderNav(mod, current.key);
     ui.rpCsv = null;
     const view = $('#view');
@@ -2493,7 +2496,6 @@
     sucheck: el => { (ui.suCheck || {})[el.dataset.bid] = null; render(true); },
     'tree-all': el => { const type = el.dataset.type; const rows = [...document.querySelectorAll(`[data-tree][data-type="${type}"]`)]; const council = rows.find(r => (r.querySelector('[name=role]') || {}).value === 'council'); if (!council) return toast('Choose the council meter first', 'Set one meter’s role to “Council / bulk meter”.', 'bad'); rows.forEach(r => { if (r === council) return; const m = meterById(r.dataset.tree); const role = r.querySelector('[name=role]').value; if (role === 'sub' && (m.tenantId || /common/i.test(m.location || '') || !r.querySelector('[name=parent]').value)) r.querySelector('[name=parent]').value = council.dataset.tree; }); ['electricity', 'water'].forEach(drawTreePreview); },
     suopen: el => { ui.suOpen = ui.suOpen === el.dataset.id ? null : el.dataset.id; render(true); },
-    meterjob: el => { const m = meterById(el.dataset.meter); const b = bld(m.building); ui.prefill = { building: b.id, equipment: (b.meterEquipment || []).find(e => e.split(' · ')[0] === m.id) }; location.hash = '#/service/callout'; },
     meterremoved: async el => { const on = !!el.dataset.v; if (on && !confirm('Remove this meter? Its readings are kept.')) return; if (await act('POST', `/api/meters/${encodeURIComponent(el.dataset.id)}/removed`, { removed: on }, [on ? 'Meter removed' : 'Meter restored'])) location.hash = '#/meters/register'; },
     delreading: async el => { if (confirm('Delete this reading?') && await act('DELETE', `/api/meters/${encodeURIComponent(el.dataset.meter)}/readings/${encodeURIComponent(el.dataset.ts)}`, undefined, ['Reading deleted'])) render(true); },
     deltenant: async el => { if (confirm('Delete this tenant?') && await act('DELETE', `/api/tenants/${el.dataset.id}`, undefined, ['Tenant deleted'])) location.hash = '#/recoveries/tenants'; },

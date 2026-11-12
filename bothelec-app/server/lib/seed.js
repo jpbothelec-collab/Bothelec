@@ -191,7 +191,6 @@ function seed(demo) {
   mk(1047, { building: 'B2', unit: 'VRF-02', tech: 'T2', techName: 'T. Naidoo', equipment: 'VRF-02 · VRF outdoor unit', location: 'Roof', fault: 'VRF-02 error code E7, no cooling on level 2', urgency: 'High',
     findings: 'Outdoor fan motor capacitor failed.', work: 'Capacitor replaced, unit tested, error cleared.', signedBy: 'M. Khumalo',
     billing: { lines: [{ id: 'm1', kind: 'Call-out', code: 'CALLOUT', description: 'Call-out fee', qty: 1, unitPrice: 650 }, { id: 'm2', kind: 'Labour', code: 'LAB-HR', description: 'Labour (technician)', qty: 2, unitPrice: 550 }, { id: 'm3', kind: 'Part', code: 'CAP-35', description: 'Run capacitor 35 µF', qty: 1, unitPrice: 310 }], notes: '' } }, [4400, 4390, 4360, 4330, 4250, 4245]);
-  mk(1046, { building: 'B4', division: 'utility', meter: 'E-S3', equipment: 'E-S3 · Electricity meter (Shop 3 DB)', location: 'Ground floor', fault: 'Meter display blank, tenant disputes last reading', urgency: 'Medium', tech: 'T3', techName: 'S. van Wyk' }, [180, 170]);
   mk(1049, { building: 'B2', equipment: 'SPL-SR1 · Split unit (server room)', location: 'Server room', fault: 'Unit leaking water onto floor', urgency: 'High', tech: 'T2' }, [70, 62, 35]);
   mk(1050, { building: 'B3', equipment: 'PU-02 · Packaged unit', location: 'Ward A', fault: 'Noisy compressor', urgency: 'Medium', tech: 'T3' }, [40, 31]);
   mk(1051, { building: 'B1', equipment: 'FCU-L2-04 · Fan coil unit', location: 'Level 2 - East zone', fault: 'Thermostat display blank', urgency: 'Low' }, [12]);
@@ -233,11 +232,6 @@ function seed(demo) {
     hist.push({ id, b: b.id, lines, day });
     prev = { b, u };
   }
-  // utility meter jobs
-  [['E-S1', 'Meter not recording', 150], ['W-S2', 'Water meter leaking at the fitting', 95], ['E-CA', 'Install check meter on common area DB', 60], ['E-S2', 'Tenant query: high consumption', 25]].forEach(([m, fault, day], i) => {
-    const logged = day * 1440, resp = 200 + i * 400, fix = 90;
-    mk(990 + i, { building: 'B4', division: 'utility', meter: m, equipment: `${m} · Meter`, location: 'Ground floor', fault, urgency: i === 1 ? 'High' : 'Medium', tech: 'T3', techName: 'S. van Wyk', findings: 'Checked on site.', work: 'Resolved and test reading taken.', signedBy: 'Centre manager' }, [logged, logged - 10, logged - 20, logged - resp, logged - resp - fix, logged - resp - fix - 5]);
-  });
   const sv = (n, building, unit, d, type, tech, work, notes = '') => s.services.push({ id: 'SV' + n, building, unit, date: daysAgo(d), type, tech, techName: (s.technicians.find(t => t.id === tech) || {}).name || '', work, notes, by: 'Seed', at: new Date(Date.now() - d * 864e5).toISOString() });
   sv(1, 'B1', 'AHU-02', 182, 'Planned maintenance', 'T1', 'Quarterly service: filters replaced, belts checked, coil cleaned, drain flushed.', 'Belt showing early wear.');
   sv(2, 'B1', 'AHU-02', 92, 'Planned maintenance', 'T1', 'Quarterly service: filters replaced, bearings greased, belt re-tensioned.');
