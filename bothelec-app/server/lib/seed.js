@@ -151,20 +151,29 @@ function seed(demo) {
   mt('W-S2', 'B4', 'water', 'Shop 2', 'TN-PHARM', 'KT-55102');
   mt('SOL-1', 'B4', 'solar', 'Roof inverter', null, 'SMA-200177');
   mt('E-L1', 'B2', 'electricity', 'Level 1 DB', 'TN-ROSE1', 'LG-771101');
-  // monthly readings on the 1st of the last 5 months, plus a recent one
-  const now = new Date(), start = { 'E-S1': 41250, 'E-S2': 18830, 'E-S3': 9220, 'E-MAIN': 3120, 'W-S1': 812.4, 'W-S2': 231.7, 'SOL-1': 52300, 'E-L1': 27110 };
-  const perMonth = { 'E-S1': 2350, 'E-S2': 1180, 'E-S3': 640, 'E-MAIN': 61, 'W-S1': 18.6, 'W-S2': 4.2, 'SOL-1': 5100, 'E-L1': 1720 };
-  Object.keys(start).forEach(m => {
-    let v = start[m];
-    for (let k = 5; k >= 0; k--) {
-      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - k, 1, 7, 30));
-      if (d > now) break;
-      s.readings.push({ meter: m, ts: d.toISOString(), value: +v.toFixed(2), source: 'manual', by: 'S. van Wyk' });
-      v += perMonth[m] * (0.85 + ((k * 7 + m.length) % 5) / 15);
-    }
-    const recent = new Date(now.getTime() - 2 * 864e5);
-    if (recent.getUTCDate() > 3) s.readings.push({ meter: m, ts: recent.toISOString(), value: +(v - perMonth[m] * 0.3).toFixed(2), source: 'manual', by: 'S. van Wyk' });
-  });
+  mt('E-CA', 'B4', 'electricity', 'Common area lighting & HVAC', null, 'LG-881290');
+  mt('W-MAIN', 'B4', 'water', 'Council water connection', null, 'COJ-W-44120');
+  const roleOf = { 'E-MAIN': 'council', 'W-MAIN': 'council' };
+  const parentOf = { 'E-S1': 'E-MAIN', 'E-S2': 'E-MAIN', 'E-S3': 'E-MAIN', 'E-CA': 'E-MAIN', 'SOL-1': 'E-MAIN', 'W-S1': 'W-MAIN', 'W-S2': 'W-MAIN' };
+  s.meters.forEach(m => { m.role = roleOf[m.id] || 'sub'; m.parentId = parentOf[m.id] || null; if (m.id === 'E-MAIN') m.location = 'Council electricity supply (CT 400/5)'; });
+  // Readings on the 1st of the last 6 months plus a recent one. Sub-meters vary month to month; the council meters are
+  // worked out from them so the building balances, with normal losses, one month over tolerance and one water leak.
+  const now = new Date(), stamps = [];
+  for (let k = 5; k >= 0; k--) { const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - k, 1, 7, 30)); if (d <= now) stamps.push(d.toISOString()); }
+  const recent = new Date(now.getTime() - 2 * 864e5); if (recent.getUTCDate() > 3) stamps.push(recent.toISOString());
+  const share = i => (i === stamps.length - 1 && recent.getUTCDate() > 3 ? 0.3 : 1); // the recent reading covers part of a month
+  const subs = { 'E-S1': [41250, 2350], 'E-S2': [18830, 1180], 'E-S3': [9220, 640], 'E-CA': [15400, 520], 'SOL-1': [52300, 1450], 'W-S1': [812.4, 18.6], 'W-S2': [231.7, 4.2], 'E-L1': [27110, 1720] };
+  const vals = {};
+  Object.entries(subs).forEach(([m, [startV, per]]) => { let v = startV; vals[m] = stamps.map((ts, i) => { if (i > 0) v += per * share(i) * (0.88 + ((i * 5 + m.length * 3) % 7) / 25); return +v.toFixed(2); }); });
+  const use = (m, i) => vals[m][i] - vals[m][i - 1];
+  let em = 3120, wm = 1840.5; vals['E-MAIN'] = [em]; vals['W-MAIN'] = [wm];
+  for (let i = 1; i < stamps.length; i++) {
+    const eLoss = i === 2 ? 0.09 : 0.03, wLoss = i === 3 ? 0.18 : 0.04;
+    const shops = use('E-S1', i) + use('E-S2', i) + use('E-S3', i) + use('E-CA', i);
+    em += (shops * (1 + eLoss) - use('SOL-1', i)) / 80; vals['E-MAIN'].push(+em.toFixed(3));
+    wm += (use('W-S1', i) + use('W-S2', i)) * (1 + wLoss); vals['W-MAIN'].push(+wm.toFixed(2));
+  }
+  Object.entries(vals).forEach(([m, list]) => list.forEach((v, i) => s.readings.push({ meter: m, ts: stamps[i], value: v, source: 'manual', by: 'S. van Wyk' })));
 
   s.technicians = [
     { id: 'T1', name: 'J. Mokoena', skill: 'HVAC senior · Chillers & AHUs', phone: '+27 82 555 1001', email: '', status: 'available', vehicle: 'V1' },

@@ -98,7 +98,7 @@
     ['bms/trends', 'Trends', 'trend'], ['bms/points', 'Point Register', 'list'], ['service/documents', 'Documents', 'doc'],
   ];
   const SETTINGS_SIDE = [['settings', 'SMS & email', 'bell'], ['settings/billing', 'Zoho Books & billing', 'doc'], ['settings/buildings', 'Buildings & BMS links', 'building'], ['settings/users', 'Users', 'users'], ['settings/outbox', 'Message log', 'list']];
-  const METER_SIDE = [['meters/setup', 'Building setup', 'plus', 'staff'], ['meters/overview', 'Sites overview', 'building'], ['meters/register', 'Meter register', 'fcu'], ['meters/capture', 'Record readings', 'check', 'field'], ['meters/import', 'Import readings', 'doc', 'staff']];
+  const METER_SIDE = [['meters/setup', 'Building setup', 'plus', 'staff'], ['meters/overview', 'Sites overview', 'building'], ['meters/balance', 'Building balance', 'trend'], ['meters/register', 'Meter register', 'fcu'], ['meters/capture', 'Record readings', 'check', 'field'], ['meters/import', 'Import readings', 'doc', 'staff']];
   const REC_SIDE = [['recoveries/runs', 'Billing runs', 'doc'], ['recoveries/tenants', 'Tenants', 'users'], ['recoveries/tariffs', 'Tariffs', 'list', 'staff'], ['service/tracker', 'Billing tracker', 'list', 'staff']];
   const MODULES = [
     { id: 'dashboard', label: 'Dashboard', techLabel: 'My work', icon: 'grid', home: 'dashboard', side: SERVICE_SIDE, sub: 'Operations & Service' },
@@ -1581,7 +1581,7 @@
         <dl class="kv" style="margin-top:10px"><dt>Tenants</dt><dd>${ts.length}</dd><dt>Meters</dt><dd>${['electricity', 'water', 'solar'].map(t => { const n = ms.filter(m => m.type === t).length; return n ? `${n} ${UT_LABEL[t].toLowerCase()}` : ''; }).filter(Boolean).join(' · ') || '—'}</dd>
         <dt>Electricity (30 days)</dt><dd>${fmtN(sum('electricity'), 0)} kWh</dd><dt>Water (30 days)</dt><dd>${fmtN(sum('water'), 1)} kL</dd>${ms.some(m => m.type === 'solar') ? `<dt>Solar (30 days)</dt><dd>${fmtN(sum('solar'), 0)} kWh</dd>` : ''}
         <dt>Last billing run</dt><dd>${run ? `<a href="#/recoveries/run/${run.id}">${esc(run.label)}</a>` : '—'}</dd></dl>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">${isStaff() ? `<a class="btn sm primary" href="#/meters/setup/${b.id}/2">${ic('gear')}Setup</a>` : ''}<a class="btn sm" href="#/meters/register/${b.id}">${ic('fcu')}Meters</a><a class="btn sm" href="#/meters/capture/${b.id}">${ic('check')}Record readings</a>${isStaff() ? `<a class="btn sm" href="#/recoveries/tenants/${b.id}">${ic('users')}Tenants</a>` : ''}</div></div>`;
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">${isStaff() ? `<a class="btn sm primary" href="#/meters/setup/${b.id}/2">${ic('gear')}Setup</a>` : ''}<a class="btn sm" href="#/meters/balance/${b.id}">${ic('trend')}Balance</a><a class="btn sm" href="#/meters/register/${b.id}">${ic('fcu')}Meters</a><a class="btn sm" href="#/meters/capture/${b.id}">${ic('check')}Record readings</a>${isStaff() ? `<a class="btn sm" href="#/recoveries/tenants/${b.id}">${ic('users')}Tenants</a>` : ''}</div></div>`;
     }).join('') || `<div class="card empty">No buildings use utility management yet.${isStaff() ? ' <a href="#/meters/setup/new">Set up your first building</a>.' : ''}</div>`}</div>`;
   }
 
@@ -1615,7 +1615,7 @@
       `<div class="grid split"><div class="card"><header><h2>Readings</h2><small>${esc(m.unit)}</small></header><div id="mreads"><div class="empty">Loading…</div></div></div>
         <div class="grid" style="align-content:start">
           <div class="card"><header><h3>Meter details</h3></header><dl class="kv"><dt>Tenant</dt><dd>${t ? esc(t.name) + (t.unit ? ' · ' + esc(t.unit) : '') : 'Common area / landlord'}</dd><dt>Serial no.</dt><dd>${esc(m.serial || '—')}</dd><dt>Make / model</dt><dd>${esc([m.make, m.model].filter(Boolean).join(' ') || '—')}</dd>
-            <dt>Multiplier (CT ratio)</dt><dd>${m.multiplier}</dd><dt>Tariff</dt><dd>${esc(((S.tariffs || []).find(x => x.id === m.tariffId) || {}).name || 'Default for ' + UT_LABEL[m.type].toLowerCase())}</dd><dt>Readings by</dt><dd>${{ manual: 'Manual / CSV', connector: 'Building link', meterhead: 'MeterHead' }[m.comm] || 'Manual'}</dd><dt>Installed</dt><dd>${m.installed ? dmy(m.installed) : '—'}</dd>${m.live ? `<dt>Live value</dt><dd>${fmtN(m.live.value)} · ${hhmm(m.live.at)}</dd>` : ''}</dl></div>
+            <dt>Role</dt><dd>${m.type === 'solar' ? 'Solar (supply)' : ROLE_LABEL[m.role || 'sub']}</dd><dt>${m.type === 'solar' ? 'Feeds into' : 'Fed from'}</dt><dd>${m.parentId && meterById(m.parentId) ? `<a href="#/meters/meter/${encodeURIComponent(m.parentId)}">${esc(mLabel(meterById(m.parentId)))}</a>` : '—'}</dd><dt>Multiplier (CT ratio)</dt><dd>${m.multiplier}</dd><dt>Tariff</dt><dd>${esc(((S.tariffs || []).find(x => x.id === m.tariffId) || {}).name || 'Default for ' + UT_LABEL[m.type].toLowerCase())}</dd><dt>Readings by</dt><dd>${{ manual: 'Manual / CSV', connector: 'Building link', meterhead: 'MeterHead' }[m.comm] || 'Manual'}</dd><dt>Installed</dt><dd>${m.installed ? dmy(m.installed) : '—'}</dd>${m.live ? `<dt>Live value</dt><dd>${fmtN(m.live.value)} · ${hhmm(m.live.at)}</dd>` : ''}</dl></div>
           ${isField() && !m.removed ? `<form class="card form" data-form="reading" data-meter="${esc(m.id)}"><header><h3>Record a reading</h3></header>
             <div class="grid g2"><div class="field"><label>Date</label><input type="date" name="date" value="${today()}" max="${today()}" required></div><div class="field"><label>Time</label><input type="time" name="time" value="${new Date().toTimeString().slice(0, 5)}"></div></div>
             <div class="field"><label>Reading (${esc(m.unit)} register)</label><input name="value" type="number" step="any" min="0" inputmode="decimal" required placeholder="${m.last ? 'last: ' + m.last.value : ''}"></div>
@@ -1736,7 +1736,7 @@
   }
 
   /* ---------------- utility: guided building setup ---------------- */
-  const SETUP_STEPS = ['Building', 'Shops & meters', 'Bulk check', 'Tariffs', 'Done'];
+  const SETUP_STEPS = ['Building', 'Shops & meters', 'Meter tree', 'Bulk check', 'Tariffs', 'Done'];
   function setupStepper(bid, step) {
     return `<ol class="stepper">${SETUP_STEPS.map((l, i) => { const n = i + 1, can = bid !== 'new' || n === 1; return `<li class="${n === step ? 'on' : n < step ? 'done' : ''}">${can ? `<a href="#/meters/setup/${bid}/${n}">` : '<span>'}<b>${n < step ? '✓' : n}</b><span>${l}</span>${can ? '</a>' : '</span>'}</li>`; }).join('')}</ol>`;
   }
@@ -1744,12 +1744,15 @@
     const ms = (S.meters || []).filter(m => m.building === bid && !m.removed);
     const serial = (pred, type) => (ms.find(m => pred(m) && m.type === type) || {}).serial || '';
     const rows = (S.tenants || []).filter(t => t.building === bid && t.active !== false).map(t => ({ tenantId: t.id, kind: 'shop', unit: t.unit || '', name: t.name, email: t.email || '', elecSerial: serial(m => m.tenantId === t.id, 'electricity'), waterSerial: serial(m => m.tenantId === t.id, 'water') }));
-    const commons = [...new Set(ms.filter(m => !m.tenantId && m.type !== 'solar').map(m => m.location || 'Common area'))];
+    const kindOf = m => (m.role === 'council' ? 'council' : m.role === 'check' ? 'check' : 'common');
+    const groups = [...new Map(ms.filter(m => !m.tenantId && m.type !== 'solar').map(m => [(m.location || 'Common area') + '|' + kindOf(m), { loc: m.location || 'Common area', kind: kindOf(m) }])).values()].sort((x, y) => ['council', 'check', 'common'].indexOf(x.kind) - ['council', 'check', 'common'].indexOf(y.kind));
+    rows.unshift(...groups.filter(g => g.kind !== 'common').map(g => ({ kind: g.kind, unit: g.loc, elecSerial: serial(m => !m.tenantId && (m.location || 'Common area') === g.loc && kindOf(m) === g.kind, 'electricity'), waterSerial: serial(m => !m.tenantId && (m.location || 'Common area') === g.loc && kindOf(m) === g.kind, 'water') })));
+    const commons = groups.filter(g => g.kind === 'common').map(g => g.loc);
     commons.forEach(loc => rows.push({ kind: 'common', unit: loc, name: '', email: '', elecSerial: serial(m => !m.tenantId && (m.location || 'Common area') === loc, 'electricity'), waterSerial: serial(m => !m.tenantId && (m.location || 'Common area') === loc, 'water') }));
-    return rows.length ? rows : [{ kind: 'shop' }, { kind: 'shop' }, { kind: 'common', unit: 'Common area' }];
+    return rows.length ? rows : [{ kind: 'council', unit: 'Council supply' }, { kind: 'shop' }, { kind: 'shop' }, { kind: 'common', unit: 'Common area' }];
   }
-  const setupRow = (r = { kind: 'shop' }) => `<div class="su-row ${r.kind === 'common' ? 'is-common' : ''}" data-surow data-tenant="${esc(r.tenantId || '')}">
-      <div class="field"><label>Type</label><select name="kind" data-change="sukind"><option value="shop" ${r.kind !== 'common' ? 'selected' : ''}>Shop</option><option value="common" ${r.kind === 'common' ? 'selected' : ''}>Common area</option></select></div>
+  const setupRow = (r = { kind: 'shop' }) => `<div class="su-row ${r.kind !== 'shop' && r.kind ? 'is-common' : ''} sk-${r.kind || 'shop'}" data-surow data-tenant="${esc(r.tenantId || '')}">
+      <div class="field"><label>Type</label><select name="kind" data-change="sukind"><option value="shop" ${!r.kind || r.kind === 'shop' ? 'selected' : ''}>Shop</option><option value="common" ${r.kind === 'common' ? 'selected' : ''}>Common area</option><option value="council" ${r.kind === 'council' ? 'selected' : ''}>Council / bulk meter</option><option value="check" ${r.kind === 'check' ? 'selected' : ''}>Check meter (sub-main)</option></select></div>
       <div class="field"><label>Shop no. / area</label><input name="unit" value="${esc(r.unit || '')}" placeholder="${r.kind === 'common' ? 'Common area' : 'Shop 4'}"></div>
       <div class="field su-tenant"><label>Tenant</label><input name="name" value="${esc(r.name || '')}" placeholder="Tenant name"></div>
       <div class="field su-tenant"><label>Statement email</label><input name="email" type="email" value="${esc(r.email || '')}" placeholder="optional"></div>
@@ -1759,7 +1762,7 @@
   function viewSetup(bid, stepRaw) {
     if (!isStaff()) return head('Building setup') + '<div class="card empty">Only the service desk and admin can set up buildings.</div>';
     bid = bid || 'new';
-    const step = bid === 'new' ? 1 : Math.min(5, Math.max(1, +stepRaw || 2));
+    const step = bid === 'new' ? 1 : Math.min(6, Math.max(1, +stepRaw || 2));
     const b = bid === 'new' ? {} : (S.buildings.find(x => x.id === bid) || {});
     if (bid !== 'new' && !b.id) return head('Building not found');
     let body = '';
@@ -1773,12 +1776,14 @@
     } else if (step === 2) {
       body = `<form class="card form" data-form="sustep2" data-bid="${b.id}">
         <header><h2>Shops, common areas and meters</h2></header>
-        <p class="muted" style="margin:0">One row per shop or common area. Type the <b>serial number</b> printed on each meter: an existing meter with that serial is linked, otherwise it is added.</p>
+        <p class="muted" style="margin:0">One row per shop, common area, <b>council (bulk) meter</b> or check meter. Type the <b>serial number</b> printed on each meter: an existing meter with that serial is linked, otherwise it is added.</p>
         <div id="surows">${setupInitialRows(b.id).map(setupRow).join('')}</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn sm" data-action="suadd" data-kind="shop">${ic('plus')}Add a shop</button><button type="button" class="btn sm" data-action="suadd" data-kind="common">${ic('plus')}Add a common area</button></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn sm" data-action="suadd" data-kind="council">${ic('plus')}Add the council meter</button><button type="button" class="btn sm" data-action="suadd" data-kind="check">${ic('plus')}Add a check meter</button><button type="button" class="btn sm" data-action="suadd" data-kind="shop">${ic('plus')}Add a shop</button><button type="button" class="btn sm" data-action="suadd" data-kind="common">${ic('plus')}Add a common area</button></div>
         <div id="suerr"></div>
         <div><button class="btn primary">Save and check meters ${ic('back').replace('<svg', '<svg style="transform:scaleX(-1)"')}</button></div></form>`;
     } else if (step === 3) {
+      body = viewSetupTree(b);
+    } else if (step === 4) {
       const C = (ui.suCheck || {})[b.id];
       if (!C) setTimeout(() => runBulkCheck(b.id), 0);
       body = `<div class="card"><header><h2>Bulk check</h2><button class="btn sm" data-action="sucheck" data-bid="${b.id}">${ic('reset')}Check all meters again</button></header>
@@ -1789,29 +1794,113 @@
             ${ui.suOpen === m.id ? `<div class="su-detail"><div class="grid g2"><div><small class="muted">LAST READINGS</small>${m.readings.length ? `<table class="ru-ch">${m.readings.map(r => `<tr><td class="mono">${dmy(r.ts)} ${hhmm(r.ts)}</td><td class="mono" style="text-align:right">${fmtN(r.value)} ${esc(m.unit)}</td><td><small>${esc(r.source || '')}</small></td></tr>`).join('')}</table>` : '<p class="muted">No readings yet.</p>'}<a href="#/meters/meter/${encodeURIComponent(m.id)}" class="muted" style="font-size:12px">Full history</a></div>
               <form class="form" data-form="sutest" data-meter="${esc(m.id)}" data-bid="${b.id}"><small class="muted">TAKE A READING NOW</small><div class="field"><input name="value" type="number" step="any" min="0" inputmode="decimal" placeholder="Reading in ${esc(m.unit)}" required></div><div class="field"><label>Photo (optional)</label><input type="file" accept="image/*" capture="environment" data-mphoto></div><button class="btn sm primary">${ic('check')}Save reading and recheck</button></form></div></div>` : ''}
           </div>`).join('')}</div>` : '<div class="empty">No meters yet. Add serials in step 2.</div>'}
-          <div style="margin-top:12px"><a class="btn primary" href="#/meters/setup/${b.id}/4">Continue to tariffs ${ic('back').replace('<svg', '<svg style="transform:scaleX(-1)"')}</a></div>`}</div>`;
-    } else if (step === 4) {
+          <div style="margin-top:12px"><a class="btn primary" href="#/meters/setup/${b.id}/5">Continue to tariffs ${ic('back').replace('<svg', '<svg style="transform:scaleX(-1)"')}</a></div>`}</div>`;
+    } else if (step === 5) {
       const ms = (S.meters || []).filter(m => m.building === b.id && !m.removed && m.type !== 'solar').sort((x, y) => String(x.location).localeCompare(String(y.location), undefined, { numeric: true }) || x.type.localeCompare(y.type));
       const tfs = type => (S.tariffs || []).filter(t => t.type === type);
       const opts = (type, sel) => `<option value="">Default ${UT_LABEL[type].toLowerCase()} tariff${tfs(type)[0] ? ' (' + esc(tfs(type)[0].name) + ')' : ''}</option>${tfs(type).map(t => `<option value="${t.id}" ${sel === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}`;
-      body = `<form class="card form" data-form="sustep4" data-bid="${b.id}"><header><h2>Link tariffs</h2><a class="btn sm" href="#/recoveries/tariffs">Edit tariff rates</a></header>
+      body = `<form class="card form" data-form="sustep4" data-bid="${b.id}"><header><h2>Link tariffs</h2><span style="display:flex;gap:8px"><a class="btn sm" href="#/recoveries/tariffs">Edit tariff rates</a><a class="btn sm" href="#/meters/setup/${b.id}/6">Skip for now</a></span></header>
         ${(S.tariffs || []).some(t => /sample/i.test(t.name)) ? '<div class="banner bad" style="margin:0"><span class="grow">Some tariffs still have <b>sample rates</b>. Set your real rates under “Edit tariff rates” before billing.</span></div>' : ''}
         <div class="grid g2"><div class="field"><label>Apply to all electricity meters</label><select data-change="suall" data-type="electricity"><option value="-">— choose —</option>${opts('electricity')}</select></div><div class="field"><label>Apply to all water meters</label><select data-change="suall" data-type="water"><option value="-">— choose —</option>${opts('water')}</select></div></div>
         ${ms.length ? `<div class="table-wrap"><table><thead><tr><th>Shop / area</th><th>Meter</th><th>Tariff</th></tr></thead><tbody>${ms.map(m => `<tr><td><strong>${esc(m.location || '—')}</strong><br><small>${esc((tenantById(m.tenantId) || {}).name || 'Common area')}</small></td><td>${UT_LABEL[m.type]}<br><small class="mono">${esc(m.serial || m.id)}</small></td><td><select data-sutariff="${esc(m.id)}" data-type="${m.type}" style="width:100%;padding:8px;background:var(--bg2);border:1px solid var(--line2);border-radius:8px">${opts(m.type, m.tariffId)}</select></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No meters yet.</div>'}
         <div><button class="btn primary">Save tariffs and finish ${ic('back').replace('<svg', '<svg style="transform:scaleX(-1)"')}</button></div></form>`;
     } else {
       const ms = (S.meters || []).filter(m => m.building === b.id && !m.removed), ts = (S.tenants || []).filter(t => t.building === b.id && t.active !== false);
-      const commons = new Set(ms.filter(m => !m.tenantId).map(m => m.location)).size;
+      const commons = new Set(ms.filter(m => !m.tenantId && m.type !== 'solar' && !['council', 'check'].includes(m.role)).map(m => m.location)).size, bulk = ms.filter(m => ['council', 'check'].includes(m.role)).length;
       body = `<div class="card" style="max-width:720px"><header><h2>${esc(b.name)} is set up</h2><span class="pill ok"><i></i>Ready</span></header>
-        <dl class="kv"><dt>Shops (tenants)</dt><dd>${ts.length}</dd><dt>Common areas</dt><dd>${commons}</dd><dt>Electricity meters</dt><dd>${ms.filter(m => m.type === 'electricity').length}</dd><dt>Water meters</dt><dd>${ms.filter(m => m.type === 'water').length}</dd><dt>Meters with a linked tariff</dt><dd>${ms.filter(m => m.tariffId).length} of ${ms.length} (others use the default)</dd></dl>
+        <dl class="kv"><dt>Shops (tenants)</dt><dd>${ts.length}</dd><dt>Common areas</dt><dd>${commons}</dd><dt>Council & check meters</dt><dd>${bulk}</dd><dt>Electricity meters</dt><dd>${ms.filter(m => m.type === 'electricity').length}</dd><dt>Water meters</dt><dd>${ms.filter(m => m.type === 'water').length}</dd><dt>Meters with a linked tariff</dt><dd>${ms.filter(m => m.tariffId).length} of ${ms.length} (others use the default)</dd></dl>
         <p style="margin:12px 0 0">Next: take readings at the start of each month, then create the billing run.</p>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><a class="btn primary" href="#/meters/capture/${b.id}">${ic('check')}Record readings</a><a class="btn" href="#/recoveries/runs">${ic('doc')}Billing runs</a><a class="btn" href="#/meters/setup/${b.id}/2">Edit shops & meters</a></div></div>`;
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><a class="btn primary" href="#/meters/capture/${b.id}">${ic('check')}Record readings</a><a class="btn" href="#/recoveries/runs">${ic('doc')}Billing runs</a><a class="btn" href="#/meters/balance/${b.id}">${ic('trend')}Building balance</a><a class="btn" href="#/meters/setup/${b.id}/2">Edit shops & meters</a></div></div>`;
     }
-    return head(bid === 'new' ? 'Set up a building' : `Set up · ${esc(b.name)}`, 'Building → shops & meters → bulk check → tariffs', bid !== 'new' ? `<a class="btn sm" href="#/meters/overview">${ic('back')}Sites</a>` : '') + setupStepper(bid, step) + body;
+    return head(bid === 'new' ? 'Set up a building' : `Set up · ${esc(b.name)}`, 'Building → shops & meters → meter tree → bulk check → tariffs', bid !== 'new' ? `<a class="btn sm" href="#/meters/overview">${ic('back')}Sites</a>` : '') + setupStepper(bid, step) + body;
   }
   async function runBulkCheck(bid) {
     try { const r = await api('GET', '/api/utility/check/' + bid); ui.suCheck = ui.suCheck || {}; ui.suCheck[bid] = r; if (current.key === 'meters/setup') render(true); }
     catch (e) { toast('Bulk check failed', e.message, 'bad'); }
+  }
+
+  /* ---------------- utility: meter tree & building balance ---------------- */
+  const ROLE_LABEL = { council: 'Council / bulk meter', check: 'Check meter (sub-main)', sub: 'Sub-meter' };
+  const mLabel = m => `${m.location || '—'} · ${m.serial || m.id}${m.tenantId ? ' · ' + ((tenantById(m.tenantId) || {}).name || '') : ''}`;
+  function treeItems(bid) { return (S.meters || []).filter(m => m.building === bid && !m.removed); }
+  function viewSetupTree(b) {
+    const ms = treeItems(b.id), tol = Object.assign({ electricity: 5, water: 10 }, b.balanceTolerance || {});
+    const section = type => {
+      const list = ms.filter(m => m.type === type || (type === 'electricity' && m.type === 'solar'));
+      if (!list.length) return '';
+      const parents = ms.filter(m => m.type === type);
+      return `<div class="card" style="margin-bottom:14px"><header><h2>${ic(UT_ICON[type])} ${UT_LABEL[type]}</h2><button type="button" class="btn sm" data-action="tree-all" data-type="${type}">Put all shops & common areas under the council meter</button></header>
+        <div class="grid split"><div><div class="tree-rows">${list.map(m => `<div class="tree-row" data-tree="${esc(m.id)}" data-type="${m.type}">
+          <div class="tree-name"><strong>${esc(m.location || '—')}</strong><small class="muted">${m.type === 'solar' ? 'Solar · ' : ''}${esc(m.serial || m.id)}${m.tenantId ? ' · ' + esc((tenantById(m.tenantId) || {}).name || '') : ''}</small></div>
+          ${m.type === 'solar' ? '<div class="field"><label>Role</label><input value="Solar (adds supply)" disabled></div>' : `<div class="field"><label>Role</label><select name="role" data-change="treechg">${Object.entries(ROLE_LABEL).map(([v, l]) => `<option value="${v}" ${(m.role || 'sub') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`}
+          <div class="field"><label>${m.type === 'solar' ? 'Feeds into' : 'Fed from'}</label><select name="parent" data-change="treechg" ${(m.role || 'sub') === 'council' ? 'disabled' : ''}><option value="">${m.type === 'solar' ? '— not linked —' : '— top level —'}</option>${parents.filter(p => p.id !== m.id).map(p => `<option value="${esc(p.id)}" ${m.parentId === p.id ? 'selected' : ''}>${esc(mLabel(p))}</option>`).join('')}</select></div>
+        </div>`).join('')}</div></div>
+        <div><small class="muted">PREVIEW</small><div class="tree-preview" data-preview="${type}"></div></div></div></div>`;
+    };
+    setTimeout(() => ['electricity', 'water'].forEach(drawTreePreview), 0);
+    return `<form data-form="sutree" data-bid="${b.id}">
+      <div class="banner ok" style="margin-top:0"><span class="grow">Set the <b>council (bulk) meter</b> at the top, then choose what each meter is <b>fed from</b>. Check meters (sub-mains) can sit in between. Solar is added to the supply of the meter it feeds into.</span></div>
+      ${ms.length ? section('electricity') + section('water') : '<div class="card empty">No meters yet. Add them in step 2.</div>'}
+      <div class="card form"><header><h3>Balance tolerance</h3></header><div class="grid g2">${field('Electricity: allowed difference (%)', 'tolE', tol.electricity, 'number', 'step="0.5" min="0" max="50"')}${field('Water: allowed difference (%)', 'tolW', tol.water, 'number', 'step="0.5" min="0" max="50"')}</div>
+        <div><button class="btn primary">Save tree and check meters ${ic('back').replace('<svg', '<svg style="transform:scaleX(-1)"')}</button></div></div></form>`;
+  }
+  /* Live preview from the current choices on the page. */
+  function drawTreePreview(type) {
+    const box = document.querySelector(`[data-preview="${type}"]`); if (!box) return;
+    const rows = [...document.querySelectorAll('[data-tree]')].map(r => ({ id: r.dataset.tree, type: r.dataset.type, role: (r.querySelector('[name=role]') || {}).value || 'sub', parent: r.querySelector('[name=parent]').value, m: meterById(r.dataset.tree) }))
+      .filter(x => x.type === type || (type === 'electricity' && x.type === 'solar'));
+    const ids = new Set(rows.map(r => r.id));
+    const kids = id => rows.filter(r => r.parent === id && r.role !== 'council');
+    const seen = new Set();
+    const li = r => { if (seen.has(r.id)) return `<li class="tp-loop">${esc(mLabel(r.m))} · loop!</li>`; seen.add(r.id); const k = kids(r.id); return `<li class="tp-${r.type === 'solar' ? 'solar' : r.role}"><span>${r.type === 'solar' ? '☀ ' : ''}${esc(mLabel(r.m))}${r.role === 'council' ? ' <b>COUNCIL</b>' : r.role === 'check' ? ' <b>CHECK</b>' : ''}</span>${k.length ? `<ul>${k.map(li).join('')}</ul>` : ''}</li>`; };
+    const tops = rows.filter(r => r.role === 'council' || !r.parent || !ids.has(r.parent));
+    const council = tops.filter(r => r.role === 'council'), loose = tops.filter(r => r.role !== 'council');
+    box.innerHTML = (council.length ? `<ul class="tp">${council.map(li).join('')}</ul>` : '<p class="muted" style="margin:6px 0">No council meter yet: set one meter’s role to “Council / bulk meter”.</p>') +
+      (loose.length ? `<p class="tp-loose">Not under the council meter: ${loose.map(r => esc(mLabel(r.m))).join(', ')}</p>` : '');
+    loose.forEach(r => kids(r.id).forEach(function walk(k) { seen.add(k.id); kids(k.id).forEach(walk); })); // everything reachable is placed
+    const looped = rows.filter(r => !seen.has(r.id) && !loose.includes(r));
+    if (looped.length) box.insertAdjacentHTML('beforeend', `<p class="tp-loose" style="color:var(--red)">Loop: ${looped.map(r => esc(mLabel(r.m))).join(' → ')} feed each other. Change one of them.</p>`);
+  }
+
+  const BAL_STATUS = { ok: ['ok', 'Balanced'], loss: ['bad', 'Losses above tolerance'], over: ['bad', 'Sub-meters exceed supply'], incomplete: ['warn', 'Readings missing'], nosupply: ['warn', 'No supply recorded'] };
+  function viewBalance(bid) {
+    const b = utilBld(bid); if (!b.id) return head('Building balance') + '<div class="card empty">No utility buildings yet.</div>';
+    ui.balMonth = ui.balMonth || lastMonth();
+    const key = b.id + '|' + ui.balMonth;
+    if (!ui.bal || ui.bal.key !== key) { ui.bal = { key, loading: true }; api('GET', `/api/utility/balance/${b.id}?month=${ui.balMonth}`).then(r => { ui.bal = { key, r }; if (current.key === 'meters/balance') render(true); }).catch(e => { ui.bal = { key, error: e.message }; if (current.key === 'meters/balance') render(true); }); }
+    const top = `<div class="bal-bar">${bizSelect(b.id, 'balsite')}<input type="month" class="hsel" data-change="balmonth" value="${ui.balMonth}" max="${today().slice(0, 7)}" aria-label="Month">${isStaff() ? `<a class="btn sm" href="#/meters/setup/${b.id}/3">${ic('gear')}Meter tree</a>` : ''}</div>`;
+    let body;
+    if (ui.bal.loading) body = '<div class="card empty pulse">Working out the balance…</div>';
+    else if (ui.bal.error) body = `<div class="card empty">${esc(ui.bal.error)}</div>`;
+    else {
+      const T = ui.bal.r.trees;
+      body = ['electricity', 'water'].map(type => {
+        const t = T[type]; if (!t.councils.length && !t.loose.length) return '';
+        const summary = t.councils.map(c => c.balance ? balSummary(c, type) : `<div class="card"><header><h2>${ic(UT_ICON[type])} ${UT_LABEL[type]}</h2></header><p class="muted" style="margin:0">The council meter ${esc(c.serial || c.id)} has no meters under it yet. <a href="#/meters/setup/${b.id}/3">Set up the meter tree</a>.</p></div>`).join('') ||
+          `<div class="card"><header><h2>${ic(UT_ICON[type])} ${UT_LABEL[type]}</h2><span class="pill warn">No council meter</span></header><p class="muted" style="margin:0">Add the council (bulk) ${type} meter and put the other meters under it to balance the building.</p></div>`;
+        const tree = `<div class="card"><header><h3>${UT_LABEL[type]} meter tree · ${esc(ui.bal.r.label)}</h3><small class="muted">tolerance ±${t.tolerance}%</small></header><ul class="bt">${[...t.councils, ...t.loose].map(n => balNode(n)).join('')}</ul>
+          ${t.loose.length ? `<p class="tp-loose">Not under a council meter: ${t.loose.map(n => esc(n.location || n.serial)).join(', ')}</p>` : ''}${t.orphanSolar.length ? `<p class="tp-loose">Solar not linked: ${t.orphanSolar.map(n => esc(n.serial || n.id)).join(', ')}</p>` : ''}</div>`;
+        return `<div class="grid split" style="margin-bottom:14px">${summary}${tree}</div>`;
+      }).join('') || `<div class="card empty">No meters yet.${isStaff() ? ` <a href="#/meters/setup/${b.id}/2">Add meters</a>.` : ''}</div>`;
+    }
+    return head(`Building balance · ${esc(b.name)}`, 'Council supply against the meters it feeds', '') + top + body;
+  }
+  function balSummary(c, type) {
+    const bl = c.balance, st = BAL_STATUS[bl.status], unit = c.unit;
+    const pct = Math.max(0, Math.min(100, bl.supply > 0 ? bl.metered / bl.supply * 100 : 0));
+    return `<div class="card bal-sum ${st[0]}"><header><h2>${ic(UT_ICON[type])} ${UT_LABEL[type]}</h2><span class="pill ${st[0]}"><i></i>${st[1]}</span></header>
+      <dl class="kv"><dt>Council meter ${esc(c.serial || c.id)}</dt><dd>${fmtN(c.use, 1)} ${esc(unit)}</dd>${c.solar.length ? `<dt>+ Solar</dt><dd>${fmtN(c.solar.reduce((a, x) => a + (x.use || 0), 0), 1)} ${esc(unit)}</dd>` : ''}<dt><b>Supply</b></dt><dd><b>${fmtN(bl.supply, 1)} ${esc(unit)}</b></dd>
+        <dt>Metered under it</dt><dd>${fmtN(bl.metered, 1)} ${esc(unit)}</dd><dt><b>${bl.diff >= 0 ? 'Unaccounted' : 'Over-metered'}</b></dt><dd><b style="${bl.status === 'ok' ? '' : 'color:var(--red)'}">${fmtN(Math.abs(bl.diff), 1)} ${esc(unit)} · ${bl.pct == null ? '—' : fmtN(Math.abs(bl.pct), 1) + '%'}</b></dd></dl>
+      <div class="bal-meter"><i style="width:${pct}%"></i></div><small class="muted">${fmtN(pct, 1)}% of supply is metered · tolerance ±${bl.tolerance}%</small>
+      ${bl.missing.length ? `<p class="tp-loose">Readings missing for: ${bl.missing.map(esc).join(', ')}</p>` : ''}
+      ${bl.status === 'loss' ? '<p style="margin:8px 0 0;font-size:13px">Possible causes: a leak or fault, an unmetered connection or bypass, a stopped meter, or a missed reading.</p>' : bl.status === 'over' ? '<p style="margin:8px 0 0;font-size:13px">The sub-meters add up to more than the supply: check CT ratios / multipliers, a meter counted twice, or the council reading.</p>' : ''}</div>`;
+  }
+  function balNode(n) {
+    const bl = n.balance, st = bl && BAL_STATUS[bl.status];
+    return `<li class="bt-${n.role}${n.type === 'solar' ? ' bt-solar' : ''}"><div class="bt-row"><span class="bt-name"><a href="#/meters/meter/${encodeURIComponent(n.id)}">${esc(n.location || n.serial || n.id)}</a> <small class="muted">${esc(n.serial || '')}${n.tenant ? ' · ' + esc(n.tenant) : ''}${n.role === 'council' ? ' · council' : n.role === 'check' ? ' · check meter' : ''}${n.type === 'solar' ? ' · solar' : ''}</small></span>
+      <span class="bt-use mono">${n.ok ? fmtN(n.use, 1) + ' ' + esc(n.unit) : '<span style="color:var(--amber)">no readings</span>'}</span>
+      ${bl ? `<span class="pill ${st[0]}" title="${esc(st[1])}">${bl.pct == null ? '—' : (bl.diff >= 0 ? '' : '−') + fmtN(Math.abs(bl.pct), 1) + '%'}</span>` : ''}</div>
+      ${n.solar.length || n.children.length ? `<ul>${n.solar.map(balNode).join('')}${n.children.map(balNode).join('')}</ul>` : ''}</li>`;
   }
 
   /* ---------------- intro / product tour (click-through) ---------------- */
@@ -1937,7 +2026,7 @@
     assessments: viewAssessments, 'assessments/new': viewAssessNew,
     settings: viewSettings, 'settings/buildings': viewSettingsBuildings, 'settings/building': viewSettingsBuilding, 'settings/users': viewSettingsUsers, 'settings/user': viewSettingsUser, 'settings/outbox': viewOutbox, 'settings/billing': viewSettingsBilling, 'service/tracker': viewTracker, 'service/trackimport': viewTrackImport, 'service/trackrow': viewTrackRow, 'service/svbilling': viewServiceBilling,
     account: viewAccount,
-    'meters/setup': viewSetup, 'meters/overview': viewMetersOverview, 'meters/register': viewMeterRegister, 'meters/meter': viewMeter, 'meters/edit': viewMeterEdit, 'meters/capture': viewReadingsCapture, 'meters/import': viewReadingsImport,
+    'meters/setup': viewSetup, 'meters/balance': viewBalance, 'meters/overview': viewMetersOverview, 'meters/register': viewMeterRegister, 'meters/meter': viewMeter, 'meters/edit': viewMeterEdit, 'meters/capture': viewReadingsCapture, 'meters/import': viewReadingsImport,
     'recoveries/runs': viewRuns, 'recoveries/run': viewRun, 'recoveries/tenants': viewTenants, 'recoveries/tenant': viewTenantEdit, 'recoveries/tariffs': viewTariffs,
     'service/equipment': viewEquipment, 'service/unit': viewUnit, 'service/unitedit': viewUnitEdit, 'service/tech': viewTechEdit, 'service/building': viewBuildingContacts,
   };
@@ -1958,6 +2047,7 @@
     current = parse();
     let mod = MODULES.find(m => m.id === current.mod) || MODULES[0];
     const TECH_BLOCKED = ['service/tracker', 'service/trackrow', 'service/trackimport', 'service/reports', 'service/documents', 'service/clients', 'service/building', 'service/techs', 'service/tech', 'service/unitedit'];
+    if (/^(meters|recoveries)\//.test(current.key) && current.arg && S.buildings.some(b => b.id === current.arg)) ui.site = current.arg; // sidebar follows the building on screen
     if (mod.biz && mod.biz !== ui.biz) { const want = mod.biz; ui.biz = want; try { localStorage.setItem('bothelec.biz', want); } catch (e) { /* storage blocked */ } }
     if ((mod.roles && !mod.roles.includes(role())) || (isTech() && TECH_BLOCKED.includes(current.key))) { mod = MODULES[0]; current = { key: 'dashboard', mod: 'dashboard' }; }
     renderNav(mod, current.key);
@@ -2032,9 +2122,10 @@
     trip: el => act('POST', `/api/trips/${el.dataset.id}/advance`, {}),
     clearalarm: el => { if (confirm('Clear this alarm manually?')) act('POST', `/api/alarms/${el.dataset.id}/clear`, {}, ['Alarm cleared']); },
     tour: () => showIntro(0),
-    suadd: el => { $('#surows').insertAdjacentHTML('beforeend', setupRow({ kind: el.dataset.kind, unit: el.dataset.kind === 'common' ? 'Common area' : '' })); $('#surows').lastElementChild.querySelector(el.dataset.kind === 'common' ? '[name=elecSerial]' : '[name=unit]').focus(); },
+    suadd: el => { const k = el.dataset.kind; const html = setupRow({ kind: k, unit: { common: 'Common area', council: 'Council supply', check: '' }[k] || '' }); if (k === 'council') $('#surows').insertAdjacentHTML('afterbegin', html); else $('#surows').insertAdjacentHTML('beforeend', html); const row = k === 'council' ? $('#surows').firstElementChild : $('#surows').lastElementChild; row.querySelector(k === 'shop' || k === 'check' ? '[name=unit]' : '[name=elecSerial]').focus(); },
     surm: el => el.closest('[data-surow]').remove(),
     sucheck: el => { (ui.suCheck || {})[el.dataset.bid] = null; render(true); },
+    'tree-all': el => { const type = el.dataset.type; const rows = [...document.querySelectorAll(`[data-tree][data-type="${type}"]`)]; const council = rows.find(r => (r.querySelector('[name=role]') || {}).value === 'council'); if (!council) return toast('Choose the council meter first', 'Set one meter’s role to “Council / bulk meter”.', 'bad'); rows.forEach(r => { if (r === council) return; const m = meterById(r.dataset.tree); const role = r.querySelector('[name=role]').value; if (role === 'sub' && (m.tenantId || /common/i.test(m.location || '') || !r.querySelector('[name=parent]').value)) r.querySelector('[name=parent]').value = council.dataset.tree; }); ['electricity', 'water'].forEach(drawTreePreview); },
     suopen: el => { ui.suOpen = ui.suOpen === el.dataset.id ? null : el.dataset.id; render(true); },
     meterjob: el => { const m = meterById(el.dataset.meter); const b = bld(m.building); ui.prefill = { building: b.id, equipment: (b.meterEquipment || []).find(e => e.split(' · ')[0] === m.id) }; location.hash = '#/service/callout'; },
     meterremoved: async el => { const on = !!el.dataset.v; if (on && !confirm('Remove this meter? Its readings are kept.')) return; if (await act('POST', `/api/meters/${encodeURIComponent(el.dataset.id)}/removed`, { removed: on }, [on ? 'Meter removed' : 'Meter restored'])) location.hash = '#/meters/register'; },
@@ -2113,7 +2204,10 @@
     const el = e.target;
     if (el.dataset.change === 'site') switchSite(el.value);
     if (el.id === 'bizSel') switchBiz(el.value);
-    if (el.dataset.change === 'sukind') { const row = el.closest('[data-surow]'); row.classList.toggle('is-common', el.value === 'common'); const u = row.querySelector('[name=unit]'); if (el.value === 'common' && !u.value) u.value = 'Common area'; }
+    if (el.dataset.change === 'sukind') { const row = el.closest('[data-surow]'); row.classList.toggle('is-common', el.value !== 'shop'); const u = row.querySelector('[name=unit]'); if (!u.value) u.value = { common: 'Common area', council: 'Council supply' }[el.value] || ''; }
+    if (el.dataset.change === 'treechg') { const row = el.closest('[data-tree]'); const roleSel = row.querySelector('[name=role]'); const par = row.querySelector('[name=parent]'); if (roleSel) { par.disabled = roleSel.value === 'council'; if (roleSel.value === 'council') par.value = ''; } ['electricity', 'water'].forEach(drawTreePreview); }
+    if (el.dataset.change === 'balsite') { location.hash = '#/meters/balance/' + el.value; }
+    if (el.dataset.change === 'balmonth' && el.value) { ui.balMonth = el.value; render(true); }
     if (el.dataset.change === 'suall' && el.value !== '-') { document.querySelectorAll(`[data-sutariff][data-type="${el.dataset.type}"]`).forEach(x => { x.value = el.value; }); }
     if (el.dataset.change === 'msite') location.hash = '#/meters/register/' + el.value;
     if (el.dataset.change === 'capsite') location.hash = '#/meters/capture/' + el.value;
@@ -2293,6 +2387,15 @@
           } catch (err) { $('#suerr').innerHTML = `<div class="banner bad" style="margin:0"><span class="grow" style="white-space:pre-line">${esc(err.message)}</span></div>`; $('#suerr').scrollIntoView({ block: 'center' }); }
           break;
         }
+        case 'sutree': {
+          const items = [...f.querySelectorAll('[data-tree]')].map(r => ({ meterId: r.dataset.tree, role: (r.querySelector('[name=role]') || {}).value || 'sub', parentId: r.querySelector('[name=parent]').value }));
+          try {
+            await api('POST', `/api/utility/tree/${f.dataset.bid}`, { items });
+            await api('POST', `/api/utility/tolerance/${f.dataset.bid}`, { electricity: d.tolE, water: d.tolW });
+            toast('Meter tree saved'); ui.suCheck = {}; await refresh(); location.hash = `#/meters/setup/${f.dataset.bid}/4`;
+          } catch (err) { toast('Could not save the tree', err.message, 'bad'); }
+          break;
+        }
         case 'sutest': {
           const x = await act('POST', `/api/meters/${encodeURIComponent(f.dataset.meter)}/readings`, { value: d.value, photo: ui.mphoto });
           if (x) { ui.mphoto = null; if (x.warning) toast('Check this reading', x.warning, 'bad'); else toast('Reading saved'); (ui.suCheck || {})[f.dataset.bid] = null; render(true); }
@@ -2300,7 +2403,7 @@
         }
         case 'sustep4': {
           const assign = [...f.querySelectorAll('[data-sutariff]')].map(x => ({ meterId: x.dataset.sutariff, tariffId: x.value }));
-          if (await act('POST', `/api/utility/tariffs/${f.dataset.bid}`, { assign }, ['Tariffs linked'])) location.hash = `#/meters/setup/${f.dataset.bid}/5`;
+          if (await act('POST', `/api/utility/tariffs/${f.dataset.bid}`, { assign }, ['Tariffs linked'])) location.hash = `#/meters/setup/${f.dataset.bid}/6`;
           break;
         }
         case 'tech': {

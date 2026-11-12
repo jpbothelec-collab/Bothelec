@@ -7,6 +7,8 @@ const { nowIso, rid, byId } = require('./util');
 
 const TYPES = { electricity: 'kWh', water: 'kL', solar: 'kWh' };
 const TYPE_LABEL = { electricity: 'Electricity', water: 'Water', solar: 'Solar' };
+const ROLES = ['council', 'check', 'sub'];
+const ROW_KINDS = ['shop', 'common', 'council', 'check'];
 const DAY = 864e5;
 const r2 = n => Math.round(n * 100) / 100;
 const r3 = n => Math.round(n * 1000) / 1000;
@@ -40,6 +42,8 @@ function createUtility(ctx) {
     const tariffId = d.tariffId && S.settings.tariffs.find(t => t.id === d.tariffId && t.type === type) ? d.tariffId : null;
     if (!m) { m = { id, removed: false, createdAt: nowIso() }; S.meters.push(m); }
     else if (m.id !== id) { db.readings.rename(m.id, id); S.jobs.filter(j => j.meter === m.id).forEach(j => { j.meter = id; save('jobs', j); }); db.del('meters', m.id); }
+    if (d.role !== undefined) m.role = ROLES.includes(d.role) ? d.role : 'sub';
+    if (!m.role) m.role = 'sub';
     Object.assign(m, { id, building: b.id, type, unit: TYPES[type], serial: str(d.serial, 60), make: str(d.make, 60), model: str(d.model, 60), location: str(d.location, 80),
       multiplier: mult, tenantId, tariffId, comm: ['manual', 'connector', 'meterhead'].includes(d.comm) ? d.comm : 'manual', installed: isoDate(d.installed), notes: str(d.notes, 1000) });
     if (!(b.divisions || []).includes('utility')) { b.divisions = [...(b.divisions || []), 'utility']; save('buildings', b); }
@@ -257,12 +261,13 @@ function createUtility(ctx) {
     const b = byId(S.buildings, bid); if (!b) return { error: 'Building not found.' };
     if (!Array.isArray(rows)) return { error: 'Nothing to save.' };
     const errors = [], seen = new Map(), units = new Set();
-    rows = rows.map((r, i) => ({ n: i + 1, tenantId: r.tenantId || '', kind: r.kind === 'common' ? 'common' : 'shop', unit: str(r.unit, 40), name: str(r.name, 100), email: str(r.email, 120).toLowerCase(), contact: str(r.contact, 80), phone: str(r.phone, 30), elec: str(r.elecSerial, 40), water: str(r.waterSerial, 40) }))
+    rows = rows.map((r, i) => ({ n: i + 1, tenantId: r.tenantId || '', kind: ROW_KINDS.includes(r.kind) ? r.kind : 'shop', unit: str(r.unit, 40), name: str(r.name, 100), email: str(r.email, 120).toLowerCase(), contact: str(r.contact, 80), phone: str(r.phone, 30), elec: str(r.elecSerial, 40), water: str(r.waterSerial, 40) }))
       .filter(r => r.unit || r.name || r.elec || r.water);
     for (const r of rows) {
       const where = `Row ${r.n}${r.unit ? ' (' + r.unit + ')' : ''}`;
       if (!r.unit) errors.push(`${where}: enter the shop number or the common area name.`);
       if (r.kind === 'shop' && !r.name) errors.push(`${where}: enter the tenant's name (or choose Common area).`);
+      if (r.kind === 'council' && !r.elec && !r.water) errors.push(`${where}: enter the council meter serial(s).`);
       if (r.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(r.email)) errors.push(`${where}: the email looks wrong.`);
       const key = r.unit.toLowerCase(); if (r.unit && units.has(key)) errors.push(`${where}: ${r.unit} appears twice.`); units.add(key);
       for (const [type, serial] of [['electricity', r.elec], ['water', r.water]]) {
@@ -290,16 +295,28 @@ function createUtility(ctx) {
       for (const [type, serial] of [['electricity', r.elec], ['water', r.water]]) {
         const prefix = type === 'electricity' ? 'E' : 'W';
         // unlink a previously linked meter of this type that no longer matches (replaced meter or typo)
+        const role = r.kind === 'council' ? 'council' : r.kind === 'check' ? 'check' : 'sub';
+        const retired = [];
         S.meters.filter(m => m.building === b.id && m.type === type && !m.removed && (tenant ? m.tenantId === tenant.id : (!m.tenantId && m.location === r.unit)) && (!serial || (m.serial || '').toLowerCase() !== serial.toLowerCase()))
-          .forEach(m => { m.removed = true; m.removedAt = nowIso(); m.notes = [m.notes, serial ? `Replaced by ${serial} on ${nowIso().slice(0, 10)}` : `Removed in building setup on ${nowIso().slice(0, 10)}`].filter(Boolean).join('\n'); save('meters', m); out.unlinked++; }); // replaced meter: retired, readings kept
+          .forEach(m => { retired.push(m); m.removed = true; m.removedAt = nowIso(); m.notes = [m.notes, serial ? `Replaced by ${serial} on ${nowIso().slice(0, 10)}` : `Removed in building setup on ${nowIso().slice(0, 10)}`].filter(Boolean).join('\n'); save('meters', m); out.unlinked++; }); // replaced meter: retired, readings kept
         if (!serial) continue;
         let m = S.meters.find(x => x.type === type && x.serial && x.serial.toLowerCase() === serial.toLowerCase() && x.building === b.id);
-        if (m) { m.tenantId = tenant ? tenant.id : null; m.location = r.unit; m.removed = false; save('meters', m); out.linked++; }
+        if (m) { m.tenantId = tenant ? tenant.id : null; m.location = r.unit; m.removed = false; m.role = role; save('meters', m); out.linked++; }
         else {
           let id = `${prefix}-${cleanId(serial) || rid(4)}`; while (meter(id)) id = `${prefix}-${cleanId(serial)}-${rid(2)}`;
-          const res = upsertMeter({ id, building: b.id, type, serial, location: r.unit, tenantId: tenant ? tenant.id : null, multiplier: 1, comm: 'manual' });
+          const res = upsertMeter({ id, building: b.id, type, serial, location: r.unit, tenantId: tenant ? tenant.id : null, multiplier: 1, comm: 'manual', role });
           if (res.error) return { error: `Row ${r.n}: ${res.error}` };
-          out.created++;
+          m = res.meter; out.created++;
+        }
+        // keep the meter tree intact when a meter is replaced: the new meter takes the old one's place
+        const old = retired[0];
+        if (old) {
+          if (old.parentId && !m.parentId) m.parentId = old.parentId;
+          S.meters.filter(x => x.parentId === old.id && !x.removed).forEach(x => { x.parentId = m.id; save('meters', x); });
+          save('meters', m);
+        } else if (!m.parentId && role !== 'council') {
+          const council = S.meters.find(x => x.building === b.id && x.type === type && x.role === 'council' && !x.removed && x !== m);
+          if (council) { m.parentId = council.id; save('meters', m); }
         }
       }
     }
@@ -323,6 +340,8 @@ function createUtility(ctx) {
     if (m.tenantId && !byId(S.tenants, m.tenantId)) issues.push({ level: 'bad', text: 'Linked tenant no longer exists' });
     if (!S.settings.tariffs.some(t => t.id === m.tariffId) && !S.settings.tariffs.some(t => t.type === m.type)) issues.push({ level: 'bad', text: `No ${m.type} tariff exists yet` });
     else if (!m.tariffId) issues.push({ level: 'info', text: 'Uses the default tariff (link a tariff in step 4)' });
+    const council = S.meters.find(x => x.building === m.building && x.type === (m.type === 'solar' ? 'electricity' : m.type) && x.role === 'council' && !x.removed);
+    if (m.role !== 'council' && !m.parentId) issues.push(council ? { level: 'warn', text: m.type === 'solar' ? 'Not linked into the meter tree: choose the meter the solar feeds into' : 'Not in the meter tree: choose the meter it is fed from' } : { level: 'info', text: `No council ${m.type === 'solar' ? 'electricity' : m.type} meter yet: the building cannot be balanced` });
     if (m.comm === 'meterhead') issues.push({ level: 'info', text: 'MeterHead link will be active once the MeterHead protocol is added' });
     const status = issues.some(i => i.level === 'bad') ? 'bad' : issues.some(i => i.level === 'warn') ? 'warn' : 'ok';
     const t = byId(S.tenants, m.tenantId);
@@ -345,6 +364,90 @@ function createUtility(ctx) {
     return { ok: true, updated: n };
   }
 
+  /* ---------------- meter tree & building balance ---------------- */
+  function setTree(bid, list) {
+    const b = byId(S.buildings, bid); if (!b) return { error: 'Building not found.' };
+    if (!Array.isArray(list)) return { error: 'Nothing to save.' };
+    const next = new Map(S.meters.filter(m => m.building === bid).map(m => [m.id, { parentId: m.parentId || null, role: m.role || 'sub' }]));
+    for (const it of list) {
+      const m = meter(it.meterId); if (!m || m.building !== bid) return { error: 'Unknown meter ' + it.meterId };
+      const role = ROLES.includes(it.role) ? it.role : 'sub';
+      let parentId = it.parentId || null;
+      if (role === 'council') parentId = null;
+      if (parentId) {
+        const p = meter(parentId);
+        if (!p || p.building !== bid || p.removed) return { error: `The meter that ${m.serial || m.id} is fed from was not found.` };
+        const want = m.type === 'solar' ? 'electricity' : m.type;
+        if (p.type !== want) return { error: `${m.serial || m.id} (${m.type}) cannot be fed from a ${p.type} meter.` };
+        if (p.id === m.id) return { error: `${m.serial || m.id} cannot be fed from itself.` };
+      }
+      next.set(m.id, { parentId, role: m.type === 'solar' ? 'sub' : role });
+    }
+    for (const [id] of next) { // no loops
+      const seen = new Set([id]); let cur = next.get(id).parentId;
+      while (cur) { if (seen.has(cur)) return { error: `Meter ${(meter(id) || {}).serial || id} would end up feeding itself (a loop).` }; seen.add(cur); cur = (next.get(cur) || {}).parentId; }
+    }
+    for (const [id, v] of next) { const m = meter(id); if (m.parentId !== v.parentId || m.role !== v.role) { m.parentId = v.parentId; m.role = v.role; save('meters', m); } }
+    changed(bid);
+    return { ok: true };
+  }
+  function setTolerance(bid, tol) {
+    const b = byId(S.buildings, bid); if (!b) return { error: 'Building not found.' };
+    const e = +tol.electricity, w = +tol.water;
+    if (!(e >= 0 && e <= 50 && w >= 0 && w <= 50)) return { error: 'Tolerance must be between 0 and 50%.' };
+    b.balanceTolerance = { electricity: e, water: w }; save('buildings', b); changed(bid);
+    return { ok: true };
+  }
+  function periodUse(m, from, to) {
+    const open = nearest(m.id, from), close = nearest(m.id, to), warnings = [];
+    if (!open || !close || open.ts === close.ts) warnings.push('Not enough readings for this period');
+    else {
+      if (open.estimated) warnings.push(`Opening reading ${open.offDays} days from the start`);
+      if (close.estimated) warnings.push(`Closing reading ${close.offDays} days from the end`);
+      if (close.value < open.value) warnings.push('Closing reading lower than opening');
+    }
+    const ok = !!(open && close && open.ts !== close.ts && close.value >= open.value);
+    return { ok, use: ok ? r3((close.value - open.value) * (m.multiplier || 1)) : null, open: open && { ts: open.ts, value: open.value }, close: close && { ts: close.ts, value: close.value }, warnings };
+  }
+  /* Balance a building for a period: at every meter that has meters under it, supply (its own use plus any solar feeding in)
+   * against the total of the meters it feeds. */
+  function balance(bid, month, fromDate, toDate) {
+    const b = byId(S.buildings, bid); if (!b) return { error: 'Building not found.' };
+    let from, to, label;
+    if (month) { const mb = monthBounds(month); if (!mb) return { error: 'Choose a month.' }; ({ from, to, label } = mb); }
+    else if (isoDate(fromDate) && isoDate(toDate) && fromDate < toDate) { from = fromDate + 'T00:00:00.000Z'; to = new Date(Date.parse(toDate + 'T00:00:00.000Z') + DAY).toISOString(); label = `${fromDate} to ${toDate}`; }
+    else return { error: 'Choose a month or a date range.' };
+    const tol = Object.assign({ electricity: 5, water: 10 }, b.balanceTolerance || {});
+    const ms = S.meters.filter(m => m.building === bid && !m.removed);
+    const use = new Map(ms.map(m => [m.id, periodUse(m, from, to)]));
+    const node = m => {
+      const u = use.get(m.id), t = byId(S.tenants, m.tenantId);
+      const kids = ms.filter(x => x.parentId === m.id && x.type === m.type).map(node);
+      const solar = m.type === 'electricity' ? ms.filter(x => x.parentId === m.id && x.type === 'solar').map(node) : [];
+      const n = { id: m.id, serial: m.serial, type: m.type, unit: m.unit, role: m.role || 'sub', location: m.location, tenant: t ? t.name : '', ok: u.ok, use: u.use, open: u.open, close: u.close, warnings: u.warnings, children: kids, solar };
+      if (kids.length) {
+        const parts = [n, ...solar, ...kids];
+        const supply = r3((u.use || 0) + solar.reduce((a, x) => a + (x.use || 0), 0));
+        const metered = r3(kids.reduce((a, x) => a + (x.use || 0), 0));
+        const diff = r3(supply - metered), pct = supply > 0 ? r2(diff / supply * 100) : null;
+        const complete = parts.every(x => x.ok);
+        n.balance = { supply, metered, diff, pct, tolerance: tol[m.type],
+          status: !complete ? 'incomplete' : supply <= 0 ? 'nosupply' : diff < 0 && Math.abs(pct) > tol[m.type] ? 'over' : Math.abs(pct) <= tol[m.type] ? 'ok' : 'loss',
+          missing: parts.filter(x => !x.ok).map(x => x.serial || x.id) };
+      }
+      return n;
+    };
+    const trees = {};
+    for (const type of ['electricity', 'water']) {
+      const top = ms.filter(m => m.type === type && (!m.parentId || !ms.some(x => x.id === m.parentId)));
+      const councils = top.filter(m => m.role === 'council').map(node);
+      const loose = top.filter(m => m.role !== 'council').map(node);
+      const orphanSolar = type === 'electricity' ? ms.filter(m => m.type === 'solar' && (!m.parentId || !ms.some(x => x.id === m.parentId))).map(node) : [];
+      trees[type] = { councils, loose, orphanSolar, tolerance: tol[type] };
+    }
+    return { ok: true, building: bid, label, from, to, trees };
+  }
+
   /* ---------------- views ---------------- */
   function stateFor(u) {
     if (u.role === 'tech') return { meters: S.meters.map(withLast), tenants: [], recoveries: [], tariffs: [] };
@@ -363,7 +466,7 @@ function createUtility(ctx) {
     return { ...m, last: last ? { ts: last.ts, value: last.value, source: last.source } : null, use30: days >= 1 ? r2((last.value - monthAgo.value) * (m.multiplier || 1) / days * 30) : null };
   }
 
-  return { setupRows, checkMeter, checkBuilding, assignTariffs, TYPES, TYPE_LABEL, meter, upsertMeter, setMeterRemoved, addReading, connectorReading, importReadings, deleteReading, readingsFor, upsertTenant, deleteTenant, setTariffs, createRun, recalcRun, deleteRun, approveRun, recoveryLines, stateFor, syncMeterEquipment, meterLabel };
+  return { setTree, setTolerance, balance, periodUse, setupRows, checkMeter, checkBuilding, assignTariffs, TYPES, TYPE_LABEL, meter, upsertMeter, setMeterRemoved, addReading, connectorReading, importReadings, deleteReading, readingsFor, upsertTenant, deleteTenant, setTariffs, createRun, recalcRun, deleteRun, approveRun, recoveryLines, stateFor, syncMeterEquipment, meterLabel };
 }
 
 module.exports = { createUtility, DEFAULT_TARIFFS };

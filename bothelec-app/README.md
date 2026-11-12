@@ -208,13 +208,23 @@ tracker, Zoho and settings are shared. Each building is set to one or both compa
 **Utility Management: setting up a building** (Meters → *Building setup*, or *Set up a building* on the dashboard):
 1. **Building**: name, owner and area, or add utility management to an existing building.
 2. **Shops & meters**: one row per shop or common area: shop number, tenant, statement email, and the **serial numbers**
-   of the electricity and water meters. A serial links the existing meter or adds it. Duplicate serials, and meters already
+   of the electricity and water meters. Add a **council meter** row (the municipal supply) and any **check meters**
+   (bulk / distribution-board meters). A serial links the existing meter or adds it. Duplicate serials, and meters already
    installed at another building, are refused before anything is saved. Changing a serial retires the old meter (its
-   readings are kept); a new tenant name on an existing shop marks the previous tenant as moved out.
-3. **Bulk check**: every meter at once: serial recorded, readings present and recent, no reading going backwards,
-   tariff available.
-4. **Check meter**: open any meter from the check to see its last readings and take a reading on the spot.
-5. **Tariffs**: link an electricity and a water tariff per meter, or apply one to all.
+   readings are kept and its place in the meter tree passes to the new meter); a new tenant name on an existing shop marks
+   the previous tenant as moved out.
+3. **Meter tree**: say which meter feeds which: council → check meters → shop and common-area meters. New meters start
+   under the council meter of the same utility; solar feeds into an electricity meter as extra supply. A live preview shows
+   the tree, meters left outside it, and refuses loops. Set the allowed loss per utility (default 5 % electricity, 10 % water).
+4. **Bulk check**: every meter at once: serial recorded, readings present and recent, no reading going backwards,
+   in the meter tree, tariff available. **Check meter**: open any meter to see its last readings and take a reading on the spot.
+5. **Tariffs**: link a tariff per meter or apply one to all, or *Skip for now* and link them later.
+
+**Building balance** (Meters → *Building balance*, or *Balance* on a site): for a month or a date range, each council and
+check meter's consumption is compared with the total of the meters under it (plus solar). The report shows the difference
+in units and %, per level of the tree: **Balanced** within the tolerance, **Losses above tolerance** (possible leak, bypass,
+faulty or missing meter), **Sub-meters exceed supply** (wrong multiplier or a meter in the wrong place), or **Readings missing**
+when readings are missing for the period (those meters are listed).
 
 **Utility Management**
 - **Meters** (electricity, water, solar): a register per building with serial, make, location, multiplier / CT ratio,

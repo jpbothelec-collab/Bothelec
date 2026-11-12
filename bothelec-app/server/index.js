@@ -241,6 +241,9 @@ function createServer(env = process.env, opts = {}) {
   R('GET', '/api/utility/check/:bid', (req, res, { u, p }) => { if (u.role === 'client' || !canBuilding(u, p.bid)) return fail(res, 404, 'Not found'); result(res, U().checkBuilding(p.bid)); }, { roles: FIELD });
   R('GET', '/api/utility/check-meter/:id', (req, res, { u, p }) => { const m = meterOk(u, p.id); if (!m) return fail(res, 404, 'Not found'); send(res, 200, U().checkMeter(m)); }, { roles: FIELD });
   R('POST', '/api/utility/tariffs/:bid', (req, res, { p, body }) => result(res, U().assignTariffs(p.bid, body.assign)), { roles: STAFF });
+  R('POST', '/api/utility/tree/:bid', (req, res, { p, body }) => result(res, U().setTree(p.bid, body.items)), { roles: STAFF });
+  R('POST', '/api/utility/tolerance/:bid', (req, res, { p, body }) => result(res, U().setTolerance(p.bid, body)), { roles: STAFF });
+  R('GET', '/api/utility/balance/:bid', (req, res, { u, p, url }) => { if (u.role === 'tech' || !canBuilding(u, p.bid)) return fail(res, 404, 'Not found'); result(res, U().balance(p.bid, url.searchParams.get('month'), url.searchParams.get('from'), url.searchParams.get('to'))); }, { roles: ALL });
   R('POST', '/api/meters', (req, res, { body }) => result(res, U().upsertMeter(body.meter || {}, body.originalId)), { roles: STAFF });
   R('POST', '/api/meters/:id/removed', (req, res, { p, body }) => result(res, U().setMeterRemoved(decodeURIComponent(p.id), !!body.removed)), { roles: STAFF });
   R('GET', '/api/meters/:id/readings', (req, res, { u, p, url }) => { const m = meterOk(u, p.id); if (!m) return fail(res, 404, 'Not found'); send(res, 200, U().readingsFor(m.id, url.searchParams.get('from'), url.searchParams.get('to'))); }, { roles: ALL });

@@ -608,3 +608,32 @@ tr.muted td { opacity: .55; }
   .stepper li { min-width: 0; flex: 0 0 auto; } .stepper li:not(.on) > a > span, .stepper li:not(.on) > span > span { display: none; } .stepper li.on { flex: 1; }
 }
 .su-ch-head .grow { flex: 1; min-width: 0; }
+
+/* meter tree & balance */
+.tree-rows { display: grid; gap: 4px; }
+.tree-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.3fr); gap: 8px; align-items: end; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.tree-name { display: flex; flex-direction: column; padding-bottom: 8px; }
+.tree-preview, .bt { font-size: 13px; }
+.tp, .tp ul, .bt, .bt ul { list-style: none; margin: 0; padding: 0; }
+.tp ul, .bt ul { margin-left: 14px; padding-left: 12px; border-left: 1px dashed var(--line2); }
+.tp li { padding: 3px 0; }
+.tp li > span { display: inline-block; padding: 3px 8px; border-radius: 6px; background: var(--panel2); border: 1px solid var(--line); }
+.tp li.tp-council > span { border-color: var(--accent); }
+.tp li.tp-check > span { border-color: var(--cyan); }
+.tp li.tp-solar > span { border-color: var(--amber); }
+.tp b { font-size: 9px; letter-spacing: .1em; color: var(--accent); }
+.tp-loop > span, .tp-loop { color: var(--red); }
+.tp-loose { color: var(--amber); font-size: 12px; margin: 8px 0 0; }
+.bal-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.bal-meter { height: 10px; background: var(--red-dim); border-radius: 5px; overflow: hidden; margin: 12px 0 4px; }
+.bal-meter i { display: block; height: 100%; background: var(--accent); }
+.bal-sum.bad { border-color: rgba(255, 90, 95, .45); }
+.bt li { padding: 2px 0; }
+.bt-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--panel2); border: 1px solid var(--line); }
+.bt-council > .bt-row { border-color: rgba(182, 212, 51, .5); }
+.bt-check > .bt-row { border-color: rgba(63, 210, 227, .45); }
+.bt-solar > .bt-row { border-color: rgba(245, 185, 59, .45); }
+.bt-name { min-width: 0; }
+.bt-use { font-size: 12.5px; white-space: nowrap; }
+@media (max-width: 1000px) { .tree-row { grid-template-columns: 1fr 1fr; } .tree-name { grid-column: 1 / -1; padding-bottom: 0; } }
+.sk-council { background: rgba(182, 212, 51, .05); } .sk-check { background: rgba(63, 210, 227, .04); }

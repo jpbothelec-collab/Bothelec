@@ -841,3 +841,59 @@ test('utility building setup: building → shops & serials → bulk check → ta
   const cc = await login('client2@bothelec.test', 'client-pass-1');
   assert.equal((await req('POST', `/api/utility/setup/${bid}`, { rows }, { cookie: cc })).status, 403);
 });
+
+test('meter tree and building balance against the council meter', async () => {
+  let r = await req('POST', '/api/utility/building', { name: 'Balance Test Centre' });
+  const bid = r.data.building.id;
+  r = await req('POST', `/api/utility/setup/${bid}`, { rows: [
+    { kind: 'council', unit: 'Council supply', elecSerial: 'BAL-CE', waterSerial: 'BAL-CW' },
+    { kind: 'check', unit: 'DB-1', elecSerial: 'BAL-CHK' },
+    { kind: 'shop', unit: 'Shop 1', name: 'One', elecSerial: 'BAL-E1', waterSerial: 'BAL-W1' },
+    { kind: 'shop', unit: 'Shop 2', name: 'Two', elecSerial: 'BAL-E2' },
+  ] });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  let st = (await req('GET', '/api/state')).data;
+  const id = serial => st.meters.find(m => m.serial === serial).id;
+  assert.equal(st.meters.find(m => m.serial === 'BAL-CE').role, 'council');
+  assert.equal(st.meters.find(m => m.serial === 'BAL-E1').parentId, id('BAL-CE'), 'new sub-meters go under the council meter');
+  // put Shop 2 under the check meter; refuse loops and wrong types
+  assert.equal((await req('POST', `/api/utility/tree/${bid}`, { items: [{ meterId: id('BAL-CHK'), role: 'check', parentId: id('BAL-E2') }, { meterId: id('BAL-E2'), role: 'sub', parentId: id('BAL-CHK') }] })).status, 400);
+  assert.match((await req('POST', `/api/utility/tree/${bid}`, { items: [{ meterId: id('BAL-W1'), role: 'sub', parentId: id('BAL-CE') }] })).data.error, /cannot be fed from a electricity meter/);
+  r = await req('POST', `/api/utility/tree/${bid}`, { items: [{ meterId: id('BAL-CHK'), role: 'check', parentId: id('BAL-CE') }, { meterId: id('BAL-E2'), role: 'sub', parentId: id('BAL-CHK') }] });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  // solar feeding into the council meter
+  r = await req('POST', '/api/meters', { meter: { id: 'BAL-SOL', building: bid, type: 'solar', serial: 'BAL-SOL' } });
+  await req('POST', `/api/utility/tree/${bid}`, { items: [{ meterId: 'BAL-SOL', parentId: id('BAL-CE') }] });
+  // readings for May 2024: council 1000 + solar 200 = 1200 supply; under it: check 400 + shop1 700 = 1100 → 100 (8.3%) loss > 5%
+  const rd = async (m, v1, v2) => { await req('POST', `/api/meters/${encodeURIComponent(m)}/readings`, { date: '2024-05-01', value: v1 }); await req('POST', `/api/meters/${encodeURIComponent(m)}/readings`, { date: '2024-06-01', value: v2 }); };
+  await rd(id('BAL-CE'), 5000, 6000); await rd('BAL-SOL', 0, 200); await rd(id('BAL-CHK'), 100, 500); await rd(id('BAL-E1'), 0, 700); await rd(id('BAL-E2'), 0, 390);
+  await rd(id('BAL-CW'), 10, 30); await rd(id('BAL-W1'), 0, 19);
+  r = await req('GET', `/api/utility/balance/${bid}?month=2024-05`);
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const council = r.data.trees.electricity.councils[0];
+  assert.deepEqual([council.balance.supply, council.balance.metered, council.balance.diff, council.balance.pct, council.balance.status], [1200, 1100, 100, 8.33, 'loss']);
+  const chk = council.children.find(n => n.role === 'check');
+  assert.deepEqual([chk.balance.supply, chk.balance.metered, chk.balance.status], [400, 390, 'ok'], 'check meter balances its own sub-meters');
+  const water = r.data.trees.water.councils[0];
+  assert.deepEqual([water.balance.supply, water.balance.metered, water.balance.pct, water.balance.status], [20, 19, 5, 'ok']);
+  // tolerance per building
+  await req('POST', `/api/utility/tolerance/${bid}`, { electricity: 10, water: 10 });
+  r = await req('GET', `/api/utility/balance/${bid}?month=2024-05`);
+  assert.equal(r.data.trees.electricity.councils[0].balance.status, 'ok');
+  // a month without readings is incomplete, not "balanced"
+  r = await req('GET', `/api/utility/balance/${bid}?month=2023-01`);
+  assert.equal(r.data.trees.electricity.councils[0].balance.status, 'incomplete');
+  // replacing the council meter keeps the tree: its sub-meters move to the new meter
+  r = await req('POST', `/api/utility/setup/${bid}`, { rows: [{ kind: 'council', unit: 'Council supply', elecSerial: 'BAL-CE2', waterSerial: 'BAL-CW' }] });
+  st = (await req('GET', '/api/state')).data;
+  const ce2 = st.meters.find(m => m.serial === 'BAL-CE2');
+  assert.equal(ce2.role, 'council');
+  assert.equal(st.meters.find(m => m.serial === 'BAL-E1').parentId, ce2.id);
+  // bulk check flags meters outside the tree
+  await req('POST', `/api/utility/tree/${bid}`, { items: [{ meterId: id('BAL-E1'), role: 'sub', parentId: '' }] });
+  r = await req('GET', `/api/utility/check-meter/${id('BAL-E1')}`);
+  assert.ok(r.data.issues.some(i => /Not in the meter tree/.test(i.text)));
+  // technicians cannot see balances; clients of other buildings cannot either
+  const cc = await login('client2@bothelec.test', 'client-pass-1');
+  assert.equal((await req('GET', `/api/utility/balance/${bid}?month=2024-05`, undefined, { cookie: cc })).status, 404);
+});
