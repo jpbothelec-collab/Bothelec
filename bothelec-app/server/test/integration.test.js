@@ -923,7 +923,7 @@ test('reports: utility figures per month and service-level targets', async () =>
 test('Gauteng tariff library: Joburg and Tshwane bills worked out by hand', async () => {
   let r = await req('GET', '/api/tariffs/library');
   assert.equal(r.status, 200);
-  assert.ok(r.data.library.length >= 8 && r.data.pending.length >= 2);
+  assert.ok(r.data.library.length >= 9 && r.data.pending.length >= 2);
   const q = async (id, consumption, month) => { const x = await req('POST', '/api/tariffs/quote', { id, consumption, month }); assert.equal(x.status, 200, JSON.stringify(x.data)); return x.data; };
   const near = (a, b, m) => assert.ok(Math.abs(a - b) < 0.03, `${m}: ${a} ≠ ${b}`);
   // Joburg business 1 500 kWh in July (winter): 500×3.9837 + 500×4.3370 + 500×4.5306 = 6 425.65; fixed 1 744.17; 2% of 8 169.82 = 163.40; levy 90

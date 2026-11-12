@@ -16,7 +16,8 @@
  *                 pct = share of the water in that block counted as sewage (100 = all of it)
  */
 
-const JHB_EL = { title: 'City Power tariffs 2026/27, Council item 76 Annexure B (30/31 March 2026)', url: 'https://propertywheel.co.za/wp-content/uploads/ITEM-76-.pdf' };
+const JHB_EL = { title: 'City Power tariffs 2026/27, Council item 76 Annexure B; matches the final approved 2026/27 booklet on every line both publish', url: 'https://propertywheel.co.za/wp-content/uploads/ITEM-76-.pdf' };
+const JHB_FINAL = { title: 'City of Johannesburg approved tariffs 2026/27 (final booklet)', url: 'https://joburg.org.za/documents_/Documents/Approved-Tarrifs-for-2026-27/Combined-tariffs-2026-2027-final.pdf' };
 const JHB_WATER = { title: 'Johannesburg Water approved tariffs 2026/27', url: 'https://joburg.org.za/documents_/Documents/Approved-Tarrifs-for-2026-27/Water-Tariffs-2026-2027-final.pdf' };
 const JHB_SEWER = { title: 'Johannesburg Water tariffs 2026/27, Council item 77', url: 'https://propertywheel.co.za/wp-content/uploads/ITEM-77-.pdf' };
 const TSH = { title: 'City of Tshwane tariff increase 2026/27 (published by Martinique, sectional-title administrators)', url: 'https://martinique.co.za/wp-content/uploads/2026/07/260701-City-of-Tshwane-Tariffs.pdf' };
@@ -58,9 +59,16 @@ const LIBRARY = [
   {
     key: 'jhb-el-dom-prepaid', region: 'Gauteng', municipality: 'City of Johannesburg (City Power)', category: 'Residential', type: 'electricity',
     name: 'Joburg City Power · Domestic prepaid (low) 2026/27',
-    effective: '2026-07-01', until: '2027-06-30', source: JHB_EL,
+    effective: '2026-07-01', until: '2027-06-30', source: JHB_FINAL,
     blocks: bl([[350, 272.37], [500, 333.18], [null, 413.06]], c), fixed: [],
     levy: JHB_NETWORK_RES, surchargePct: 0, notes: ['No fixed charges on the low prepaid tariff.'],
+  },
+  {
+    key: 'jhb-el-dom-prepaid-high', region: 'Gauteng', municipality: 'City of Johannesburg (City Power)', category: 'Residential', type: 'electricity',
+    name: 'Joburg City Power · Domestic prepaid (high) 2026/27',
+    effective: '2026-07-01', until: '2027-06-30', source: JHB_FINAL,
+    blocks: bl([[350, 290.46], [500, 333.18], [null, 379.64]], c), fixed: [{ desc: 'Service charge', amount: 70 }],
+    levy: JHB_NETWORK_RES, surchargePct: 0, notes: ['For prepaid customers using more than about 500 kWh a month on average.'],
   },
   /* ---------- City of Johannesburg: water and sewer (Johannesburg Water) ---------- */
   {
