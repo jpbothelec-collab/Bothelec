@@ -231,6 +231,16 @@ function createServer(env = process.env, opts = {}) {
   // utility management: meters, readings, tenants, tariffs, recovery billing
   const U = () => model.util;
   const meterOk = (u, id) => { const m = U().meter(decodeURIComponent(id)); return m && (u.role === 'tech' || canBuilding(u, m.building)) ? m : null; };
+  R('POST', '/api/utility/building', (req, res, { body }) => {
+    const ex = body.id ? model.S.buildings.find(b => b.id === body.id) : null;
+    if (body.id && !ex) return fail(res, 404, 'Building not found.');
+    const divisions = [...new Set([...((ex && ex.divisions) || []), 'utility'])];
+    result(res, model.upsertBuilding({ id: body.id || undefined, name: body.name || (ex && ex.name), client: body.client, area: body.area, portal: body.portal, divisions }));
+  }, { roles: STAFF });
+  R('POST', '/api/utility/setup/:bid', (req, res, { u, p, body }) => result(res, U().setupRows(p.bid, body.rows, u)), { roles: STAFF });
+  R('GET', '/api/utility/check/:bid', (req, res, { u, p }) => { if (u.role === 'client' || !canBuilding(u, p.bid)) return fail(res, 404, 'Not found'); result(res, U().checkBuilding(p.bid)); }, { roles: FIELD });
+  R('GET', '/api/utility/check-meter/:id', (req, res, { u, p }) => { const m = meterOk(u, p.id); if (!m) return fail(res, 404, 'Not found'); send(res, 200, U().checkMeter(m)); }, { roles: FIELD });
+  R('POST', '/api/utility/tariffs/:bid', (req, res, { p, body }) => result(res, U().assignTariffs(p.bid, body.assign)), { roles: STAFF });
   R('POST', '/api/meters', (req, res, { body }) => result(res, U().upsertMeter(body.meter || {}, body.originalId)), { roles: STAFF });
   R('POST', '/api/meters/:id/removed', (req, res, { p, body }) => result(res, U().setMeterRemoved(decodeURIComponent(p.id), !!body.removed)), { roles: STAFF });
   R('GET', '/api/meters/:id/readings', (req, res, { u, p, url }) => { const m = meterOk(u, p.id); if (!m) return fail(res, 404, 'Not found'); send(res, 200, U().readingsFor(m.id, url.searchParams.get('from'), url.searchParams.get('to'))); }, { roles: ALL });

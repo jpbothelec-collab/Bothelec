@@ -205,6 +205,17 @@ Management**. The layout is the same; the menus and data change. Users, technici
 tracker, Zoho and settings are shared. Each building is set to one or both companies (Settings → Buildings →
 *Services for this building*), and every service call belongs to the company it was logged under.
 
+**Utility Management: setting up a building** (Meters → *Building setup*, or *Set up a building* on the dashboard):
+1. **Building**: name, owner and area, or add utility management to an existing building.
+2. **Shops & meters**: one row per shop or common area: shop number, tenant, statement email, and the **serial numbers**
+   of the electricity and water meters. A serial links the existing meter or adds it. Duplicate serials, and meters already
+   installed at another building, are refused before anything is saved. Changing a serial retires the old meter (its
+   readings are kept); a new tenant name on an existing shop marks the previous tenant as moved out.
+3. **Bulk check**: every meter at once: serial recorded, readings present and recent, no reading going backwards,
+   tariff available.
+4. **Check meter**: open any meter from the check to see its last readings and take a reading on the spot.
+5. **Tariffs**: link an electricity and a water tariff per meter, or apply one to all.
+
 **Utility Management**
 - **Meters** (electricity, water, solar): a register per building with serial, make, location, multiplier / CT ratio,
   the tenant it is billed to and the tariff. Each meter shows its readings history, a chart and use since the previous reading.

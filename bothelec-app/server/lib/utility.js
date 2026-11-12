@@ -249,6 +249,102 @@ function createUtility(ctx) {
     return { run, line: l, lines };
   }
 
+  /* ---------------- guided building setup ---------------- */
+  /* Step 2: one row per shop or common area, with the electricity and water meter serials.
+   * Serials link existing meters or create new ones. Validated in full before anything is saved. */
+  const cleanId = v => String(v).replace(/[^A-Za-z0-9._-]+/g, '').slice(0, 30);
+  function setupRows(bid, rows, actor) {
+    const b = byId(S.buildings, bid); if (!b) return { error: 'Building not found.' };
+    if (!Array.isArray(rows)) return { error: 'Nothing to save.' };
+    const errors = [], seen = new Map(), units = new Set();
+    rows = rows.map((r, i) => ({ n: i + 1, tenantId: r.tenantId || '', kind: r.kind === 'common' ? 'common' : 'shop', unit: str(r.unit, 40), name: str(r.name, 100), email: str(r.email, 120).toLowerCase(), contact: str(r.contact, 80), phone: str(r.phone, 30), elec: str(r.elecSerial, 40), water: str(r.waterSerial, 40) }))
+      .filter(r => r.unit || r.name || r.elec || r.water);
+    for (const r of rows) {
+      const where = `Row ${r.n}${r.unit ? ' (' + r.unit + ')' : ''}`;
+      if (!r.unit) errors.push(`${where}: enter the shop number or the common area name.`);
+      if (r.kind === 'shop' && !r.name) errors.push(`${where}: enter the tenant's name (or choose Common area).`);
+      if (r.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(r.email)) errors.push(`${where}: the email looks wrong.`);
+      const key = r.unit.toLowerCase(); if (r.unit && units.has(key)) errors.push(`${where}: ${r.unit} appears twice.`); units.add(key);
+      for (const [type, serial] of [['electricity', r.elec], ['water', r.water]]) {
+        if (!serial) continue;
+        const k = type + '|' + serial.toLowerCase();
+        if (seen.has(k)) errors.push(`${where}: ${type} serial ${serial} is also on row ${seen.get(k)}.`); else seen.set(k, r.n);
+        const other = S.meters.find(m => m.type === type && m.serial && m.serial.toLowerCase() === serial.toLowerCase() && m.building !== b.id && !m.removed);
+        if (other) errors.push(`${where}: ${type} meter ${serial} is already installed at ${(byId(S.buildings, other.building) || {}).name || 'another building'}.`);
+      }
+    }
+    if (errors.length) return { error: errors.slice(0, 8).join('\n') };
+    const out = { tenants: 0, created: 0, linked: 0, unlinked: 0 }; // unlinked = replaced meters retired
+    for (const r of rows) {
+      let tenant = null;
+      if (r.kind === 'shop') {
+        if (!r.tenantId) {
+          const same = S.tenants.find(t => t.building === b.id && t.active !== false && (t.unit || '').toLowerCase() === r.unit.toLowerCase());
+          if (same && same.name.toLowerCase() === r.name.toLowerCase()) r.tenantId = same.id;
+          else if (same) { same.active = false; same.movedOutAt = nowIso(); save('tenants', same); S.meters.filter(m => m.tenantId === same.id).forEach(m => { m.tenantId = null; save('meters', m); }); } // new tenant in this shop
+        }
+        const res = upsertTenant({ id: r.tenantId || undefined, building: b.id, name: r.name, unit: r.unit, email: r.email, contact: r.contact, phone: r.phone, active: true });
+        if (res.error) return { error: `Row ${r.n}: ${res.error}` };
+        tenant = res.tenant; out.tenants++;
+      }
+      for (const [type, serial] of [['electricity', r.elec], ['water', r.water]]) {
+        const prefix = type === 'electricity' ? 'E' : 'W';
+        // unlink a previously linked meter of this type that no longer matches (replaced meter or typo)
+        S.meters.filter(m => m.building === b.id && m.type === type && !m.removed && (tenant ? m.tenantId === tenant.id : (!m.tenantId && m.location === r.unit)) && (!serial || (m.serial || '').toLowerCase() !== serial.toLowerCase()))
+          .forEach(m => { m.removed = true; m.removedAt = nowIso(); m.notes = [m.notes, serial ? `Replaced by ${serial} on ${nowIso().slice(0, 10)}` : `Removed in building setup on ${nowIso().slice(0, 10)}`].filter(Boolean).join('\n'); save('meters', m); out.unlinked++; }); // replaced meter: retired, readings kept
+        if (!serial) continue;
+        let m = S.meters.find(x => x.type === type && x.serial && x.serial.toLowerCase() === serial.toLowerCase() && x.building === b.id);
+        if (m) { m.tenantId = tenant ? tenant.id : null; m.location = r.unit; m.removed = false; save('meters', m); out.linked++; }
+        else {
+          let id = `${prefix}-${cleanId(serial) || rid(4)}`; while (meter(id)) id = `${prefix}-${cleanId(serial)}-${rid(2)}`;
+          const res = upsertMeter({ id, building: b.id, type, serial, location: r.unit, tenantId: tenant ? tenant.id : null, multiplier: 1, comm: 'manual' });
+          if (res.error) return { error: `Row ${r.n}: ${res.error}` };
+          out.created++;
+        }
+      }
+    }
+    if (!(b.divisions || []).includes('utility')) b.divisions = [...(b.divisions || []), 'utility'];
+    syncMeterEquipment(b); save('buildings', b); changed(b.id);
+    return { ok: true, ...out };
+  }
+  /* Steps 3 and 4: check every meter in the building. */
+  function checkMeter(m) {
+    const last3 = db.readings.range(m.id, '0000', '9999', 100000).slice(-3);
+    const last = last3[last3.length - 1], prev = last3[last3.length - 2];
+    const issues = [];
+    if (!m.serial) issues.push({ level: 'bad', text: 'No serial number recorded' });
+    if (!last) issues.push({ level: 'bad', text: 'No readings yet: take a first reading' });
+    else {
+      const age = Math.floor((Date.now() - Date.parse(last.ts)) / DAY);
+      if (age > 35) issues.push({ level: 'warn', text: `Last reading is ${age} days old` });
+      if (prev && last.value < prev.value) issues.push({ level: 'bad', text: `Last reading (${last.value}) is lower than the one before (${prev.value})` });
+      if (last3.length < 2) issues.push({ level: 'warn', text: 'Only one reading so far: billing needs a reading at the start and end of the month' });
+    }
+    if (m.tenantId && !byId(S.tenants, m.tenantId)) issues.push({ level: 'bad', text: 'Linked tenant no longer exists' });
+    if (!S.settings.tariffs.some(t => t.id === m.tariffId) && !S.settings.tariffs.some(t => t.type === m.type)) issues.push({ level: 'bad', text: `No ${m.type} tariff exists yet` });
+    else if (!m.tariffId) issues.push({ level: 'info', text: 'Uses the default tariff (link a tariff in step 4)' });
+    if (m.comm === 'meterhead') issues.push({ level: 'info', text: 'MeterHead link will be active once the MeterHead protocol is added' });
+    const status = issues.some(i => i.level === 'bad') ? 'bad' : issues.some(i => i.level === 'warn') ? 'warn' : 'ok';
+    const t = byId(S.tenants, m.tenantId);
+    return { id: m.id, type: m.type, serial: m.serial, unit: m.unit, location: m.location, tenant: t ? t.name : '', status, issues, readings: last3.reverse().map(r => ({ ts: r.ts, value: r.value, source: r.source })) };
+  }
+  function checkBuilding(bid) {
+    const b = byId(S.buildings, bid); if (!b) return { error: 'Building not found.' };
+    const list = S.meters.filter(m => m.building === bid && !m.removed).map(checkMeter);
+    return { ok: true, checkedAt: nowIso(), meters: list, ok_: list.filter(x => x.status === 'ok').length, warn: list.filter(x => x.status === 'warn').length, bad: list.filter(x => x.status === 'bad').length };
+  }
+  function assignTariffs(bid, list) {
+    const b = byId(S.buildings, bid); if (!b) return { error: 'Building not found.' };
+    let n = 0;
+    for (const a of list || []) {
+      const m = meter(a.meterId); if (!m || m.building !== bid) continue;
+      if (a.tariffId && !S.settings.tariffs.find(t => t.id === a.tariffId && t.type === m.type)) return { error: `That tariff does not fit ${m.type} meter ${m.serial || m.id}.` };
+      m.tariffId = a.tariffId || null; save('meters', m); n++;
+    }
+    changed(bid);
+    return { ok: true, updated: n };
+  }
+
   /* ---------------- views ---------------- */
   function stateFor(u) {
     if (u.role === 'tech') return { meters: S.meters.map(withLast), tenants: [], recoveries: [], tariffs: [] };
@@ -267,7 +363,7 @@ function createUtility(ctx) {
     return { ...m, last: last ? { ts: last.ts, value: last.value, source: last.source } : null, use30: days >= 1 ? r2((last.value - monthAgo.value) * (m.multiplier || 1) / days * 30) : null };
   }
 
-  return { TYPES, TYPE_LABEL, meter, upsertMeter, setMeterRemoved, addReading, connectorReading, importReadings, deleteReading, readingsFor, upsertTenant, deleteTenant, setTariffs, createRun, recalcRun, deleteRun, approveRun, recoveryLines, stateFor, syncMeterEquipment, meterLabel };
+  return { setupRows, checkMeter, checkBuilding, assignTariffs, TYPES, TYPE_LABEL, meter, upsertMeter, setMeterRemoved, addReading, connectorReading, importReadings, deleteReading, readingsFor, upsertTenant, deleteTenant, setTariffs, createRun, recalcRun, deleteRun, approveRun, recoveryLines, stateFor, syncMeterEquipment, meterLabel };
 }
 
 module.exports = { createUtility, DEFAULT_TARIFFS };

@@ -783,3 +783,61 @@ test('utility management: building link readings, permissions, company per build
   const j = (await req('GET', '/api/state')).data.jobs.find(x => x.id === r.data.id);
   assert.equal(j.division, 'utility'); assert.equal(j.meter, 'E-S2');
 });
+
+test('utility building setup: building → shops & serials → bulk check → tariffs', async () => {
+  let r = await req('POST', '/api/utility/building', { name: 'Setup Test Mall', client: 'STM Holdings', area: 'Fourways' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const bid = r.data.building.id;
+  assert.deepEqual(r.data.building.divisions, ['utility']);
+  const rows = [
+    { kind: 'shop', unit: 'Shop 1', name: 'Alpha', email: 'alpha@bothelec.test', elecSerial: 'SER-E1', waterSerial: 'SER-W1' },
+    { kind: 'shop', unit: 'Shop 2', name: 'Beta', elecSerial: 'SER-E2' },
+    { kind: 'common', unit: 'Common area', elecSerial: 'SER-E3', waterSerial: 'SER-W3' },
+  ];
+  // validation: duplicate serial, missing tenant name, serial installed at another building
+  r = await req('POST', `/api/utility/setup/${bid}`, { rows: [...rows, { kind: 'shop', unit: 'Shop 9', name: 'Dup', elecSerial: 'SER-E1' }] });
+  assert.equal(r.status, 400); assert.match(r.data.error, /also on row 1/);
+  r = await req('POST', `/api/utility/setup/${bid}`, { rows: [{ kind: 'shop', unit: 'Shop 5', elecSerial: 'X' }] });
+  assert.match(r.data.error, /tenant's name/);
+  r = await req('POST', `/api/utility/setup/${bid}`, { rows: [{ kind: 'common', unit: 'Plant', elecSerial: 'LG-881201' }] });
+  assert.match(r.data.error, /already installed at Sandton Retail Centre/);
+  let st = (await req('GET', '/api/state')).data;
+  assert.ok(!st.meters.some(m => m.building === bid), 'nothing saved when validation fails');
+  r = await req('POST', `/api/utility/setup/${bid}`, { rows });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.tenants, 2); assert.equal(r.data.created, 5);
+  st = (await req('GET', '/api/state')).data;
+  const ms = st.meters.filter(m => m.building === bid);
+  const alpha = st.tenants.find(t => t.building === bid && t.name === 'Alpha');
+  assert.equal(ms.filter(m => m.tenantId === alpha.id).length, 2, 'Alpha has electricity + water');
+  assert.ok(ms.some(m => m.serial === 'SER-E3' && !m.tenantId && m.location === 'Common area'), 'common area meter has no tenant');
+  // saving again links the same meters (no duplicates); replacing a serial retires the old meter
+  r = await req('POST', `/api/utility/setup/${bid}`, { rows: [{ ...rows[0], tenantId: alpha.id, elecSerial: 'SER-E1B' }, rows[1], rows[2]] });
+  assert.equal(r.data.created, 1); assert.equal(r.data.unlinked, 1);
+  st = (await req('GET', '/api/state')).data;
+  const old = st.meters.find(m => m.serial === 'SER-E1');
+  assert.ok(old.removed && /Replaced by SER-E1B/.test(old.notes));
+  assert.equal(st.tenants.filter(t => t.building === bid).length, 2, 'no duplicate tenants');
+  // a new tenant moving into Shop 2: old one marked moved out, meters move to the new tenant
+  r = await req('POST', `/api/utility/setup/${bid}`, { rows: [{ ...rows[1], name: 'Gamma' }] });
+  st = (await req('GET', '/api/state')).data;
+  const beta = st.tenants.find(t => t.building === bid && t.name === 'Beta'), gamma = st.tenants.find(t => t.building === bid && t.name === 'Gamma');
+  assert.equal(beta.active, false); assert.ok(gamma && gamma.active);
+  assert.equal(st.meters.find(m => m.serial === 'SER-E2').tenantId, gamma.id);
+  // bulk check
+  r = await req('GET', `/api/utility/check/${bid}`);
+  assert.equal(r.data.meters.length, 5);
+  assert.ok(r.data.meters.every(m => m.status === 'bad' && m.issues.some(i => /No readings yet/.test(i.text))));
+  const e1b = st.meters.find(m => m.serial === 'SER-E1B');
+  await req('POST', `/api/meters/${e1b.id}/readings`, { value: 100 });
+  r = await req('GET', `/api/utility/check-meter/${e1b.id}`);
+  assert.equal(r.data.status, 'warn'); assert.ok(r.data.issues.some(i => /Only one reading/.test(i.text)));
+  // tariffs
+  r = await req('POST', `/api/utility/tariffs/${bid}`, { assign: [{ meterId: e1b.id, tariffId: 'TF-WATER' }] });
+  assert.equal(r.status, 400, 'water tariff on an electricity meter is refused');
+  r = await req('POST', `/api/utility/tariffs/${bid}`, { assign: st.meters.filter(m => m.building === bid && !m.removed).map(m => ({ meterId: m.id, tariffId: m.type === 'water' ? 'TF-WATER' : 'TF-ELEC' })) });
+  assert.equal(r.data.updated, 5);
+  // a client cannot run setup
+  const cc = await login('client2@bothelec.test', 'client-pass-1');
+  assert.equal((await req('POST', `/api/utility/setup/${bid}`, { rows }, { cookie: cc })).status, 403);
+});
